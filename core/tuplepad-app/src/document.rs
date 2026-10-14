@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tuplepad_core::{Indentation, TextBuffer, TextPos, TextSelection};
+use tuplepad_core::{Indentation, SearchQuery, TextBuffer, TextPos, TextSelection};
 
 pub struct Document {
     /// Stable for the life of the document, and the name of its session snapshot.
@@ -27,6 +27,8 @@ pub struct Document {
     pub follow: bool,
     /// The file changed on disk while the document had unsaved changes, or went missing.
     pub conflict: Option<Conflict>,
+    /// Mark All: a search whose matches stay highlighted until cleared.
+    pub mark: Option<SearchQuery>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,6 +55,7 @@ impl Document {
             snapshot_version: None,
             follow: false,
             conflict: None,
+            mark: None,
         }
     }
 

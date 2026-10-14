@@ -28,7 +28,7 @@ use slint::platform::{Key, WindowEvent};
 use slint::{ComponentHandle, RenderingState};
 
 use crate::app::App;
-use crate::{AppWindow, Theme};
+use crate::{AppWindow, FindBridge, Theme};
 
 #[derive(Default)]
 struct FrameClock {
@@ -283,6 +283,51 @@ fn run_next(app: Rc<App>, runner: Shared) {
             }
             return later(app, runner, 200);
         }
+        "find" => {
+            // {"find": {"query": …, "replacement": …, "case": bool, "word": bool, "regex": bool,
+            //  "replaceBar": bool, "action": "next" | "previous" | "replace" | "replaceAll" | "close"}}
+            let bridge = ui.global::<FindBridge>();
+            let mut changed = false;
+            if let Some(query) = arg.get("query").and_then(Value::as_str) {
+                if !bridge.get_open() {
+                    app.open_find(false);
+                }
+                bridge.set_query(query.into());
+                changed = true;
+            }
+            if let Some(text) = arg.get("replacement").and_then(Value::as_str) {
+                bridge.set_replacement(text.into());
+            }
+            let flag = |name: &str| arg.get(name).and_then(Value::as_bool);
+            if let Some(on) = flag("case") {
+                bridge.set_case_sensitive(on);
+                changed = true;
+            }
+            if let Some(on) = flag("word") {
+                bridge.set_whole_word(on);
+                changed = true;
+            }
+            if let Some(on) = flag("regex") {
+                bridge.set_regex(on);
+                changed = true;
+            }
+            if let Some(on) = arg.get("replaceBar").and_then(Value::as_bool) {
+                bridge.set_show_replace(on);
+            }
+            if changed {
+                app.find_changed();
+            }
+            match arg.get("action").and_then(Value::as_str) {
+                Some("next") => app.find_step(true),
+                Some("previous") => app.find_step(false),
+                Some("replace") => app.replace_one(),
+                Some("replaceAll") => app.replace_all_matches(),
+                Some("close") => app.close_find(),
+                _ => {}
+            }
+            return later(app, runner, 150);
+        }
+        "gutterClick" => app.toggle_bookmark_at_row(arg.as_u64().unwrap_or(0)),
         "menus" => {
             let menus = dump_menus(&ui);
             if let Some(path) = arg.as_str() {
@@ -345,6 +390,21 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         .iter()
         .map(|d| json!({"name": d.name(), "modified": d.buffer.is_modified(), "path": d.buffer.path(), "wrap": d.wrap}))
         .collect();
+    let find_state = {
+        use slint::Model;
+        let bridge = ui.global::<FindBridge>();
+        let editor_bridge = ui.global::<crate::EditorBridge>();
+        json!({
+            "open": bridge.get_open(),
+            "replace_bar": bridge.get_show_replace(),
+            "query": bridge.get_query().as_str(),
+            "status": bridge.get_status().as_str(),
+            "error": bridge.get_error(),
+            "bands": editor_bridge.get_find_matches().row_count(),
+            "marks": editor_bridge.get_marks().row_count(),
+            "mark": doc.mark.as_ref().map(|q| q.pattern.clone()),
+        })
+    };
     json!({
         "doc": doc.name(),
         "current": editor.current,
@@ -380,6 +440,8 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "font_size": editor.font_size,
         "clipboard": editor.private_clipboard,
         "settings": serde_json::to_value(&*app.settings.borrow()).unwrap_or_default(),
+        "find": find_state,
+        "bookmarks": doc.buffer.bookmarks(),
     })
 }
 
@@ -412,6 +474,7 @@ fn dump_menus(ui: &AppWindow) -> Value {
         "Line Endings": menu(ui.get_line_ending_menu()),
         "Edit": menu(ui.get_edit_menu()),
         "Selection": menu(ui.get_selection_menu()),
+        "Find": menu(ui.get_find_menu()),
         "View": menu(ui.get_view_menu()),
     })
 }

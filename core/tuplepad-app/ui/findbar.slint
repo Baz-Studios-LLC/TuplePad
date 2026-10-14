@@ -1,0 +1,263 @@
+import { Theme } from "theme.slint";
+import { PillButton } from "sidebar.slint";
+
+// The find bar's state, shared with Rust.
+export global FindBridge {
+    in-out property <bool> open;
+    in-out property <bool> show-replace;
+    in-out property <string> query;
+    in-out property <string> replacement;
+    in-out property <bool> case-sensitive;
+    in-out property <bool> whole-word;
+    in-out property <bool> regex;
+    in property <string> status;
+    in property <bool> error;
+    // Bumped to put the caret in the find field (when Find is chosen again while open).
+    in property <int> focus-request;
+    callback changed();
+    callback next();
+    callback previous();
+    callback replace();
+    callback replace-all();
+    callback close();
+    callback action(id: string);
+}
+
+component SmallButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> on;
+    in property <string> tooltip;
+    callback clicked;
+    width: root.label != "" ? 30px : 28px;
+    height: 26px;
+    border-radius: 7px;
+    background: root.on ? Theme.accent.with-alpha(Theme.dark ? 0.45 : 0.14) : touch.pressed ? Theme.control-pressed : touch.has-hover ? Theme.control-hover : transparent;
+    animate background { duration: 100ms; }
+    if root.icon != "": Path {
+        width: 14px;
+        height: 14px;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: root.icon;
+        fill: transparent;
+        stroke: Theme.icon;
+        stroke-width: 2.2px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+    if root.label != "": Text {
+        text: root.label;
+        font-size: 12px;
+        font-weight: 700;
+        color: root.on ? (Theme.dark ? Theme.primary-text : Theme.accent) : Theme.secondary-text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+component FieldBox inherits Rectangle {
+    in property <bool> focused;
+    height: 30px;
+    border-radius: 8px;
+    background: Theme.editor-background;
+    border-width: 1px;
+    border-color: root.focused ? Theme.accent.with-alpha(0.6) : Theme.control-border;
+    animate border-color { duration: 120ms; }
+}
+
+export component FindBar inherits Rectangle {
+    background: Theme.header-background;
+    height: !FindBridge.open ? 0px : FindBridge.show-replace ? 84px : 46px;
+    clip: true;
+    animate height { duration: 140ms; easing: ease-out; }
+
+    public function focus-find() {
+        query-field.focus();
+        query-field.select-all();
+    }
+
+    changed height => {
+        if FindBridge.open && self.height > 0 && !query-field.has-focus {
+            query-field.focus();
+        }
+    }
+
+    // When Find is chosen while the bar is already open.
+    property <int> focus-request: FindBridge.focus-request;
+    changed focus-request => {
+        query-field.focus();
+        query-field.select-all();
+    }
+
+    VerticalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 8px;
+        HorizontalLayout {
+            height: 30px;
+            spacing: 6px;
+            SmallButton {
+                y: 2px;
+                icon: FindBridge.show-replace ? "M6 9l6 6 6-6" : "M9 6l6 6-6 6";
+                clicked => { FindBridge.show-replace = !FindBridge.show-replace; }
+            }
+            FieldBox {
+                horizontal-stretch: 1;
+                focused: query-field.has-focus;
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 8px;
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        query-field := TextInput {
+                            width: parent.width;
+                            height: parent.height;
+                            text <=> FindBridge.query;
+                            font-size: 13px;
+                            color: Theme.primary-text;
+                            vertical-alignment: center;
+                            single-line: true;
+                            selection-background-color: Theme.selection;
+                            edited => { FindBridge.changed(); }
+                            key-pressed(event) => {
+                                if event.text == Key.Return {
+                                    if event.modifiers.shift { FindBridge.previous(); } else { FindBridge.next(); }
+                                    return EventResult.accept;
+                                }
+                                if event.text == Key.Escape {
+                                    FindBridge.close();
+                                    return EventResult.accept;
+                                }
+                                return EventResult.reject;
+                            }
+                        }
+                        if FindBridge.query == "": Text {
+                            width: parent.width;
+                            height: parent.height;
+                            text: "Find";
+                            font-size: 13px;
+                            color: Theme.tertiary-text;
+                            vertical-alignment: center;
+                        }
+                    }
+                    Text {
+                        text: FindBridge.status;
+                        font-size: 12px;
+                        color: FindBridge.error ? (Theme.dark ? #FF8F8F : #C0392B) : Theme.secondary-text;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            SmallButton { y: 2px; label: "Aa"; on: FindBridge.case-sensitive; clicked => { FindBridge.case-sensitive = !FindBridge.case-sensitive; FindBridge.changed(); } }
+            SmallButton { y: 2px; label: "W"; on: FindBridge.whole-word; clicked => { FindBridge.whole-word = !FindBridge.whole-word; FindBridge.changed(); } }
+            SmallButton { y: 2px; label: ".*"; on: FindBridge.regex; clicked => { FindBridge.regex = !FindBridge.regex; FindBridge.changed(); } }
+            Rectangle { width: 4px; }
+            SmallButton { y: 2px; icon: "M6 15l6-6 6 6"; clicked => { FindBridge.previous(); } }
+            SmallButton { y: 2px; icon: "M6 9l6 6 6-6"; clicked => { FindBridge.next(); } }
+            more := SmallButton {
+                y: 2px;
+                icon: "M5 12h.01 M12 12h.01 M19 12h.01";
+                clicked => { menu.show(); }
+            }
+            PillButton {
+                y: 2px;
+                text: "Done";
+                clicked => { FindBridge.close(); }
+            }
+        }
+        if FindBridge.show-replace: HorizontalLayout {
+            height: 30px;
+            spacing: 6px;
+            Rectangle { width: 28px; }
+            FieldBox {
+                horizontal-stretch: 1;
+                focused: replace-field.has-focus;
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    Rectangle {
+                        replace-field := TextInput {
+                            width: parent.width;
+                            height: parent.height;
+                            text <=> FindBridge.replacement;
+                            font-size: 13px;
+                            color: Theme.primary-text;
+                            vertical-alignment: center;
+                            single-line: true;
+                            selection-background-color: Theme.selection;
+                            key-pressed(event) => {
+                                if event.text == Key.Return {
+                                    FindBridge.replace();
+                                    return EventResult.accept;
+                                }
+                                if event.text == Key.Escape {
+                                    FindBridge.close();
+                                    return EventResult.accept;
+                                }
+                                return EventResult.reject;
+                            }
+                        }
+                        if FindBridge.replacement == "": Text {
+                            width: parent.width;
+                            height: parent.height;
+                            text: FindBridge.regex ? "Replace ($1 for groups)" : "Replace";
+                            font-size: 13px;
+                            color: Theme.tertiary-text;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+            PillButton { y: 2px; text: "Replace"; clicked => { FindBridge.replace(); } }
+            PillButton { y: 2px; text: "Replace All"; clicked => { FindBridge.replace-all(); } }
+        }
+    }
+
+    menu := PopupWindow {
+        x: more.x + more.width - 240px;
+        y: 40px;
+        width: 240px;
+        Rectangle {
+            border-radius: 10px;
+            background: Theme.header-background;
+            border-width: 1px;
+            border-color: Theme.separator;
+            drop-shadow-blur: 18px;
+            drop-shadow-offset-y: 6px;
+            drop-shadow-color: #00000040;
+            VerticalLayout {
+                padding: 6px;
+                for item in [
+                    { id: "find.count", title: "Count Matches" },
+                    { id: "find.mark-all", title: "Mark All" },
+                    { id: "find.clear-marks", title: "Clear Marks" },
+                    { id: "find.bookmark-lines", title: "Bookmark Matching Lines" },
+                    { id: "search.open-documents", title: "Find in Open Documents…" },
+                    { id: "search.files", title: "Find in Files…" },
+                ]: Rectangle {
+                    height: 28px;
+                    border-radius: 6px;
+                    background: item-touch.has-hover ? Theme.accent : transparent;
+                    Text {
+                        x: 10px;
+                        text: item.title;
+                        font-size: 13px;
+                        color: item-touch.has-hover ? Theme.accent-text : Theme.primary-text;
+                        vertical-alignment: center;
+                    }
+                    item-touch := TouchArea {
+                        clicked => {
+                            FindBridge.action(item.id);
+                            menu.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

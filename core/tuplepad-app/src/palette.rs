@@ -58,6 +58,7 @@ fn menu_name(menu: Menu) -> &'static str {
         Menu::File => "File",
         Menu::Edit => "Edit",
         Menu::Selection => "Selection",
+        Menu::Find => "Find",
         Menu::View => "View",
         Menu::None => "",
     }

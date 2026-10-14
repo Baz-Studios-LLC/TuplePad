@@ -9,6 +9,7 @@ mod app;
 mod commands;
 mod document;
 mod editor;
+mod find;
 mod fonts;
 mod palette;
 mod platform;
@@ -263,6 +264,27 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
     {
         let app = app.clone();
         ui.on_palette_query(move |query| app.palette_query(&query));
+    }
+    {
+        let find = ui.global::<FindBridge>();
+        let a = app.clone();
+        find.on_changed(move || a.find_changed());
+        let a = app.clone();
+        find.on_next(move || a.find_step(true));
+        let a = app.clone();
+        find.on_previous(move || a.find_step(false));
+        let a = app.clone();
+        find.on_replace(move || a.replace_one());
+        let a = app.clone();
+        find.on_replace_all(move || a.replace_all_matches());
+        let a = app.clone();
+        find.on_close(move || a.close_find());
+        let a = app.clone();
+        find.on_action(move |id| a.run_command(&id));
+    }
+    {
+        let app = app.clone();
+        bridge.on_gutter_clicked(move |row| app.toggle_bookmark_at_row(row.max(0) as u64));
     }
     {
         let app = app.clone();

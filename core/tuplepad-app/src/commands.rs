@@ -10,6 +10,7 @@ pub enum Menu {
     File,
     Edit,
     Selection,
+    Find,
     View,
     /// Commands without a menu item (buttons, scripts).
     None,
@@ -99,6 +100,27 @@ pub static COMMANDS: &[Command] = &[
         ..command("selection.caret-below", "Add Caret Below", Menu::Selection, &["Meta", "Shift", "DownArrow"])
     },
     command("selection.single", "Single Caret", Menu::Selection, &[]),
+    command("find.show", "Find…", Menu::Find, &["Control", "f"]),
+    Command { other_keys: Some(&["Control", "h"]), ..command("find.replace", "Find and Replace…", Menu::Find, &["Control", "Alt", "f"]) },
+    Command { other_keys: Some(&["F3"]), ..command("find.next", "Find Next", Menu::Find, &["Control", "g"]) },
+    Command { other_keys: Some(&["Shift", "F3"]), ..command("find.previous", "Find Previous", Menu::Find, &["Control", "Shift", "g"]) },
+    command("find.use-selection", "Use Selection for Find", Menu::Find, &["Control", "e"]),
+    separator(Menu::Find),
+    command("find.count", "Count Matches", Menu::Find, &[]),
+    Command { other_keys: Some(&["Control", "Shift", "m"]), ..command("find.mark-all", "Mark All", Menu::Find, &["Control", "Meta", "m"]) },
+    command("find.clear-marks", "Clear Marks", Menu::Find, &[]),
+    separator(Menu::Find),
+    command("search.open-documents", "Find in Open Documents…", Menu::Find, &[]),
+    command("search.files", "Find in Files…", Menu::Find, &["Control", "Shift", "f"]),
+    command("search.replace-files", "Replace in Files…", Menu::Find, &["Control", "Alt", "Shift", "f"]),
+    separator(Menu::Find),
+    command("bookmark.toggle", "Toggle Bookmark", Menu::Find, &["Control", "F2"]),
+    command("bookmark.next", "Next Bookmark", Menu::Find, &["F2"]),
+    command("bookmark.previous", "Previous Bookmark", Menu::Find, &["Shift", "F2"]),
+    command("find.bookmark-lines", "Bookmark Matching Lines", Menu::Find, &[]),
+    command("bookmark.copy", "Copy Bookmarked Lines", Menu::Find, &[]),
+    command("bookmark.delete", "Delete Bookmarked Lines", Menu::Find, &[]),
+    command("bookmark.clear", "Clear Bookmarks", Menu::Find, &[]),
     command("view.palette", "Command Palette…", Menu::View, &["Control", "Shift", "p"]),
     separator(Menu::View),
     Command { other_keys: Some(&["Control", "b"]), ..toggle("view.sidebar", "Show Sidebar", Menu::View, &["Control", "Meta", "s"]) },
@@ -158,6 +180,10 @@ impl Command {
         let pressed = match key {
             "UpArrow" => '\u{F700}'.to_string(),
             "DownArrow" => '\u{F701}'.to_string(),
+            // Function keys: F1 is U+F704, like AppKit's.
+            other if other.len() > 1 && other.starts_with('F') && other[1..].parse::<u32>().is_ok() => {
+                char::from_u32(0xF703 + other[1..].parse::<u32>().unwrap_or(0)).map_or(String::new(), |c| c.to_string())
+            }
             other => other.to_string(),
         };
         let text = text.to_lowercase();
@@ -227,6 +253,8 @@ mod tests {
         assert_eq!(for_key("+", true, false, true, false).map(|c| c.id), Some("view.zoom-in"));
         assert_eq!(for_key("=", true, false, false, false).map(|c| c.id), Some("view.zoom-in"));
         assert_eq!(for_key("z", false, false, false, false).map(|c| c.id), None);
+        assert_eq!(for_key("\u{F705}", false, false, false, false).map(|c| c.id), Some("bookmark.next"));
+        assert_eq!(for_key("\u{F705}", false, false, true, false).map(|c| c.id), Some("bookmark.previous"));
         assert!(COMMANDS.iter().filter(|c| !c.is_separator()).all(|c| c.shortcut().is_empty() || Keys::from_parts(c.shortcut().iter().copied()).is_ok()));
         // No two commands share a shortcut.
         let shortcuts: Vec<_> = COMMANDS.iter().filter(|c| !c.shortcut().is_empty()).map(|c| c.shortcut()).collect();

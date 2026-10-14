@@ -40,6 +40,8 @@ export struct ThemeColors {
     selected-row-text: color,
     selected-row-detail: color,
     selected-badge: color,
+    find-match: color,
+    mark: color,
     // The selected sidebar row is filled with the accent (instead of a quiet highlight).
     filled-selection: bool,
     syntax: [color],
@@ -83,6 +85,8 @@ export global Themes {
         selected-row-text: #1D1D1F,
         selected-row-detail: #6E6E73,
         selected-badge: #FFFFFFCC,
+        find-match: #F5B33B66,
+        mark: #9B7BD84D,
         filled-selection: false,
         syntax: [
             #1D1D1F, #7C3AAD, #A3611B, #C2402A, #8B93A1, #C2410C, #C2410C, #2F5FC4, #0E7C86,
@@ -124,6 +128,8 @@ export global Themes {
         selected-row-text: #F2F2F4,
         selected-row-detail: #A1A1A6,
         selected-badge: #FFFFFF1A,
+        find-match: #F5B33B4D,
+        mark: #B49CF04D,
         filled-selection: false,
         syntax: [
             #E6E6E9, #C792EA, #E5B97A, #F2A07A, #7D8799, #F78C6C, #F78C6C, #82AAFF, #7FD1D9,
@@ -165,6 +171,8 @@ export global Themes {
         selected-row-text: #FFF8EC,
         selected-row-detail: #FFF8ECB8,
         selected-badge: #FFFFFF22,
+        find-match: #E8A23866,
+        mark: #9B7BD84D,
         filled-selection: true,
         syntax: [
             #1B2A4A, #6B3FA0, #9A5B13, #B4441B, #9A917F, #B4441B, #B4441B, #1F4FA8, #0F6E7A,
@@ -206,6 +214,8 @@ export global Themes {
         selected-row-text: #FFF8EC,
         selected-row-detail: #FFF8ECB8,
         selected-badge: #FFFFFF22,
+        find-match: #F5B33B4D,
+        mark: #B49CF04D,
         filled-selection: true,
         syntax: [
             #ECE4D4, #C3A6FF, #F2C48D, #F5A97F, #6F7F9C, #FF9E80, #FF9E80, #8AB4FF, #7FD8E8,
@@ -247,6 +257,8 @@ export global Themes {
         selected-row-text: #2B2B2B,
         selected-row-detail: #6E6E6C,
         selected-badge: #FFFFFFCC,
+        find-match: #E0B04A59,
+        mark: #8E7AB84D,
         filled-selection: false,
         syntax: [
             #2B2B2B, #6E4A87, #6A7A3A, #8F5A2E, #A0A0A0, #8F5A2E, #8F5A2E, #3E6283, #3E7470,
@@ -288,6 +300,8 @@ export global Themes {
         selected-row-text: #ECECEA,
         selected-row-detail: #A0A2A4,
         selected-badge: #FFFFFF1A,
+        find-match: #E0B04A40,
+        mark: #B4A2D84D,
         filled-selection: false,
         syntax: [
             #D6D6D4, #C2A6CF, #B8C99A, #D8B48A, #787A7C, #D8B48A, #D8B48A, #9EC0DE, #95C8C0,
@@ -329,6 +343,8 @@ export global Themes {
         selected-row-text: #4A3B2A,
         selected-row-detail: #7A6A4E,
         selected-badge: #FFFFFFAA,
+        find-match: #D9963066,
+        mark: #8B5A9A40,
         filled-selection: false,
         syntax: [
             #4A3B2A, #8B3A62, #7A5A12, #A0431B, #9C8B70, #A0431B, #A0431B, #2F5D8A, #2F6E5E,
@@ -370,6 +386,8 @@ export global Themes {
         selected-row-text: #F2E8D4,
         selected-row-detail: #B8A888,
         selected-badge: #FFF0D01A,
+        find-match: #E8B05A4D,
+        mark: #C9A0D84D,
         filled-selection: false,
         syntax: [
             #E8DCC6, #E39AC0, #E5C07B, #F29E74, #8C7E66, #F29E74, #F29E74, #8FB8E0, #8FD1BE,
@@ -411,6 +429,8 @@ export global Themes {
         selected-row-text: #000000,
         selected-row-detail: #404040,
         selected-badge: #FFFFFFE6,
+        find-match: #FFB000A6,
+        mark: #A040FF73,
         filled-selection: false,
         syntax: [
             #000000, #9A0089, #7A3E00, #B00000, #4F4F4F, #A83200, #A83200, #0035B5, #005E4E,
@@ -452,6 +472,8 @@ export global Themes {
         selected-row-text: #FFFFFF,
         selected-row-detail: #C8C8C8,
         selected-badge: #FFFFFF26,
+        find-match: #FFD24DA6,
+        mark: #C890FF80,
         filled-selection: false,
         syntax: [
             #FFFFFF, #FF7AD9, #FFD866, #FF9F43, #B0B0B0, #FF9F43, #FF9F43, #6CC1FF, #4DFFD2,
@@ -509,6 +531,8 @@ export global Theme {
     out property <color> selected-row-text: colors.selected-row-text;
     out property <color> selected-row-detail: colors.selected-row-detail;
     out property <color> selected-badge: colors.selected-badge;
+    out property <color> find-match: colors.find-match;
+    out property <color> mark: colors.mark;
     out property <bool> filled-selection: colors.filled-selection;
     out property <[color]> syntax: colors.syntax;
 

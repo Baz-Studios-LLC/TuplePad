@@ -5,8 +5,9 @@ import { Sidebar, DocItem, IconButton, Icons, PillButton } from "sidebar.slint";
 import { Sheet, Toggle } from "controls.slint";
 import { SettingsWindow, SettingsValues } from "settings.slint";
 import { CommandPalette, PaletteItem, TitlePart } from "palette.slint";
+import { FindBar, FindBridge } from "findbar.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, DocItem, Palette, SettingsWindow, SettingsValues, PaletteItem, TitlePart }
+export { Theme, EditorBridge, Span, Row, Caret, Band, DocItem, Palette, SettingsWindow, SettingsValues, PaletteItem, TitlePart, FindBridge }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
@@ -66,6 +67,7 @@ export component AppWindow inherits Window {
     in property <[MenuEntry]> line-ending-menu;
     in property <[MenuEntry]> edit-menu;
     in property <[MenuEntry]> selection-menu;
+    in property <[MenuEntry]> find-menu;
     in property <[MenuEntry]> view-menu;
     in property <[MenuEntry]> view-menu-2;
     in property <[MenuEntry]> theme-menu;
@@ -77,6 +79,10 @@ export component AppWindow inherits Window {
 
     public function focus-editor() {
         editor.focus-editor();
+    }
+
+    public function focus-find() {
+        find-bar.focus-find();
     }
 
     MenuBar {
@@ -165,6 +171,17 @@ export component AppWindow inherits Window {
         Menu {
             title: "Selection";
             for item in root.selection-menu: MenuItem {
+                title: item.title;
+                shortcut: item.shortcut;
+                enabled: item.enabled;
+                checkable: item.checkable;
+                checked: item.checked;
+                activated => { root.command(item.id); }
+            }
+        }
+        Menu {
+            title: "Find";
+            for item in root.find-menu: MenuItem {
                 title: item.title;
                 shortcut: item.shortcut;
                 enabled: item.enabled;
@@ -360,6 +377,12 @@ export component AppWindow inherits Window {
                     height: 1px;
                     background: Theme.separator;
                 }
+            }
+
+            find-bar := FindBar { }
+            if FindBridge.open: Rectangle {
+                height: 1px;
+                background: Theme.separator;
             }
 
             editor := EditorView {

@@ -175,8 +175,9 @@ impl Editor {
             'd' if MAC && m.control => self.apply(|b, c| b.delete_to(c, Motion::Right)),
             'h' if MAC && m.control => self.apply(|b, c| b.delete_backward(c, indentation, auto_close)),
             'k' if MAC && m.control => self.apply(|b, c| b.delete_to(c, Motion::LineEnd)),
-            // Other shortcuts are the menus' business; never let them type.
+            // Other shortcuts are the menus' business, and function keys never type.
             _ if m.command || m.control => return true,
+            '\u{F700}'..='\u{F8FF}' => return true,
             _ => return false,
         }
         true
@@ -319,7 +320,7 @@ impl Editor {
         self.apply(|buffer, cursors| buffer.paste(cursors, &text));
     }
 
-    fn write_clipboard(&mut self, text: String) {
+    pub fn write_clipboard(&mut self, text: String) {
         if self.private_clipboard.is_some() {
             self.private_clipboard = Some(text);
         } else if let Ok(mut clipboard) = arboard::Clipboard::new() {

@@ -117,6 +117,12 @@ pub struct Editor {
     /// Where very long lines wrap (slow to work out), by line: the buffer version, width and
     /// tab width it was worked out for.
     wrap_cache: std::collections::HashMap<u64, (u64, u32, u32, WrappedLine)>,
+    /// The find bar's search, highlighted on screen while the bar is open.
+    pub find_query: Option<SearchQuery>,
+    find_model: Rc<VecModel<Band>>,
+    /// The find bar's match that is selected, drawn stronger than the others.
+    current_match_model: Rc<VecModel<Band>>,
+    mark_model: Rc<VecModel<Band>>,
     /// What smart highlighting shows, and the caret state it was found for.
     smart: Option<SearchQuery>,
     smart_for: Option<(u64, Vec<TextSelection>)>,
@@ -137,6 +143,12 @@ impl Editor {
         let bracket_model = Rc::new(VecModel::default());
         let underline_model = Rc::new(VecModel::default());
         let active_model = Rc::new(VecModel::default());
+        let find_model = Rc::new(VecModel::default());
+        let current_match_model = Rc::new(VecModel::default());
+        let mark_model = Rc::new(VecModel::default());
+        bridge.set_find_matches(ModelRc::from(find_model.clone()));
+        bridge.set_current_matches(ModelRc::from(current_match_model.clone()));
+        bridge.set_marks(ModelRc::from(mark_model.clone()));
         bridge.set_rows(ModelRc::from(row_model.clone()));
         bridge.set_carets(ModelRc::from(caret_model.clone()));
         bridge.set_selections(ModelRc::from(selection_model.clone()));
@@ -186,6 +198,10 @@ impl Editor {
             scrollbar_hover: false,
             caret_shown: true,
             wrap_cache: std::collections::HashMap::new(),
+            find_query: None,
+            find_model,
+            current_match_model,
+            mark_model,
             smart: None,
             smart_for: None,
             private_clipboard: None,
@@ -503,6 +519,20 @@ impl Editor {
     }
 
     /// Scrolls just enough to show the main caret.
+    /// Like `reveal`, but a caret out of view lands mid-view, with context around it (for
+    /// jumping to search matches).
+    pub fn reveal_centered(&mut self) {
+        let Some(head) = self.doc().cursors.last().map(|c| c.head) else { return };
+        let (row, _) = self.locate(head);
+        let (lh, view) = (self.line_height as f64, self.height as f64);
+        let top = row as f64 * lh;
+        let doc = self.doc_mut();
+        if top < doc.scroll_y || top + lh > doc.scroll_y + view {
+            doc.scroll_y = (top - (view - lh) / 2.0).max(0.0);
+        }
+        self.reveal();
+    }
+
     pub fn reveal(&mut self) {
         let Some(head) = self.doc().cursors.last().map(|c| c.head) else { return };
         let (row, x) = self.locate(head);
@@ -537,6 +567,25 @@ impl Editor {
         self.doc_mut().scroll_y = (row as f64 * lh - view / 3.0).max(0.0);
         self.clamp_scroll();
         self.touch();
+    }
+
+    /// Moves the caret to a line's start, scrolling only if the line is out of view.
+    pub fn jump_to_line(&mut self, line: u64) {
+        self.ensure_rows();
+        let row = self.rows.first_row(line) as f64;
+        let (lh, top, view) = (self.line_height as f64, self.doc().scroll_y, self.height as f64);
+        if row * lh >= top && (row + 1.0) * lh <= top + view {
+            self.doc_mut().cursors = vec![TextSelection::caret(TextPos::new(line, 0))];
+            self.touch();
+        } else {
+            self.go_to_line(line);
+        }
+    }
+
+    /// The line shown on a visual row.
+    pub fn line_at_row(&mut self, row: u64) -> u64 {
+        self.ensure_rows();
+        self.rows.line_at(row).0
     }
 
     pub fn scroll_by(&mut self, dx: f32, dy: f32) {
@@ -659,6 +708,7 @@ impl Editor {
 
         let cursors = self.doc().cursors.clone();
         let active_lines: Vec<u64> = cursors.iter().map(|c| c.head.line).collect();
+        let bookmarks = buffer.bookmarks();
         let invisibles = self.options.show_invisibles;
 
         // Rows, in fixed slots.
@@ -680,7 +730,8 @@ impl Editor {
             let current = active_lines.contains(&line);
             let guides = display::guides(guide_cells[index], unit_cells, self.cell);
             let line_break = line + 1 < line_count;
-            let key = hash_of(&(self.epoch, r, line, sub, geometry.content_key(), &colors[index], current, row_start, row_end, guide_cells[index], line_break));
+            let bookmarked = sub == 0 && bookmarks.binary_search(&line).is_ok();
+            let key = hash_of(&(self.epoch, r, line, sub, geometry.content_key(), &colors[index], current, row_start, row_end, guide_cells[index], line_break, bookmarked));
             if self.slot_keys[slot] != key {
                 self.slot_keys[slot] = key;
                 let spans = geometry.row_spans(sub, &colors[index], invisibles, line_break);
@@ -692,6 +743,7 @@ impl Editor {
                         number: if sub == 0 { SharedString::from((line + 1).to_string()) } else { SharedString::new() },
                         spans: ModelRc::new(VecModel::from(spans)),
                         current,
+                        bookmarked,
                         guides: ModelRc::new(VecModel::from(guides)),
                     },
                 );
@@ -751,11 +803,11 @@ impl Editor {
             }
         }
 
-        // Other occurrences of the selected word, and the bracket pair at the caret.
-        let mut occurrences = Vec::new();
-        let mut matches = Vec::new();
-        if let Some(query) = self.smart.clone() {
-            // Runs of ordinary lines; very long lines are left out (searching them each frame is slow).
+        // Other occurrences of the selected word, the find bar's matches, Mark All, and the
+        // bracket pair at the caret. Very long lines are left out (searching them each frame is slow).
+        // Bands for the matches, and separately for matches that are exactly a selection.
+        let match_bands = |query: &SearchQuery| -> (Vec<Band>, Vec<Band>) {
+            let mut matches = Vec::new();
             let mut i = 0;
             while i < lines.len() {
                 if long[i] {
@@ -768,20 +820,28 @@ impl Editor {
                 }
                 matches.extend(buffer.find_in_lines(query.clone(), lines[start], (i - start) as u64, 2_000).unwrap_or_default());
             }
-        }
-        {
+            let (mut bands, mut selected) = (Vec::new(), Vec::new());
             for m in matches {
-                if cursors.iter().any(|c| c.start() == m.start() && c.end() == m.end()) {
-                    continue;
-                }
+                let is_selected = cursors.iter().any(|c| c.start() == m.start() && c.end() == m.end());
                 for line in m.start().line..=m.end().line {
                     let Some(i) = position_of(line) else { continue };
                     let from = if line == m.start().line { m.start().column as usize } else { 0 };
                     let to = if line == m.end().line { m.end().column as usize } else { usize::MAX };
-                    occurrences.extend(geometries[i].bands(first_rows[i], from, to, false, 0.0));
+                    let row_bands = geometries[i].bands(first_rows[i], from, to, false, 0.0);
+                    if is_selected { selected.extend(row_bands) } else { bands.extend(row_bands) }
                 }
             }
-        }
+            (bands, selected)
+        };
+        let occurrences = match (&self.smart, &self.find_query) {
+            (Some(query), None) => match_bands(query).0,
+            _ => Vec::new(),
+        };
+        let (found, current_match) = self.find_query.as_ref().map(|q| match_bands(q)).unwrap_or_default();
+        let marked = self.doc().mark.as_ref().map(|q| match_bands(q)).map(|(mut a, b)| {
+            a.extend(b);
+            a
+        }).unwrap_or_default();
         let mut brackets = Vec::new();
         if let Some(primary) = primary
             && primary.anchor == primary.head
@@ -798,6 +858,9 @@ impl Editor {
         replace_if_changed(&self.caret_model, carets);
         replace_if_changed(&self.selection_model, bands);
         replace_if_changed(&self.occurrence_model, occurrences);
+        replace_if_changed(&self.find_model, found);
+        replace_if_changed(&self.current_match_model, current_match);
+        replace_if_changed(&self.mark_model, marked);
         replace_if_changed(&self.bracket_model, brackets);
         replace_if_changed(&self.underline_model, underlines);
         replace_if_changed(&self.active_model, active_rows);

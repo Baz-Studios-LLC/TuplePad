@@ -19,6 +19,7 @@ export struct Row {
     number: string,
     spans: [Span],
     current: bool,
+    bookmarked: bool,
     // Where indent guides go.
     guides: [length],
 }
@@ -42,6 +43,9 @@ export global EditorBridge {
     in property <[Caret]> carets;
     in property <[Band]> selections;
     in property <[Band]> occurrences;
+    in property <[Band]> find-matches;
+    in property <[Band]> current-matches;
+    in property <[Band]> marks;
     in property <[Band]> brackets;
     in property <[Band]> preedit-underlines;
     in property <[int]> active-rows;
@@ -75,6 +79,8 @@ export global EditorBridge {
     callback scrollbar-drag(fraction: float);
     callback scrollbar-hover(inside: bool);
     callback focus-changed(focused: bool);
+    // A click in the gutter, on a visual row.
+    callback gutter-clicked(row: int);
 }
 
 component Scrollbar inherits Rectangle {
@@ -168,6 +174,24 @@ export component EditorView inherits Rectangle {
             background: Theme.occurrence;
         }
 
+        for band in EditorBridge.marks: Rectangle {
+            x: band.x - EditorBridge.scroll-x - 1px;
+            width: band.width + 2px;
+            y: root.row-y(band.row) + 1px;
+            height: root.lh - 2px;
+            border-radius: 3px;
+            background: Theme.mark;
+        }
+
+        for band in EditorBridge.find-matches: Rectangle {
+            x: band.x - EditorBridge.scroll-x - 1px;
+            width: band.width + 2px;
+            y: root.row-y(band.row) + 1px;
+            height: root.lh - 2px;
+            border-radius: 3px;
+            background: Theme.find-match;
+        }
+
         for band in EditorBridge.selections: Rectangle {
             x: band.x - EditorBridge.scroll-x;
             width: band.width;
@@ -175,6 +199,18 @@ export component EditorView inherits Rectangle {
             height: root.lh;
             border-radius: 3px;
             background: Theme.selection;
+        }
+
+        // The selected match: stronger than the others, over the selection.
+        for band in EditorBridge.current-matches: Rectangle {
+            x: band.x - EditorBridge.scroll-x - 1px;
+            width: band.width + 2px;
+            y: root.row-y(band.row) + 1px;
+            height: root.lh - 2px;
+            border-radius: 3px;
+            background: Theme.find-match.with-alpha(Theme.dark ? 0.42 : 0.72);
+            border-width: 1.5px;
+            border-color: Theme.find-match.with-alpha(1);
         }
 
         for band in EditorBridge.brackets: Rectangle {
@@ -310,17 +346,40 @@ export component EditorView inherits Rectangle {
                 background: Theme.current-line;
             }
         }
+        for row in EditorBridge.rows: Rectangle {
+            x: 4px;
+            y: root.row-y(row.row) + 2px;
+            width: EditorBridge.gutter-width - 14px;
+            height: root.lh - 4px;
+            visible: row.bookmarked;
+            border-radius: 4px;
+            background: Theme.accent.with-alpha(Theme.dark ? 0.55 : 0.16);
+        }
         for row in EditorBridge.rows: Text {
             x: 0;
             width: EditorBridge.gutter-width - 20px;
             y: root.row-y(row.row);
             height: root.lh;
             text: row.number;
-            color: row.current ? Theme.current-line-number : Theme.line-number;
+            color: row.bookmarked ? (Theme.dark ? Theme.primary-text : Theme.accent) : row.current ? Theme.current-line-number : Theme.line-number;
+            font-weight: row.bookmarked ? 650 : 400;
             font-family: root.font-family;
             font-size: EditorBridge.font-size - 1px;
             horizontal-alignment: right;
             vertical-alignment: center;
+        }
+    }
+
+    // Clicking a line number bookmarks the line.
+    TouchArea {
+        x: 0;
+        width: EditorBridge.gutter-width - 8px;
+        clicked => {
+            EditorBridge.gutter-clicked(EditorBridge.top-row + floor((self.pressed-y + EditorBridge.scroll-offset) / root.lh));
+        }
+        scroll-event(event) => {
+            EditorBridge.scrolled(event.delta-x, event.delta-y);
+            return EventResult.accept;
         }
     }
 

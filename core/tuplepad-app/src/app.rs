@@ -22,6 +22,8 @@ pub struct App {
     pub me: RefCell<std::rc::Weak<App>>,
     pub ui: slint::Weak<AppWindow>,
     pub settings_window: RefCell<Option<crate::SettingsWindow>>,
+    /// The find bar's matches and status.
+    pub find: RefCell<crate::find::FindState>,
     /// What the command palette searches, and which of it is showing.
     pub palette_entries: RefCell<Vec<crate::palette::Entry>>,
     pub palette_shown: RefCell<Vec<usize>>,
@@ -75,7 +77,7 @@ impl App {
         }
         let docs_model = Rc::new(VecModel::default());
         ui.set_docs(ModelRc::from(docs_model.clone()));
-        let names = ["file", "file-2", "file-3", "recent", "reopen", "convert", "line-ending", "edit", "selection", "view", "view-2", "theme"];
+        let names = ["file", "file-2", "file-3", "recent", "reopen", "convert", "line-ending", "edit", "selection", "find", "view", "view-2", "theme"];
         let menus: HashMap<&'static str, Rc<VecModel<MenuEntry>>> = names.into_iter().map(|n| (n, Rc::new(VecModel::default()))).collect();
         for (name, model) in &menus {
             let model = ModelRc::from(model.clone());
@@ -89,6 +91,7 @@ impl App {
                 "line-ending" => ui.set_line_ending_menu(model),
                 "edit" => ui.set_edit_menu(model),
                 "selection" => ui.set_selection_menu(model),
+                "find" => ui.set_find_menu(model),
                 "view-2" => ui.set_view_menu_2(model),
                 "theme" => ui.set_theme_menu(model),
                 _ => ui.set_view_menu(model),
@@ -99,6 +102,7 @@ impl App {
             ui: ui.as_weak(),
             settings_window: RefCell::new(None),
             font_choices: RefCell::new(Vec::new()),
+            find: RefCell::new(Default::default()),
             palette_entries: RefCell::new(Vec::new()),
             palette_shown: RefCell::new(Vec::new()),
             editor: RefCell::new(editor),
@@ -291,7 +295,7 @@ impl App {
         self.set_menu("file", file.next().unwrap_or_default());
         self.set_menu("file-2", file.next().unwrap_or_default());
         self.set_menu("file-3", file.next().unwrap_or_default());
-        for (name, menu) in [("edit", Menu::Edit), ("selection", Menu::Selection)] {
+        for (name, menu) in [("edit", Menu::Edit), ("selection", Menu::Selection), ("find", Menu::Find)] {
             self.set_menu(name, commands::menu_sections(menu, enabled, checked).concat());
         }
         let mut view = commands::menu_sections(Menu::View, enabled, checked).into_iter();
@@ -368,6 +372,7 @@ impl App {
         if needs_sync {
             self.refresh();
         }
+        self.refresh_find();
     }
 
     fn language_name(&self, doc: &Document) -> String {
@@ -507,6 +512,22 @@ impl App {
             "file.close" => self.close_document(None),
             "app.settings" => self.show_settings(None),
             "view.palette" => self.open_palette(),
+            "find.show" => self.open_find(false),
+            "find.replace" => self.open_find(true),
+            "find.next" => self.find_step(true),
+            "find.previous" => self.find_step(false),
+            "find.use-selection" => self.use_selection_for_find(),
+            "find.count" => self.count_matches(),
+            "find.mark-all" => self.mark_all(),
+            "find.clear-marks" => self.clear_marks(),
+            "find.bookmark-lines" => self.bookmark_matching_lines(),
+            "find.close" => self.close_find(),
+            "bookmark.toggle" => self.toggle_bookmark(),
+            "bookmark.next" => self.step_bookmark(true),
+            "bookmark.previous" => self.step_bookmark(false),
+            "bookmark.copy" => self.copy_bookmarked_lines(),
+            "bookmark.delete" => self.delete_bookmarked_lines(),
+            "bookmark.clear" => self.clear_bookmarks(),
             "view.sidebar" => self.change_settings(|s| s.sidebar_visible = !s.sidebar_visible),
             "view.invisibles" => self.change_settings(|s| s.show_invisibles = !s.show_invisibles),
             "view.indent-guides" => self.change_settings(|s| s.show_indent_guides = !s.show_indent_guides),

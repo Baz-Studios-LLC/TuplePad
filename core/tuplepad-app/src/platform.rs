@@ -33,6 +33,11 @@ thread_local! {
     static PENDING: RefCell<Vec<Request>> = const { RefCell::new(Vec::new()) };
 }
 
+/// The app, on the event loop's thread.
+pub fn app() -> Option<Rc<App>> {
+    APP.with(|a| a.borrow().upgrade())
+}
+
 pub fn set_app(app: &Rc<App>) {
     APP.with(|a| *a.borrow_mut() = Rc::downgrade(app));
 }
