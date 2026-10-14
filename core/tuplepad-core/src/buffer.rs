@@ -18,9 +18,17 @@ use crate::types::{EditKind, FileInfo, LineEnding, TextPos, TextSelection};
 mod tools;
 pub use tools::BracketMatch;
 
+#[path = "buffer_column.rs"]
+mod column;
+pub use column::{ColumnInsert, NumberBase, NumberPadding, column_values};
+
 #[path = "buffer_search.rs"]
 mod marks;
 pub use marks::LineResults;
+
+#[path = "buffer_folds.rs"]
+mod folds;
+pub use folds::FoldRange;
 
 #[path = "buffer_files.rs"]
 mod files;
@@ -58,6 +66,8 @@ struct State {
     disk: Option<files::DiskStamp>,
     /// Bookmarked lines (0-based). They move with edits; lines past the end are ignored.
     bookmarks: std::collections::BTreeSet<usize>,
+    /// Folded regions: first line (which stays visible) → last hidden line.
+    folds: std::collections::BTreeMap<usize, usize>,
 }
 
 #[uniffi::export]
@@ -322,7 +332,7 @@ impl TextBuffer {
         let ending_before = st.line_ending;
         st.rope = after.clone();
         st.line_ending = ending;
-        st.reset_syntax();
+        st.text_replaced();
         let change = Change::Replace { before, after, ending_before, ending_after: ending };
         st.history.record(vec![change], selections.clone(), selections, EditKind::Other);
         st.version += 1;
@@ -335,11 +345,12 @@ impl TextBuffer {
         let Some(regex) = search::compile(&query)? else {
             return Ok(SearchResults { matches: Vec::new(), truncated: false });
         };
-        let st = self.read();
-        let (found, truncated) = search::find(&st.rope, &regex, &query, None, limit as usize);
+        // Search a snapshot, so typing isn't held up while a long search runs.
+        let rope = self.snapshot();
+        let (found, truncated) = search::find(&rope, &regex, &query, None, limit as usize);
         let matches = found
             .iter()
-            .map(|f| TextSelection { anchor: st.char_to_pos(f.start), head: st.char_to_pos(f.end) })
+            .map(|f| TextSelection { anchor: rope_char_to_pos(&rope, f.start), head: rope_char_to_pos(&rope, f.end) })
             .collect();
         Ok(SearchResults { matches, truncated })
     }
@@ -385,7 +396,7 @@ impl TextBuffer {
         }
         let after = builder.finish();
         st.rope = after.clone();
-        st.reset_syntax();
+        st.text_replaced();
         st.recount_line_lengths();
         let after_cursors: Vec<TextSelection> = cursors
             .iter()
@@ -493,6 +504,12 @@ impl TextBuffer {
 }
 
 impl TextBuffer {
+    /// The text as it is now. Cheap (ropes share their pieces), and lets slow read-only work
+    /// run without holding the lock that typing needs.
+    pub(crate) fn snapshot(&self) -> Rope {
+        self.read().rope.clone()
+    }
+
     /// Reads a file without parsing it for highlighting, for tools that only change its text.
     pub(crate) fn open_without_syntax(path: String) -> CoreResult<Arc<Self>> {
         let bytes = fs::read(&path).map_err(|e| CoreError::Io { message: format!("{path}: {e}") })?;
@@ -530,6 +547,7 @@ impl State {
             syntax: None,
             disk: None,
             bookmarks: Default::default(),
+            folds: Default::default(),
         }
     }
 
@@ -555,6 +573,12 @@ impl State {
         }
     }
 
+    /// After the whole text is swapped out: folds no longer fit, and parsing starts over.
+    fn text_replaced(&mut self) {
+        self.folds.clear();
+        self.reset_syntax();
+    }
+
     /// After the whole text is swapped out, parse from scratch.
     fn reset_syntax(&mut self) {
         if let Some(syntax) = &mut self.syntax {
@@ -565,7 +589,7 @@ impl State {
 
     /// Replaces the chars `at..end` with `text`, keeping the syntax tree and line lengths in step.
     fn replace_chars(&mut self, at: usize, end: usize, text: &str) {
-        let bookmark_edit = (!self.bookmarks.is_empty()).then(|| self.line_edit_start(at, end));
+        let line_edit = (!self.bookmarks.is_empty() || !self.folds.is_empty()).then(|| self.line_edit_start(at, end));
         let edit = self.syntax.is_some().then(|| {
             syntax::edit_start(&self.rope, self.rope.char_to_byte(at), self.rope.char_to_byte(end))
         });
@@ -579,8 +603,8 @@ impl State {
             syntax.edit(&syntax::finish_edit(&self.rope, edit, text.len()));
         }
         let inserted_end = at + text.chars().count();
-        if let Some(line_edit) = bookmark_edit {
-            self.move_bookmarks(line_edit, inserted_end);
+        if let Some(line_edit) = line_edit {
+            self.lines_moved(line_edit, inserted_end);
         }
         self.note_line_lengths(at, inserted_end);
     }
@@ -611,11 +635,7 @@ impl State {
     }
 
     fn char_to_pos(&self, index: usize) -> TextPos {
-        let index = index.min(self.rope.len_chars());
-        let line = self.rope.char_to_line(index);
-        let start = self.rope.line_to_char(line);
-        let column = self.rope.char_to_utf16_cu(index) - self.rope.char_to_utf16_cu(start);
-        TextPos::new(line as u64, column as u64)
+        rope_char_to_pos(&self.rope, index)
     }
 
     /// Applies one replacement per selection, front to back, shifting later ones by earlier length changes.
@@ -667,7 +687,7 @@ impl State {
             Change::Replace { before, ending_before, .. } => {
                 self.rope = before.clone();
                 self.line_ending = *ending_before;
-                self.reset_syntax();
+                self.text_replaced();
             }
         }
     }
@@ -680,7 +700,7 @@ impl State {
             Change::Replace { after, ending_after, .. } => {
                 self.rope = after.clone();
                 self.line_ending = *ending_after;
-                self.reset_syntax();
+                self.text_replaced();
             }
         }
     }
@@ -703,6 +723,15 @@ impl State {
     fn write_to(&self, path: &Path) -> CoreResult<()> {
         write_atomically(path, self.rope.chunks(), &self.encoding)
     }
+}
+
+/// A char offset as (line, UTF-16 column).
+pub(crate) fn rope_char_to_pos(rope: &Rope, index: usize) -> TextPos {
+    let index = index.min(rope.len_chars());
+    let line = rope.char_to_line(index);
+    let start = rope.line_to_char(line);
+    let column = rope.char_to_utf16_cu(index) - rope.char_to_utf16_cu(start);
+    TextPos::new(line as u64, column as u64)
 }
 
 /// Writes to a temporary file beside the target, then renames it into place,

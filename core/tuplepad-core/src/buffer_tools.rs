@@ -16,9 +16,9 @@ pub struct BracketMatch {
 
 /// Replaces the chars `start..end`, measured in the text before the batch is applied.
 pub(super) struct CharEdit {
-    start: usize,
-    end: usize,
-    text: String,
+    pub(super) start: usize,
+    pub(super) end: usize,
+    pub(super) text: String,
 }
 
 /// Where a char offset ends up after a batch of edits, given as sorted (start, end, inserted chars).

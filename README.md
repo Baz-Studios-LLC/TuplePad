@@ -24,6 +24,14 @@ TuplePad is in early development.
 - **Code-editor basics:** auto-indent (one level deeper after an opening bracket, with the closer moved to its own line), Tab and Shift-Tab indenting, backspacing through indentation, smart Home (⌘←), copying the whole line when nothing is selected, and undo that groups typing into sensible steps.
 - **Full Mac text input:** every standard keyboard shortcut, input methods for Japanese, Chinese and other languages, the accent menu (press and hold a letter), and dictation.
 - **A Mail-style sidebar** of open documents, showing each one's location, a preview and a dot for unsaved changes.
+- **Power editing:**
+  - The **column editor** (⌥⌘C) inserts text or numbers (start, step, repeat, padding, decimal/hex/octal/binary) down a column or at every caret.
+  - **Code folding** from the syntax tree (by indentation for Python, YAML and plain text): click the chevrons by the line numbers, or use ⌥⌘← / ⌥⌘→ and Fold All / Unfold All.
+  - **Split view** (⌘\\ side by side, ⌃⌘\\ top and bottom), with the same document or two different ones.
+  - A **minimap** (View ▸ Show Minimap) to see and scroll the whole document.
+  - An **outline** (⌃⌘O) of functions, types and headings, in an inspector on the right; click to jump.
+  - **Word completion** from every open document as you type, accepted with Tab or Return.
+- **Markdown highlighting** of emphasis, bold, code, links and headings, with fenced code blocks colored in their own language. HTML colors the JavaScript and CSS inside it.
 - **Command palette** (⇧⌘P): fuzzy-search every menu command, open document and recent file, with keyboard shortcuts shown. Type a few letters (`dl` finds Delete Line) and press Return.
 - **Themes:** TuplePad, Midnight (ivory on midnight blue), Graphite, Sepia and High Contrast. Each has a light and a dark version that follows your Mac, or pin TuplePad to Light or Dark in Settings.
 - **Settings** (⌘,): editor font, size and line height; tab width, tabs or spaces, and indentation detection; wrap, invisibles, indent guides and current-line highlight; and the encoding and line endings for new documents. The status bar also sets each document's indentation.
@@ -51,4 +59,4 @@ The editor view draws only the lines on screen, so a document's size doesn't aff
 
 ## Roadmap
 
-See [docs/GOAL.md](docs/GOAL.md) for the full plan. Next up: power editing (a column editor, code folding, split view, a minimap, an outline and word completion). After that come the tools that usually come as plugins: compare, JSON and XML tools, encoding and hash tools, Markdown preview, and more. TuplePad will also include a built-in MCP server, so AI tools can read and edit your open documents while you watch.
+See [docs/GOAL.md](docs/GOAL.md) for the full plan. Next up: the tools that usually come as plugins: compare, JSON and XML tools, encoding and hash tools, Markdown preview, and more. TuplePad will also include a built-in MCP server, so AI tools can read and edit your open documents while you watch.

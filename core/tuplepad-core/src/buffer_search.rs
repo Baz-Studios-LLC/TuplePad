@@ -18,12 +18,12 @@ pub struct LineResults {
 /// How an edit touched lines, measured before it was applied.
 #[derive(Clone, Copy)]
 pub(super) struct LineEdit {
-    line: usize,
-    removed_breaks: usize,
-    at: usize,
+    pub(super) line: usize,
+    pub(super) removed_breaks: usize,
+    pub(super) at: usize,
     /// The edit starts at the beginning of a line and removes only whole lines, so that line's
     /// own text (and its bookmark) moves along with the lines after it.
-    before_line_text: bool,
+    pub(super) before_line_text: bool,
 }
 
 #[uniffi::export]
@@ -31,8 +31,7 @@ impl TextBuffer {
     /// How many matches there are in the whole document.
     pub fn count_matches(&self, query: SearchQuery) -> CoreResult<u64> {
         let Some(regex) = search::compile(&query)? else { return Ok(0) };
-        let st = self.read();
-        Ok(search::count(&st.rope, &regex, &query))
+        Ok(search::count(&self.snapshot(), &regex, &query))
     }
 
     /// Matches grouped by line with previews, for search results. At most `max_lines` lines.
@@ -40,12 +39,12 @@ impl TextBuffer {
         let Some(regex) = search::compile(&query)? else {
             return Ok(LineResults { lines: Vec::new(), match_count: 0, truncated: false });
         };
-        let st = self.read();
-        let (found, _) = search::find(&st.rope, &regex, &query, None, usize::MAX);
-        let lines = search::group_by_line(&st.rope, &found, max_lines as usize);
+        let rope = self.snapshot();
+        let (found, _) = search::find(&rope, &regex, &query, None, usize::MAX);
+        let lines = search::group_by_line(&rope, &found, max_lines as usize);
         let shown_lines = lines.len();
         let truncated = found.last().is_some_and(|f| {
-            lines.last().is_some_and(|last| st.rope.char_to_line(f.start) as u64 > last.line)
+            lines.last().is_some_and(|last| rope.char_to_line(f.start) as u64 > last.line)
         }) && shown_lines as u64 == max_lines;
         Ok(LineResults { lines, match_count: found.len() as u64, truncated })
     }
@@ -53,9 +52,51 @@ impl TextBuffer {
     /// What Replace All would change, as before/after stretches of lines (at most `max_groups`).
     pub fn replacement_preview(&self, query: SearchQuery, replacement: String, max_groups: u64) -> CoreResult<Vec<ReplacementPreview>> {
         let Some(regex) = search::compile(&query)? else { return Ok(Vec::new()) };
-        let st = self.read();
-        let (found, _) = search::find(&st.rope, &regex, &query, Some(&replacement), usize::MAX);
-        Ok(search::preview_replacements(&st.rope, &found, max_groups as usize))
+        let rope = self.snapshot();
+        let (found, _) = search::find(&rope, &regex, &query, Some(&replacement), usize::MAX);
+        Ok(search::preview_replacements(&rope, &found, max_groups as usize))
+    }
+
+    /// The document's functions, types and headings, for the outline (at most 5,000).
+    pub fn outline(&self) -> Vec<crate::outline::OutlineItem> {
+        // Take the tree and text, then work without holding up typing.
+        let (outline, rope) = {
+            let st = self.read();
+            (st.syntax.as_ref().and_then(|syntax| syntax.outline_snapshot()), st.rope.clone())
+        };
+        outline.map(|snapshot| snapshot.outline(&rope, 5_000)).unwrap_or_default()
+    }
+
+    /// Distinct words in the document (letters, digits and underscores, starting with a letter or
+    /// underscore), most frequent first, for word completion. Only the first 4 MB are read.
+    pub fn words(&self, min_length: u32, limit: u32) -> Vec<String> {
+        const MAX_BYTES: usize = 4 * 1024 * 1024;
+        let rope = self.snapshot();
+        let end = rope.byte_to_char(rope.len_bytes().min(MAX_BYTES));
+        let mut counts: std::collections::HashMap<String, u32> = Default::default();
+        let mut word = String::new();
+        let mut finish = |word: &mut String| {
+            let length = word.chars().count();
+            if length >= min_length as usize && length <= 64 && !word.starts_with(|c: char| c.is_ascii_digit()) {
+                *counts.entry(std::mem::take(word)).or_default() += 1;
+            } else {
+                word.clear();
+            }
+        };
+        for c in rope.slice(..end).chars() {
+            if c.is_alphanumeric() || c == '_' {
+                word.push(c);
+            } else if !word.is_empty() {
+                finish(&mut word);
+            }
+        }
+        if !word.is_empty() {
+            finish(&mut word);
+        }
+        let mut words: Vec<(String, u32)> = counts.into_iter().collect();
+        words.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        words.truncate(limit as usize);
+        words.into_iter().map(|(word, _)| word).collect()
     }
 
     // MARK: Bookmarks
@@ -143,10 +184,19 @@ impl State {
         LineEdit { line, removed_breaks: end_line - line, at, before_line_text }
     }
 
-    /// Keeps bookmarks on the same text after an edit: lines below shift, and lines whose text
-    /// was deleted lose their bookmark.
-    pub(super) fn move_bookmarks(&mut self, edit: LineEdit, inserted_end: usize) {
+    /// Keeps bookmarks and folds on the same text after an edit (measured before it).
+    pub(super) fn lines_moved(&mut self, edit: LineEdit, inserted_end: usize) {
         let inserted_breaks = self.rope.char_to_line(inserted_end) - self.rope.char_to_line(edit.at);
+        if !self.folds.is_empty() {
+            self.move_folds(edit, inserted_breaks);
+        }
+        if !self.bookmarks.is_empty() {
+            self.move_bookmarks(edit, inserted_breaks);
+        }
+    }
+
+    /// Lines below an edit shift, and lines whose text was deleted lose their bookmark.
+    fn move_bookmarks(&mut self, edit: LineEdit, inserted_breaks: usize) {
         if edit.removed_breaks == 0 && inserted_breaks == 0 {
             return;
         }

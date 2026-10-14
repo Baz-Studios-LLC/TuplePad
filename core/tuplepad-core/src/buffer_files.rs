@@ -61,7 +61,7 @@ impl State {
         self.line_ending = scan.line_ending;
         self.max_line_bytes = scan.max_line_bytes;
         self.encoding = encoding;
-        self.reset_syntax();
+        self.text_replaced();
         let restored: Vec<TextSelection> =
             cursors.iter().map(|c| TextSelection { anchor: self.clamp_pos(c.anchor), head: self.clamp_pos(c.head) }).collect();
         let change = Change::Replace { before, after, ending_before, ending_after: self.line_ending };

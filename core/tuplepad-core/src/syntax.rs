@@ -231,6 +231,111 @@ fn definition(id: &str) -> Option<&'static LanguageDef> {
     LANGUAGES.iter().find(|l| l.id == id)
 }
 
+/// Grammars used only inside other languages (not offered in the language menu).
+static INTERNAL: &[LanguageDef] = &[LanguageDef {
+    id: "markdown_inline", name: "Markdown (inline)", extensions: &[], file_names: &[], interpreters: &[],
+    language: tree_sitter_md::INLINE_LANGUAGE, queries: &[tree_sitter_md::HIGHLIGHT_QUERY_INLINE],
+}];
+
+fn grammar(id: &str) -> Option<&'static LanguageDef> {
+    definition(id).or_else(|| INTERNAL.iter().find(|l| l.id == id))
+}
+
+/// The language for a code fence's info string ("rust", "py", "c++"…).
+fn language_for_name(name: &str) -> Option<&'static str> {
+    let name = name.trim().to_lowercase();
+    let alias = match name.as_str() {
+        "bash" | "zsh" | "console" | "shell-session" | "sh" => "shell",
+        "c++" => "cpp",
+        "c#" | "cs" => "csharp",
+        "golang" => "go",
+        "js" | "node" => "javascript",
+        "ts" => "typescript",
+        "py" | "python3" => "python",
+        "rb" => "ruby",
+        "rs" => "rust",
+        "yml" => "yaml",
+        "md" => "markdown",
+        other => other,
+    };
+    LANGUAGES
+        .iter()
+        .find(|l| l.id == alias || l.name.to_lowercase() == alias || l.extensions.contains(&alias))
+        .map(|l| l.id)
+}
+
+/// Where other languages appear inside a language: `@content` with a `@language` capture
+/// naming it, or `@content.<id>` for a fixed language.
+fn injection_source(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "markdown" => {
+            "(fenced_code_block (info_string (language) @language) (code_fence_content) @content)
+             (html_block) @content.html
+             (minus_metadata) @content.yaml
+             (plus_metadata) @content.toml
+             (inline) @content.markdown_inline"
+        }
+        "html" => {
+            "(script_element (raw_text) @content.javascript)
+             (style_element (raw_text) @content.css)"
+        }
+        _ => return None,
+    })
+}
+
+struct Injections {
+    query: Query,
+    /// For each capture: whether it's the content, and the fixed language it names, if any.
+    content: Vec<(bool, Option<&'static str>)>,
+    language_capture: Option<u32>,
+}
+
+fn injections(id: &'static str) -> Option<Arc<Injections>> {
+    static CACHE: OnceLock<Mutex<HashMap<&'static str, Option<Arc<Injections>>>>> = OnceLock::new();
+    let mut cache = CACHE.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    cache
+        .entry(id)
+        .or_insert_with(|| {
+            let source = injection_source(id)?;
+            let query = Query::new(&compiled(id)?.language, source).ok()?;
+            let content = query
+                .capture_names()
+                .iter()
+                .map(|name| match name.strip_prefix("content") {
+                    Some("") => (true, None),
+                    Some(rest) => (true, grammar(rest.trim_start_matches('.')).map(|l| l.id)),
+                    None => (false, None),
+                })
+                .collect();
+            let language_capture = query.capture_index_for_name("language");
+            Some(Arc::new(Injections { query, content, language_capture }))
+        })
+        .clone()
+}
+
+/// A parsed snippet of an injected language, keyed by language and text so it's reused while
+/// scrolling and typing elsewhere.
+fn injected_tree(id: &'static str, text: &str) -> Option<Tree> {
+    use std::hash::{Hash, Hasher};
+    static CACHE: OnceLock<Mutex<HashMap<(&'static str, u64), Tree>>> = OnceLock::new();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    let key = (id, hasher.finish());
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(tree) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+        return Some(tree.clone());
+    }
+    let mut parser = Parser::new();
+    parser.set_language(&compiled(id)?.language).ok()?;
+    let tree = parser.parse(text, None)?;
+    let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
+    if cache.len() > 512 {
+        cache.clear();
+    }
+    cache.insert(key, tree.clone());
+    Some(tree)
+}
+
 /// A grammar with its highlight query compiled (compiling takes a few milliseconds, so it's shared).
 struct Compiled {
     language: Language,
@@ -245,7 +350,7 @@ fn compiled(id: &'static str) -> Option<Arc<Compiled>> {
     cache
         .entry(id)
         .or_insert_with(|| {
-            let def = definition(id)?;
+            let def = grammar(id)?;
             let language = Language::new(def.language);
             let source = def.queries.join("\n");
             let query = Query::new(&language, &source).ok()?;
@@ -320,6 +425,19 @@ pub(crate) fn comment_tokens(id: &str) -> Option<CommentTokens> {
     })
 }
 
+/// A copy of a syntax tree for building the outline elsewhere.
+pub(crate) struct OutlineSnapshot {
+    id: &'static str,
+    compiled: Arc<Compiled>,
+    tree: Tree,
+}
+
+impl OutlineSnapshot {
+    pub fn outline(&self, rope: &Rope, limit: usize) -> Vec<crate::outline::OutlineItem> {
+        crate::outline::outline(self.id, &self.compiled.language, &self.tree, rope, limit)
+    }
+}
+
 /// One document's parser and syntax tree.
 pub(crate) struct Syntax {
     id: &'static str,
@@ -387,6 +505,45 @@ impl Syntax {
         false
     }
 
+    /// Foldable regions starting on lines `first ..= last`, as (first line, last hidden line), or
+    /// nil if this language folds better by indentation (or isn't parsed).
+    pub fn fold_ranges(&self, rope: &Rope, first: usize, last: usize) -> Option<Vec<(usize, usize)>> {
+        if matches!(self.id, "python" | "yaml" | "ruby" | "lua" | "shell" | "make") {
+            return None;
+        }
+        let tree = self.tree.as_ref()?;
+        let mut ends: std::collections::BTreeMap<usize, usize> = Default::default();
+        let mut stack = vec![tree.root_node()];
+        while let Some(node) = stack.pop() {
+            let (start_row, end_row) = (node.start_position().row, node.end_position().row);
+            if end_row < first || start_row > last {
+                continue;
+            }
+            if end_row > start_row {
+                if let Some((start, end)) = fold_of(node, rope) {
+                    if (first..=last).contains(&start) && end > start {
+                        let entry = ends.entry(start).or_insert(end);
+                        *entry = (*entry).max(end);
+                    }
+                }
+                let mut cursor = node.walk();
+                stack.extend(node.children(&mut cursor));
+            }
+        }
+        Some(ends.into_iter().collect())
+    }
+
+    /// The document's functions, types and headings.
+    #[cfg(test)]
+    pub fn outline(&self, rope: &Rope, limit: usize) -> Vec<crate::outline::OutlineItem> {
+        self.outline_snapshot().map(|snapshot| snapshot.outline(rope, limit)).unwrap_or_default()
+    }
+
+    /// What the outline needs, copied (cheaply) so it can be built without holding the buffer's lock.
+    pub fn outline_snapshot(&self) -> Option<OutlineSnapshot> {
+        Some(OutlineSnapshot { id: self.id, compiled: Arc::clone(&self.compiled), tree: self.tree.clone()? })
+    }
+
     /// Forgets the tree so the next parse starts from scratch (after whole-document rewrites).
     pub fn reset(&mut self) {
         self.tree = None;
@@ -420,14 +577,13 @@ impl Syntax {
                 captures.push((range.start, range.end, found.pattern_index, style));
             }
         }
-        captures.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then(b.2.cmp(&a.2)));
         let mut paint: Vec<Option<HighlightStyle>> = vec![None; end_byte - start_byte];
-        for (start, end, _, style) in captures {
-            let from = start.max(start_byte) - start_byte;
-            let to = end.min(end_byte).saturating_sub(start_byte);
-            if from < to {
-                paint[from..to].fill(Some(style));
-            }
+        paint_captures(&mut paint, start_byte, captures);
+
+        // Other languages inside this one: code fences, inline Markdown, <script> and <style>.
+        for (id, range) in self.injected_ranges(tree, rope, start_byte, end_byte) {
+            let snippet = rope.byte_slice(range.clone()).to_string();
+            paint_injection(&mut paint, start_byte, end_byte, id, &snippet, range.start, 0);
         }
 
         // Turn painted bytes into runs per line, measured in UTF-16 columns.
@@ -468,6 +624,141 @@ impl Syntax {
     }
 }
 
+impl Syntax {
+    /// The stretches of other languages that overlap a byte range.
+    fn injected_ranges(&self, tree: &Tree, rope: &Rope, start_byte: usize, end_byte: usize) -> Vec<(&'static str, std::ops::Range<usize>)> {
+        let Some(rules) = injections(self.id) else { return Vec::new() };
+        let text = |node: Node| rope.byte_slice(node.byte_range()).chunks().map(str::as_bytes);
+        let source = |node: Node| rope.byte_slice(node.byte_range()).to_string();
+        collect_injections(&rules, tree, start_byte, end_byte, text, source)
+    }
+}
+
+fn collect_injections<'a, T: tree_sitter::TextProvider<I> + 'a, I: AsRef<[u8]>>(
+    rules: &Injections,
+    tree: &'a Tree,
+    start_byte: usize,
+    end_byte: usize,
+    text: T,
+    source: impl Fn(Node) -> std::string::String,
+) -> Vec<(&'static str, std::ops::Range<usize>)> {
+    let mut found = Vec::new();
+    let mut cursor = QueryCursor::new();
+    cursor.set_byte_range(start_byte..end_byte);
+    let mut matches = cursor.matches(&rules.query, tree.root_node(), text);
+    while let Some(m) = matches.next() {
+        let mut language = None;
+        let mut content = None;
+        for capture in m.captures() {
+            if Some(capture.index) == rules.language_capture {
+                language = language_for_name(&source(capture.node));
+            } else if let Some((true, fixed)) = rules.content.get(capture.index as usize) {
+                content = Some(capture.node.byte_range());
+                if fixed.is_some() {
+                    language = *fixed;
+                }
+            }
+        }
+        if let (Some(id), Some(range)) = (language, content) {
+            if range.start < range.end {
+                found.push((id, range));
+            }
+        }
+    }
+    found
+}
+
+/// Paints captures (absolute byte ranges) into `paint`, which starts at `base`. Inner nodes beat
+/// the nodes around them, and for the same node the query's first pattern wins.
+fn paint_captures(paint: &mut [Option<HighlightStyle>], base: usize, mut captures: Vec<(usize, usize, usize, HighlightStyle)>) {
+    captures.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then(b.2.cmp(&a.2)));
+    for (start, end, _, style) in captures {
+        let from = start.max(base).saturating_sub(base).min(paint.len());
+        let to = end.saturating_sub(base).min(paint.len());
+        if from < to {
+            paint[from..to].fill(Some(style));
+        }
+    }
+}
+
+/// Highlights an injected snippet (which starts at byte `offset` of the document) over `paint`.
+fn paint_injection(paint: &mut [Option<HighlightStyle>], base: usize, end: usize, id: &'static str, snippet: &str, offset: usize, depth: usize) {
+    let (Some(compiled), Some(tree)) = (compiled(id), injected_tree(id, snippet)) else { return };
+    let from = base.max(offset);
+    let to = end.min(offset + snippet.len());
+    if from >= to {
+        return;
+    }
+    // Code takes its colors from its own language; inline Markdown adds to the block styles.
+    if id != "markdown_inline" {
+        paint[from - base..to - base].fill(None);
+    }
+    let mut captures = Vec::new();
+    let mut cursor = QueryCursor::new();
+    cursor.set_byte_range(from - offset..to - offset);
+    let mut matches = cursor.captures(&compiled.query, tree.root_node(), snippet.as_bytes());
+    while let Some((found, index)) = matches.next() {
+        let capture = found.captures()[*index];
+        if let Some(style) = compiled.styles[capture.index as usize] {
+            let range = capture.node.byte_range();
+            captures.push((range.start + offset, range.end + offset, found.pattern_index, style));
+        }
+    }
+    paint_captures(paint, base, captures);
+    // One more level, for things like <script> inside HTML inside Markdown.
+    if depth == 0 {
+        if let Some(rules) = injections(id) {
+            let nested = collect_injections(&rules, &tree, from - offset, to - offset, snippet.as_bytes(), |node| {
+                snippet[node.byte_range()].to_string()
+            });
+            for (inner, range) in nested {
+                paint_injection(paint, base, end, inner, &snippet[range.clone()], offset + range.start, depth + 1);
+            }
+        }
+    }
+}
+
+/// The region a multi-line node folds: bracketed blocks keep their closing line visible;
+/// comments, Markdown sections and code blocks fold whole.
+fn fold_of(node: Node, rope: &Rope) -> Option<(usize, usize)> {
+    let kind = node.kind();
+    let start_row = node.start_position().row;
+    // A node that ends at the very start of a line (like a Markdown section) ends on the line before.
+    let end = node.end_position();
+    let end_row = if end.column == 0 && end.row > start_row { end.row - 1 } else { end.row };
+    // Does the node's last line start with this child (so it can stay visible after folding)?
+    let starts_line = |child: Node| {
+        let row = child.start_position().row;
+        let line_start = rope.line_to_byte(row);
+        rope.byte_slice(line_start..child.start_byte()).chars().all(char::is_whitespace)
+    };
+    if kind.contains("comment") {
+        return Some((start_row, end_row));
+    }
+    if kind == "section" {
+        // A Markdown heading's section, without the blank lines before the next heading.
+        let mut end = end_row.min(rope.len_lines() - 1);
+        while end > start_row && rope.line(end).chars().all(char::is_whitespace) {
+            end -= 1;
+        }
+        return Some((start_row, end));
+    }
+    if matches!(kind, "element" | "fenced_code_block") {
+        let last = node.child(node.child_count().checked_sub(1)?)?;
+        let end = if last.start_position().row > start_row && starts_line(last) { last.start_position().row - 1 } else { end_row };
+        return Some((start_row, end));
+    }
+    let open = node.child(0)?;
+    let close = node.child(node.child_count().checked_sub(1)?)?;
+    let pairs = [("{", "}"), ("[", "]"), ("(", ")")];
+    if !pairs.iter().any(|&(o, c)| open.kind() == o && close.kind() == c) {
+        return None;
+    }
+    let close_row = close.start_position().row;
+    let end = if starts_line(close) { close_row.checked_sub(1)? } else { close_row };
+    Some((open.start_position().row, end))
+}
+
 /// Describes replacing the bytes `start..old_end` so a syntax tree can follow along.
 /// Call before changing the rope; finish with `new_end` once the new text is in.
 pub(crate) fn edit_start(rope: &Rope, start_byte: usize, old_end_byte: usize) -> InputEdit {
@@ -502,6 +793,49 @@ mod tests {
         for language in LANGUAGES {
             assert!(compiled(language.id).is_some(), "{} failed to compile its highlight query", language.id);
         }
+    }
+
+    #[test]
+    fn every_outline_query_compiles() {
+        for language in LANGUAGES {
+            if let Some(source) = crate::outline::source_for_test(language.id) {
+                let language_compiled = compiled(language.id).unwrap();
+                let query = Query::new(&language_compiled.language, source);
+                assert!(query.is_ok(), "{}: {:?}", language.id, query.err());
+            }
+        }
+    }
+
+    fn outline_of(id: &str, text: &str) -> Vec<(std::string::String, crate::outline::SymbolKind, u64, u32)> {
+        let rope = Rope::from_str(text);
+        let mut syntax = Syntax::new(id).unwrap();
+        syntax.parse(&rope);
+        syntax.outline(&rope, 100).into_iter().map(|i| (i.name, i.kind, i.line, i.depth)).collect()
+    }
+
+    #[test]
+    fn outlines() {
+        use crate::outline::SymbolKind::*;
+        let rust = outline_of("rust", "struct Point { x: i32 }\n\nimpl Point {\n    fn new() -> Self { todo!() }\n}\n\nfn main() {}\n");
+        assert_eq!(rust, vec![
+            ("Point".into(), Type, 0, 0),
+            ("impl Point".into(), Namespace, 2, 0),
+            ("new".into(), Method, 3, 1),
+            ("main".into(), Function, 6, 0),
+        ]);
+        let swift = outline_of("swift", "struct View {\n    func body() {}\n}\nextension View {\n    init() {}\n}\n");
+        assert_eq!(swift, vec![
+            ("View".into(), Type, 0, 0),
+            ("body".into(), Method, 1, 1),
+            ("View".into(), Namespace, 3, 0),
+            ("init".into(), Method, 4, 1),
+        ]);
+        let python = outline_of("python", "class A:\n    def run(self):\n        pass\n\ndef main():\n    pass\n");
+        assert_eq!(python, vec![("A".into(), Type, 0, 0), ("run".into(), Method, 1, 1), ("main".into(), Function, 4, 0)]);
+        let markdown = outline_of("markdown", "# Guide\n\nIntro.\n\n## Install\n\nSteps.\n\n## Use  it\n");
+        assert_eq!(markdown, vec![("Guide".into(), Heading, 0, 0), ("Install".into(), Heading, 4, 1), ("Use it".into(), Heading, 8, 1)]);
+        let js = outline_of("javascript", "const add = (a, b) => a + b;\nclass Cart {\n  total() {}\n}\n");
+        assert_eq!(js, vec![("add".into(), Function, 0, 0), ("Cart".into(), Type, 1, 0), ("total".into(), Method, 2, 1)]);
     }
 
     #[test]
@@ -553,6 +887,38 @@ mod tests {
         // UTF-16 columns line up even after the emoji.
         assert!(spans.contains(&(1, "\"hé👋\"".into(), HighlightStyle::String)), "{spans:?}");
         assert!(spans.contains(&(1, "// hi".into(), HighlightStyle::Comment)), "{spans:?}");
+    }
+
+    #[test]
+    fn markdown_inline_styles_and_code_fences() {
+        let text = "# Title with *emphasis*\n\nSome **bold**, `code` and a [link](https://example.com).\n\n```rust\nfn main() {}\n```\n";
+        let spans = spans_for("markdown", text);
+        assert!(spans.contains(&(0, "*emphasis*".into(), HighlightStyle::Emphasis)) || spans.iter().any(|s| s.0 == 0 && s.1.contains("emphasis") && s.2 == HighlightStyle::Emphasis), "{spans:?}");
+        assert!(spans.iter().any(|s| s.0 == 2 && s.1.contains("bold") && s.2 == HighlightStyle::Strong), "{spans:?}");
+        assert!(spans.iter().any(|s| s.0 == 2 && s.1.contains("code") && s.2 == HighlightStyle::Code), "{spans:?}");
+        assert!(spans.iter().any(|s| s.0 == 2 && s.1.contains("example.com") && s.2 == HighlightStyle::Link), "{spans:?}");
+        // The fenced block is highlighted as Rust.
+        assert!(spans.contains(&(5, "fn".into(), HighlightStyle::Keyword)), "{spans:?}");
+        assert!(spans.contains(&(5, "main".into(), HighlightStyle::Function)), "{spans:?}");
+    }
+
+    #[test]
+    fn html_scripts_and_styles_use_their_languages() {
+        let text = "<style>\nbody { color: red; }\n</style>\n<script>\nconst x = 42;\n</script>\n";
+        let spans = spans_for("html", text);
+        assert!(spans.iter().any(|s| s.0 == 1 && s.1 == "color" && s.2 == HighlightStyle::Property), "{spans:?}");
+        assert!(spans.contains(&(4, "const".into(), HighlightStyle::Keyword)), "{spans:?}");
+        assert!(spans.contains(&(4, "42".into(), HighlightStyle::Number)), "{spans:?}");
+    }
+
+    #[test]
+    fn fence_names_map_to_languages() {
+        assert_eq!(language_for_name("py"), Some("python"));
+        assert_eq!(language_for_name("C++"), Some("cpp"));
+        assert_eq!(language_for_name("bash"), Some("shell"));
+        assert_eq!(language_for_name("TypeScript"), Some("typescript"));
+        assert_eq!(language_for_name("jsx"), Some("javascript"));
+        assert_eq!(language_for_name("klingon"), None);
     }
 
     #[test]

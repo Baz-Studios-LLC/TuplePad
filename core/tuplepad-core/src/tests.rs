@@ -654,3 +654,110 @@ fn chunked_matching_finds_matches_across_chunk_edges() {
     assert_eq!(search::has_match(&text, &regex::Regex::new("zz").unwrap(), &|| false), Some(false));
     assert_eq!(search::has_match(&text, &regex, &|| true), None);
 }
+
+#[test]
+fn column_values_count_pad_and_change_base() {
+    let numbers = |start, step, repeat, base, padding| column_values(ColumnInsert::Numbers { start, step, repeat, base, padding }, 5);
+    assert_eq!(numbers(1, 1, 1, NumberBase::Decimal, NumberPadding::None), ["1", "2", "3", "4", "5"]);
+    assert_eq!(numbers(8, 1, 1, NumberBase::Decimal, NumberPadding::Zeros), ["08", "09", "10", "11", "12"]);
+    assert_eq!(numbers(8, 1, 1, NumberBase::Decimal, NumberPadding::Spaces), [" 8", " 9", "10", "11", "12"]);
+    assert_eq!(numbers(0, 5, 2, NumberBase::Decimal, NumberPadding::None), ["0", "0", "5", "5", "10"]);
+    assert_eq!(numbers(250, 2, 1, NumberBase::HexUppercase, NumberPadding::Zeros), ["0FA", "0FC", "0FE", "100", "102"]);
+    assert_eq!(numbers(1, 1, 1, NumberBase::Binary, NumberPadding::Zeros), ["001", "010", "011", "100", "101"]);
+    assert_eq!(numbers(1, -1, 1, NumberBase::Decimal, NumberPadding::Zeros), ["1", "0", "-1", "-2", "-3"]);
+    assert_eq!(column_values(ColumnInsert::Text { text: "x".into() }, 2), ["x", "x"]);
+}
+
+#[test]
+fn column_insert_lines_up_and_undoes_in_one_step() {
+    let buffer = TextBuffer::with_text("ab\nabcdef\n\tx\na".into());
+    let numbers = ColumnInsert::Numbers { start: 1, step: 1, repeat: 1, base: NumberBase::Decimal, padding: NumberPadding::None };
+    // A single caret at column 2 inserts down to the end; short lines are padded.
+    let carets = buffer.insert_column(numbers, vec![caret(0, 2)], 4);
+    assert_eq!(buffer.text(), "ab1\nab2cdef\n\t3x\na 4");
+    assert_eq!(carets, vec![caret(0, 3), caret(1, 3), caret(2, 2), caret(3, 3)]);
+    buffer.undo();
+    assert_eq!(buffer.text(), "ab\nabcdef\n\tx\na");
+
+    // A selection over two lines inserts on just those lines.
+    buffer.insert_column(ColumnInsert::Text { text: "|".into() }, vec![range((0, 1), (1, 1))], 4);
+    assert_eq!(buffer.text(), "a|b\na|bcdef\n\tx\na");
+    buffer.undo();
+
+    // Several carets: one value each, in document order, replacing selections.
+    let letters = ColumnInsert::Numbers { start: 10, step: 1, repeat: 1, base: NumberBase::Hex, padding: NumberPadding::None };
+    buffer.insert_column(letters, vec![caret(3, 1), range((0, 0), (0, 1))], 4);
+    assert_eq!(buffer.text(), "ab\nabcdef\n\tx\nab");
+
+    // The empty line after a final line break is left alone.
+    let buffer = TextBuffer::with_text("a\nb\n".into());
+    buffer.insert_column(ColumnInsert::Text { text: "-".into() }, vec![caret(0, 0)], 4);
+    assert_eq!(buffer.text(), "-a\n-b\n");
+}
+
+fn fold_pairs(buffer: &TextBuffer) -> Vec<(u64, u64)> {
+    buffer.fold_ranges(0, 10_000, 4).into_iter().map(|f| (f.start, f.end)).collect()
+}
+
+fn opened(text: &str, name: &str) -> (tempfile::TempDir, std::sync::Arc<TextBuffer>) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(name);
+    std::fs::write(&path, text).unwrap();
+    let buffer = TextBuffer::open(path.to_string_lossy().into_owned()).unwrap();
+    (dir, buffer)
+}
+
+#[test]
+fn fold_ranges_come_from_the_syntax_tree() {
+    let (_dir, rust) = opened("fn main() {\n    let v = [\n        1,\n    ];\n}\n/* a\n   b */\nfn one() { 1 }\n", "a.rs");
+    // The closing line of a block stays visible; a block comment folds whole; one-liners don't fold.
+    assert_eq!(fold_pairs(&rust), vec![(0, 3), (1, 2), (5, 6)]);
+    let (_dir, markdown) = opened("# A\n\ntext\n\n## B\n\nmore\n\n# C\n", "a.md");
+    assert_eq!(fold_pairs(&markdown), vec![(0, 6), (4, 6)]);
+    let (_dir, json) = opened("{\n  \"a\": [\n    1\n  ]\n}\n", "a.json");
+    assert_eq!(fold_pairs(&json), vec![(0, 3), (1, 2)]);
+}
+
+#[test]
+fn fold_ranges_by_indentation() {
+    let (_dir, python) = opened("def f():\n    if x:\n        y()\n\n    return 1\nz = 2\n", "a.py");
+    assert_eq!(fold_pairs(&python), vec![(0, 4), (1, 2)]);
+    let text = TextBuffer::with_text("Notes\n\tone\n\ttwo\nEnd\n".into());
+    assert_eq!(fold_pairs(&text), vec![(0, 2)]);
+}
+
+#[test]
+fn folds_follow_their_text() {
+    let buffer = TextBuffer::with_text("a\n  b\n  c\nd\n  e\nf\n".into());
+    assert!(buffer.toggle_fold(0, 4));
+    assert_eq!(buffer.fold(4, 4), Some(FoldRange { start: 3, end: 4 }));
+    let folds = |b: &TextBuffer| b.folds().into_iter().map(|f| (f.start, f.end)).collect::<Vec<_>>();
+    assert_eq!(folds(&buffer), vec![(0, 2), (3, 4)]);
+    // A new line above moves both down.
+    buffer.edit(vec![caret(0, 0)], vec!["top\n".into()], EditKind::Typing, vec![]);
+    assert_eq!(folds(&buffer), vec![(1, 3), (4, 5)]);
+    // Typing on a fold's first line keeps it.
+    buffer.edit(vec![caret(1, 1)], vec!["!".into()], EditKind::Typing, vec![]);
+    assert_eq!(folds(&buffer), vec![(1, 3), (4, 5)]);
+    // Editing hidden lines opens that fold only.
+    buffer.edit(vec![caret(5, 2)], vec!["x".into()], EditKind::Typing, vec![]);
+    assert_eq!(folds(&buffer), vec![(1, 3)]);
+    // A caret moving into a fold opens it.
+    assert!(buffer.reveal_lines(vec![2]));
+    assert!(buffer.folds().is_empty());
+    buffer.fold_all(4);
+    assert_eq!(folds(&buffer), vec![(1, 3), (4, 5)]);
+    // Replacing the whole text (Replace All, reload) clears folds.
+    buffer.replace_all(search("x", false), "y".into(), vec![]).unwrap();
+    assert!(buffer.folds().is_empty());
+    buffer.set_folds(vec![FoldRange { start: 1, end: 3 }]);
+    assert!(buffer.unfold(2));
+    assert!(!buffer.toggle_fold(6, 4));
+}
+
+#[test]
+fn words_for_completion() {
+    let buffer = TextBuffer::with_text("let total = total_count + total;\n// 123 abc_9 é_word x\n".into());
+    assert_eq!(buffer.words(3, 10), ["total", "abc_9", "let", "total_count", "é_word"]);
+    assert_eq!(buffer.words(3, 2), ["total", "abc_9"]);
+}
