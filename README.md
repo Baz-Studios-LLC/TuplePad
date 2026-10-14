@@ -1,10 +1,27 @@
 # TuplePad
 
-A fast, beautiful text editor for the Mac, with the feel of a native Mac app. Free and open source (MIT).
+A fast, beautiful text editor for Mac, Windows and Linux. Free and open source (MIT).
 
-TuplePad is in early development.
+TuplePad is in early development. It's being rebuilt on [Slint](https://slint.dev), a cross-platform UI toolkit, so one app runs on all three systems. The first version, a native Mac app in SwiftUI, stays in the repository as a reference until the new one matches it.
 
 ## What works today
+
+- **Large files.** A 500 MB, 3.8-million-line log opens in about a quarter of a second and scrolls at your display's full frame rate. Typing shows on screen within about 8 ms. Minified files with multi-megabyte lines draw only the part on screen.
+- **Nothing is lost when you quit.** Open documents, unsaved changes and untitled notes come back on the next launch, with the caret, scroll position and word wrap where you left them.
+- **Syntax highlighting** for 25 languages, using the tree-sitter parser. Markdown shows emphasis, bold, code, links and headings, with fenced code blocks colored in their own language.
+- **Multiple carets:** ⌃⇧↑ / ⌃⇧↓ add one above or below (Ctrl+Alt+↑/↓ on Windows and Linux), ⌘-click (Ctrl-click) adds one anywhere, ⌥-drag (Alt-drag) selects a column, and ⌘D (Ctrl+D) selects the next occurrence.
+- **Code-editor basics:** brackets and quotes close automatically, Return keeps the indentation (one level deeper after an opening bracket, with the closer moved to its own line), Tab and Shift-Tab indent, Backspace steps back through indentation, smart Home, and Copy with nothing selected copies the whole line. Pasting as many lines as there are carets gives each caret one.
+- **Helpful highlighting:** other occurrences of the word at the caret, the matching bracket pair, optional invisibles (spaces, tabs, line breaks) and indent guides.
+- **Word wrap** (⌥Z) per document. Wrapped lines keep their indentation, and carets, selection and ↑/↓ work on the wrapped rows.
+- **Input methods** for Japanese, Chinese and other languages, with the text you're composing shown in place.
+- **A Mail-style sidebar** of open documents, showing each one's location, a preview line and a dot for unsaved changes. Drag its edge to resize it, or hide it (⌃⌘S).
+- **Light and dark**, following the system or pinned from the View menu. Zoom with ⌘+ / ⌘− / ⌘0.
+- **Files:** New, Open, Save, Save As and Close, asking before closing unsaved changes. Encodings and line endings are detected and kept.
+
+The Mac app in `TuplePad/` does much more, and those features are coming to the new app milestone by milestone (see the roadmap below):
+
+<details>
+<summary>What the Mac app does</summary>
 
 - **Large files.** A 500 MB, 3.8-million-line log opens in about a quarter of a second, and typing anywhere in it stays instant.
 - **Nothing is lost when you quit.** Open documents, unsaved changes and untitled scratch notes all come back on the next launch, with the caret where you left it. TuplePad never asks to save on quit.
@@ -36,27 +53,28 @@ TuplePad is in early development.
 - **Themes:** TuplePad, Midnight (ivory on midnight blue), Graphite, Sepia and High Contrast. Each has a light and a dark version that follows your Mac, or pin TuplePad to Light or Dark in Settings.
 - **Settings** (⌘,): editor font, size and line height; tab width, tabs or spaces, and indentation detection; wrap, invisibles, indent guides and current-line highlight; and the encoding and line endings for new documents. The status bar also sets each document's indentation.
 
+</details>
+
 ## Running it
 
-Double-click **`Launch TuplePad.command`**. It builds the app and opens it.
+Double-click **`Launch TuplePad.command`**. It builds TuplePad (into `build/TuplePad.app`) and opens it.
 
-To work on it, open `TuplePad.xcodeproj` in Xcode and press ⌘R.
+To work on it: `cargo run -p tuplepad-app --manifest-path core/Cargo.toml -- [files…]`. You need Rust (install it from [rustup.rs](https://rustup.rs)) and, on a Mac, Xcode's command-line tools. Windows and Linux builds are next on the list to test.
 
-You need macOS 26 or later, Xcode 27, and Rust (install it from [rustup.rs](https://rustup.rs)).
+The Mac app opens from `TuplePad.xcodeproj` in Xcode (macOS 26 or later, Xcode 27).
 
 ## How it's built
 
 | Part | Language | Where |
 |---|---|---|
-| Text engine: buffer (a rope), editing, undo, encodings, saving, syntax trees, search | Rust | `core/tuplepad-core` |
-| Bridge between Rust and Swift (generated) | UniFFI | `scripts/build-core.sh` → `Generated/` |
-| `tuplepad` terminal command | Rust | `core/tuplepad-cli` (embedded at `TuplePad.app/Contents/Helpers/tuplepad`) |
-| Editor surface: drawing, input, carets | Swift / AppKit | `TuplePad/Editor` |
-| Window, sidebar, status bar, menus | SwiftUI | `TuplePad/Views`, `TuplePad/App` |
+| Text engine: buffer (a rope), editing, undo, encodings, saving, syntax trees, search, session | Rust | `core/tuplepad-core` |
+| The app: window, editor, sidebar, menus | Slint and Rust | `core/tuplepad-app` (`ui/` and `src/`) |
+| `tuplepad` terminal command | Rust | `core/tuplepad-cli` |
+| The first Mac app (reference) | Swift / SwiftUI | `TuplePad/` |
 | App icon | Icon Composer | `TuplePad/AppIcon.icon` (artwork source in `design/`) |
 
-The editor view draws only the lines on screen, so a document's size doesn't affect scrolling or typing speed.
+The editor draws only the lines on screen, so a document's size doesn't affect scrolling or typing speed.
 
 ## Roadmap
 
-See [docs/GOAL.md](docs/GOAL.md) for the full plan. Next up: the tools that usually come as plugins: compare, JSON and XML tools, encoding and hash tools, Markdown preview, and more. TuplePad will also include a built-in MCP server, so AI tools can read and edit your open documents while you watch.
+See [docs/GOAL.md](docs/GOAL.md) for the plan: files, settings and themes, search, power editing and the built-in tools (compare, JSON and XML, hashes, Markdown preview and more) come next. TuplePad will also include a built-in MCP server, so AI tools can read and edit your open documents while you watch.

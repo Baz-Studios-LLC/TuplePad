@@ -1,0 +1,61 @@
+import { Palette } from "std-widgets.slint";
+
+// TuplePad's colors: ivory paper and navy ink by day, ivory on midnight blue at night.
+// Syntax colors are indexed by `Span.style`: 0 is plain text, 1–23 follow HighlightStyle in the
+// core, and 24 is invisible characters.
+
+export global Theme {
+    // 0 follows the system, 1 is always light, 2 always dark.
+    in-out property <int> appearance: 0;
+    out property <bool> system-dark: Palette.color-scheme == ColorScheme.dark;
+    out property <bool> dark: appearance == 0 ? system-dark : appearance == 2;
+
+    // Brand
+    out property <color> accent: dark ? #2B4C8F : #103474;
+    out property <color> accent-text: #FFF8EC;
+
+    // Editor
+    out property <color> editor-background: dark ? #0F1A2E : #FFF8EC;
+    out property <color> text: dark ? #ECE4D4 : #1B2A4A;
+    out property <color> line-number: dark ? #3E4D70 : #C4B9A5;
+    out property <color> current-line-number: dark ? #A9B7D6 : #6E6450;
+    out property <color> current-line: dark ? #FFFFFF0B : #1034740A;
+    out property <color> selection: dark ? #3D63B066 : #1034742E;
+    out property <color> occurrence: dark ? #FFFFFF14 : #10347414;
+    out property <color> bracket: dark ? #9DBEFF33 : #10347424;
+    out property <color> bracket-border: dark ? #9DBEFF80 : #10347466;
+    out property <color> caret: dark ? #9DBEFF : #103474;
+    out property <color> preedit-underline: dark ? #9DBEFF : #103474;
+    out property <color> indent-guide: dark ? #FFFFFF12 : #1B2A4A14;
+
+    // Chrome
+    out property <color> sidebar-background: dark ? #0A1322 : #F3EADA;
+    out property <color> sidebar-hover: dark ? #FFFFFF0D : #1034740D;
+    out property <color> separator: dark ? #1B2842 : #E6DAC4;
+    out property <color> header-background: dark ? #0F1A2E : #FFF8EC;
+    out property <color> status-background: dark ? #0C1627 : #F9F1E2;
+    out property <color> primary-text: dark ? #ECE4D4 : #1B2A4A;
+    out property <color> secondary-text: dark ? #7E8BA8 : #8C826F;
+    out property <color> tertiary-text: dark ? #56637F : #B3A891;
+    out property <color> scrollbar-thumb: dark ? #FFFFFF38 : #1B2A4A40;
+    out property <color> control-hover: dark ? #FFFFFF12 : #1B2A4A0F;
+    out property <color> control-pressed: dark ? #FFFFFF1F : #1B2A4A1A;
+    out property <color> icon: dark ? #A3AFC9 : #7A705D;
+
+    // Fonts
+    out property <length> ui-font-size: 13px;
+    in-out property <string> mono-family: "Menlo";
+
+    // Syntax colors: plain, keyword, string, escape, comment, number, constant, function, type,
+    // variable, property, operator, punctuation, tag, attribute, label, namespace, heading,
+    // emphasis, strong, link, code, inserted, deleted, invisible.
+    out property <[color]> syntax: dark ? [
+        #ECE4D4, #C3A6FF, #F2C48D, #F5A97F, #6F7F9C, #FF9E80, #FF9E80, #8AB4FF, #7FD8E8,
+        #ECE4D4, #B9C9E8, #8FD0F0, #8D9AB5, #FF8FA3, #FFD27F, #C3A6FF, #B9C9E8, #8AB4FF,
+        #ECE4D4, #ECE4D4, #8FD0F0, #F2C48D, #9BD8A5, #FF8FA3, #3A4A6C,
+    ] : [
+        #1B2A4A, #6B3FA0, #9A5B13, #B4441B, #9A917F, #B4441B, #B4441B, #1F4FA8, #0F6E7A,
+        #1B2A4A, #3D5878, #2C6E99, #6D6457, #B02A44, #8C5A00, #6B3FA0, #3D5878, #103474,
+        #1B2A4A, #1B2A4A, #2C6E99, #9A5B13, #3D7A3A, #B02A44, #CFC4AE,
+    ];
+}

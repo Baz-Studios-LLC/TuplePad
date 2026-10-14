@@ -1,0 +1,218 @@
+import { Theme } from "theme.slint";
+
+export struct DocItem {
+    name: string,
+    folder: string,
+    detail: string,
+    preview: string,
+    badge: string,
+    tint: color,
+    modified: bool,
+}
+
+export component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <bool> on;
+    callback clicked;
+    width: 30px;
+    height: 28px;
+    border-radius: 7px;
+    background: touch.pressed ? Theme.control-pressed : touch.has-hover || root.on ? Theme.control-hover : transparent;
+    animate background { duration: 100ms; }
+
+    Path {
+        width: 16px;
+        height: 16px;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: root.icon;
+        fill: transparent;
+        stroke: root.on ? Theme.accent.mix(Theme.icon, 0.5) : Theme.icon;
+        stroke-width: 1.7px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export global Icons {
+    out property <string> sidebar: "M4 5.5h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1z M9.5 5.5v13";
+    out property <string> plus: "M12 5.5v13 M5.5 12h13";
+    out property <string> wrap: "M4 6.5h16 M4 12h13a3 3 0 0 1 0 6h-4.5 M14.5 15.5l-2.5 2.5 2.5 2.5 M4 18h5";
+    out property <string> moon: "M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.6 6.6 0 0 0 10.7 10.7z";
+    out property <string> sun: "M12 17a5 5 0 1 0 0-10a5 5 0 1 0 0 10z M12 1.5v2 M12 20.5v2 M4.6 4.6l1.4 1.4 M18 18l1.4 1.4 M1.5 12h2 M20.5 12h2 M4.6 19.4l1.4-1.4 M18 6l1.4-1.4";
+}
+
+component DocRow inherits Rectangle {
+    in property <DocItem> item;
+    in property <bool> selected;
+    callback clicked;
+
+    height: 66px;
+    border-radius: 10px;
+    background: root.selected ? Theme.accent : touch.has-hover ? Theme.sidebar-hover : transparent;
+    animate background { duration: 120ms; easing: ease-out; }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 12px;
+        spacing: 11px;
+
+        VerticalLayout {
+            padding-top: 10px;
+            alignment: start;
+            Rectangle {
+                width: 32px;
+                height: 32px;
+                border-radius: 8px;
+                background: root.selected ? #FFFFFF22 : root.item.tint.with-alpha(Theme.dark ? 0.22 : 0.13);
+                Text {
+                    text: root.item.badge;
+                    font-size: 9.5px;
+                    font-weight: 750;
+                    letter-spacing: 0.4px;
+                    color: root.selected ? Theme.accent-text : Theme.dark ? root.item.tint.mix(#FFFFFF, 0.45) : root.item.tint;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 1px;
+            HorizontalLayout {
+                spacing: 6px;
+                Text {
+                    text: root.item.name;
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: root.selected ? Theme.accent-text : Theme.primary-text;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                if root.item.modified: VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 7px;
+                        height: 7px;
+                        border-radius: 3.5px;
+                        background: root.selected ? Theme.accent-text : Theme.accent.mix(Theme.secondary-text, 0.7);
+                    }
+                }
+            }
+            Text {
+                text: root.item.detail;
+                font-size: 11px;
+                color: root.selected ? Theme.accent-text.with-alpha(0.75) : Theme.secondary-text;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.preview;
+                font-size: 11px;
+                color: root.selected ? Theme.accent-text.with-alpha(0.55) : Theme.tertiary-text;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+export component Sidebar inherits Rectangle {
+    in property <[DocItem]> docs;
+    in property <int> current;
+    in property <length> top-inset;
+    callback select(index: int);
+    callback toggle-sidebar();
+    callback toggle-theme();
+    callback drag-window();
+    callback resize(width: length);
+    // True while the edge is being dragged (the width follows the pointer without animating).
+    out property <bool> resizing: handle.pressed;
+
+    background: Theme.sidebar-background;
+    clip: true;
+
+    // The strip under the window buttons moves the window.
+    TouchArea {
+        y: 0;
+        height: max(root.top-inset, 12px);
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down { root.drag-window(); }
+        }
+    }
+
+    IconButton {
+        x: parent.width - self.width - 10px;
+        y: max(0px, (root.top-inset - self.height) / 2 + 2px);
+        visible: root.top-inset > 0;
+        icon: Icons.sidebar;
+        clicked => { root.toggle-sidebar(); }
+    }
+
+    VerticalLayout {
+        padding-top: root.top-inset + 14px;
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-bottom: 12px;
+        spacing: 2px;
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-bottom: 6px;
+            Text {
+                text: "DOCUMENTS";
+                font-size: 10.5px;
+                font-weight: 700;
+                letter-spacing: 0.8px;
+                color: Theme.tertiary-text;
+            }
+        }
+
+        for doc[index] in root.docs: DocRow {
+            item: doc;
+            selected: index == root.current;
+            clicked => { root.select(index); }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        HorizontalLayout {
+            padding-left: 10px;
+            alignment: space-between;
+            Text {
+                text: root.docs.length == 1 ? "1 document" : root.docs.length + " documents";
+                font-size: 11px;
+                color: Theme.tertiary-text;
+                vertical-alignment: center;
+            }
+            IconButton {
+                // A moon by day, a sun by night.
+                icon: Theme.dark ? Icons.sun : Icons.moon;
+                clicked => { root.toggle-theme(); }
+            }
+        }
+    }
+
+    // The divider, which also resizes the sidebar.
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.separator;
+    }
+    handle := TouchArea {
+        x: parent.width - 4px;
+        width: 8px;
+        mouse-cursor: col-resize;
+        // The handle moves with the edge, so the offset from where it was grabbed is what's left to do.
+        moved => {
+            if self.pressed { root.resize(root.width + self.mouse-x - self.pressed-x); }
+        }
+    }
+}

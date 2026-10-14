@@ -152,6 +152,17 @@ impl TextBuffer {
             .collect()
     }
 
+    /// Part of a line: up to `count` UTF-16 columns from `start`, without the line break. Drawing
+    /// a very long line reads only what's on screen.
+    pub fn line_slice(&self, index: u64, start: u64, count: u64) -> String {
+        let st = self.read();
+        let content = st.line_content(st.clamp_line(index));
+        let len = content.len_utf16_cu();
+        let from = (start as usize).min(len);
+        let to = (start.saturating_add(count) as usize).min(len);
+        content.slice(content.utf16_cu_to_char(from)..content.utf16_cu_to_char(to)).to_string()
+    }
+
     /// Length of a line in UTF-16 code units, excluding its line break.
     pub fn line_length(&self, index: u64) -> u64 {
         let st = self.read();
@@ -179,7 +190,8 @@ impl TextBuffer {
         let st = self.read();
         let mut preview = String::new();
         for line in st.rope.lines().take(200) {
-            let text = line.to_string();
+            // Only the start of each line matters (it may be megabytes long).
+            let text: String = line.chars().take(max_chars as usize * 2).collect();
             let text = text.trim();
             if text.is_empty() {
                 continue;
@@ -438,6 +450,19 @@ impl TextBuffer {
         st.syntax = if st.csv.is_some() { None } else { id.and_then(|id| Syntax::new(&id)) };
         st.reparse();
         st.version += 1;
+    }
+
+    /// Colored runs for part of one line, UTF-16 columns `start..start + count` (for very long
+    /// lines, where only part is on screen).
+    pub fn highlights_in_line(&self, line: u64, start: u64, count: u64) -> Vec<HighlightSpan> {
+        let st = self.read();
+        if st.csv.is_some() || line >= st.rope.len_lines() as u64 {
+            return Vec::new();
+        }
+        match &st.syntax {
+            Some(syntax) => syntax.highlights_in_line(&st.rope, line as usize, start as usize, start.saturating_add(count) as usize),
+            None => Vec::new(),
+        }
     }
 
     /// Colored runs for `count` lines starting at `start_line`.

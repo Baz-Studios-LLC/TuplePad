@@ -1,0 +1,318 @@
+import { Theme } from "theme.slint";
+
+// One colored run of a visual row. `x` comes from the Rust layout of the whole line, so runs line
+// up exactly as if the line had been drawn in one piece.
+export struct Span {
+    x: length,
+    text: string,
+    style: int,
+    bold: bool,
+    italic: bool,
+}
+
+// A visual row: a whole line, or one piece of a wrapped line. Rows live in fixed slots (row
+// number modulo the slot count), so scrolling by a row rewrites one slot and just moves the others.
+export struct Row {
+    row: int,
+    line: int,
+    // The line number, on a line's first row only.
+    number: string,
+    spans: [Span],
+    current: bool,
+    // Where indent guides go.
+    guides: [length],
+}
+
+export struct Caret {
+    row: int,
+    x: length,
+}
+
+// A horizontal band on one visual row: part of a selection, a highlighted occurrence, a matched
+// bracket, or the underline under composing text.
+export struct Band {
+    row: int,
+    x: length,
+    width: length,
+}
+
+// Everything the editor shows, set from Rust, and what it reports back.
+export global EditorBridge {
+    in property <[Row]> rows;
+    in property <[Caret]> carets;
+    in property <[Band]> selections;
+    in property <[Band]> occurrences;
+    in property <[Band]> brackets;
+    in property <[Band]> preedit-underlines;
+    in property <[int]> active-rows;
+    in property <int> top-row;
+    in property <length> scroll-offset;
+    in property <length> scroll-x;
+    in property <length> line-height: 20px;
+    in property <length> font-size: 13px;
+    in property <length> gutter-width: 64px;
+    in property <bool> caret-visible: true;
+    in property <bool> highlight-current-line: true;
+    in property <int> ime-row;
+    in property <length> ime-x;
+    // The vertical scrollbar, as fractions of the track.
+    in property <float> thumb-start;
+    in property <float> thumb-size: 1;
+    in property <bool> scrollbar-shown;
+
+    callback key(event: KeyEvent) -> bool;
+    callback text(text: string);
+    callback preedit(text: string);
+    callback pointer-down(x: length, y: length, modifiers: KeyboardModifiers);
+    callback pointer-drag(x: length, y: length);
+    callback pointer-up();
+    callback scrolled(dx: length, dy: length);
+    callback resized(width: length, height: length);
+    callback scrollbar-drag(fraction: float);
+    callback scrollbar-hover(inside: bool);
+    callback focus-changed(focused: bool);
+}
+
+component Scrollbar inherits Rectangle {
+    width: 14px;
+    property <length> track: self.height - 8px;
+    property <length> thumb-height: max(36px, self.track * EditorBridge.thumb-size);
+    property <bool> shown: EditorBridge.scrollbar-shown || area.has-hover || area.pressed;
+    property <float> grab;
+    visible: EditorBridge.thumb-size < 1;
+
+    thumb := Rectangle {
+        x: area.has-hover || area.pressed ? 3px : 5px;
+        width: area.has-hover || area.pressed ? 8px : 5px;
+        y: 4px + (root.track - root.thumb-height) * EditorBridge.thumb-start;
+        height: root.thumb-height;
+        border-radius: self.width / 2;
+        background: Theme.scrollbar-thumb;
+        opacity: root.shown ? 1 : 0;
+        animate opacity { duration: root.shown ? 80ms : 450ms; easing: ease-out; }
+        animate width, x { duration: 120ms; easing: ease-out; }
+    }
+
+    area := TouchArea {
+        changed has-hover => { EditorBridge.scrollbar-hover(self.has-hover); }
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                // Grab the thumb where it was pressed, or center it under the pointer.
+                if self.mouse-y >= thumb.y && self.mouse-y <= thumb.y + thumb.height {
+                    root.grab = (self.mouse-y - thumb.y) / thumb.height;
+                } else {
+                    root.grab = 0.5;
+                    root.drag-to(self.mouse-y);
+                }
+            }
+        }
+        moved => {
+            if self.pressed { root.drag-to(self.mouse-y); }
+        }
+    }
+
+    function drag-to(y: length) {
+        let room = root.track - root.thumb-height;
+        if room > 0 {
+            EditorBridge.scrollbar-drag(max(0, min(1, (y - 4px - root.thumb-height * root.grab) / room)));
+        }
+    }
+}
+
+export component EditorView inherits Rectangle {
+    in property <string> font-family;
+    background: Theme.editor-background;
+    clip: true;
+
+    property <length> lh: EditorBridge.line-height;
+
+    changed width => { EditorBridge.resized(self.width, self.height); }
+    changed height => { EditorBridge.resized(self.width, self.height); }
+    init => {
+        EditorBridge.resized(self.width, self.height);
+        input.focus();
+    }
+
+    public function focus-editor() {
+        input.focus();
+    }
+
+    function row-y(row: int) -> length {
+        return (row - EditorBridge.top-row) * root.lh - EditorBridge.scroll-offset;
+    }
+
+    // The current-line bands run under the gutter too.
+    if EditorBridge.highlight-current-line: Rectangle {
+        for row in EditorBridge.active-rows: Rectangle {
+            y: root.row-y(row);
+            height: root.lh;
+            background: Theme.current-line;
+        }
+    }
+
+    text-area := Rectangle {
+        x: EditorBridge.gutter-width;
+        width: root.width - self.x;
+        clip: true;
+
+        for band in EditorBridge.occurrences: Rectangle {
+            x: band.x - EditorBridge.scroll-x;
+            width: band.width;
+            y: root.row-y(band.row) + 1px;
+            height: root.lh - 2px;
+            border-radius: 3px;
+            background: Theme.occurrence;
+        }
+
+        for band in EditorBridge.selections: Rectangle {
+            x: band.x - EditorBridge.scroll-x;
+            width: band.width;
+            y: root.row-y(band.row);
+            height: root.lh;
+            border-radius: 3px;
+            background: Theme.selection;
+        }
+
+        for band in EditorBridge.brackets: Rectangle {
+            x: band.x - EditorBridge.scroll-x - 0.5px;
+            width: band.width + 1px;
+            y: root.row-y(band.row) + 1px;
+            height: root.lh - 2px;
+            border-radius: 3px;
+            background: Theme.bracket;
+            border-width: 1px;
+            border-color: Theme.bracket-border;
+        }
+
+        for row in EditorBridge.rows: Rectangle {
+            x: -EditorBridge.scroll-x;
+            y: root.row-y(row.row);
+            height: root.lh;
+            for guide in row.guides: Rectangle {
+                x: guide;
+                width: 1px;
+                background: Theme.indent-guide;
+            }
+            for span in row.spans: Text {
+                x: span.x;
+                height: root.lh;
+                text: span.text;
+                color: Theme.syntax[span.style];
+                font-family: root.font-family;
+                font-size: EditorBridge.font-size;
+                font-weight: span.bold ? 700 : 400;
+                font-italic: span.italic;
+                vertical-alignment: center;
+            }
+        }
+
+        for band in EditorBridge.preedit-underlines: Rectangle {
+            x: band.x - EditorBridge.scroll-x;
+            width: band.width;
+            y: root.row-y(band.row + 1) - 3px;
+            height: 1.5px;
+            background: Theme.preedit-underline;
+        }
+
+        for caret in EditorBridge.carets: Rectangle {
+            x: caret.x - EditorBridge.scroll-x - 1px;
+            y: root.row-y(caret.row) + 2px;
+            width: 2px;
+            height: root.lh - 4px;
+            border-radius: 1px;
+            background: Theme.caret;
+            opacity: EditorBridge.caret-visible && input.has-focus ? 1 : 0;
+        }
+
+        // Keyboard and input-method entry point. It sits at the main caret so the input method's
+        // candidate window opens there; it draws nothing, and the editor shows composing text inline.
+        input := TextInput {
+            x: EditorBridge.ime-x - EditorBridge.scroll-x;
+            y: root.row-y(EditorBridge.ime-row);
+            width: 2px;
+            height: root.lh;
+            color: transparent;
+            selection-background-color: transparent;
+            selection-foreground-color: transparent;
+            text-cursor-width: 0px;
+            font-family: root.font-family;
+            font-size: EditorBridge.font-size;
+            single-line: true;
+            vertical-alignment: center;
+            changed has-focus => { EditorBridge.focus-changed(self.has-focus); }
+            key-pressed(event) => {
+                if EditorBridge.key(event) {
+                    return EventResult.accept;
+                }
+                return EventResult.reject;
+            }
+            edited => {
+                if self.text != "" {
+                    EditorBridge.text(self.text);
+                    self.text = "";
+                }
+            }
+            changed preedit-text => {
+                EditorBridge.preedit(self.preedit-text);
+            }
+        }
+
+        TouchArea {
+            mouse-cursor: text;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                    input.focus();
+                    EditorBridge.pointer-down(self.mouse-x, self.mouse-y, event.modifiers);
+                } else if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
+                    EditorBridge.pointer-up();
+                }
+            }
+            moved => {
+                if self.pressed {
+                    EditorBridge.pointer-drag(self.mouse-x, self.mouse-y);
+                }
+            }
+            scroll-event(event) => {
+                // A mouse wheel with Shift scrolls sideways (trackpads send both directions).
+                if event.modifiers.shift && event.delta-x == 0 {
+                    EditorBridge.scrolled(event.delta-y, 0);
+                } else {
+                    EditorBridge.scrolled(event.delta-x, event.delta-y);
+                }
+                return EventResult.accept;
+            }
+        }
+    }
+
+    // Line numbers, drawn over the text when it scrolls sideways.
+    Rectangle {
+        x: 0;
+        width: EditorBridge.gutter-width;
+        clip: true;
+        background: Theme.editor-background;
+        if EditorBridge.highlight-current-line: Rectangle {
+            for row in EditorBridge.active-rows: Rectangle {
+                y: root.row-y(row);
+                height: root.lh;
+                background: Theme.current-line;
+            }
+        }
+        for row in EditorBridge.rows: Text {
+            x: 0;
+            width: EditorBridge.gutter-width - 20px;
+            y: root.row-y(row.row);
+            height: root.lh;
+            text: row.number;
+            color: row.current ? Theme.current-line-number : Theme.line-number;
+            font-family: root.font-family;
+            font-size: EditorBridge.font-size - 1px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+
+    Scrollbar {
+        x: root.width - self.width;
+        height: root.height;
+    }
+}

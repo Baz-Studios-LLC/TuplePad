@@ -946,3 +946,30 @@ fn list_files_for_quick_open() {
     let files = list_files(dir.path().to_string_lossy().into_owned(), 100).unwrap();
     assert_eq!(files, ["README.md", "src/main.rs"]);
 }
+
+#[test]
+fn line_slices_by_utf16_columns() {
+    let buffer = TextBuffer::with_text("ab👍cd\nnext".to_string());
+    assert_eq!(buffer.line_slice(0, 1, 3), "b👍");
+    assert_eq!(buffer.line_slice(0, 4, 100), "cd");
+    assert_eq!(buffer.line_slice(0, 50, 5), "");
+    assert_eq!(buffer.line_slice(1, 0, 2), "ne");
+}
+
+#[test]
+fn highlights_for_part_of_a_long_line() {
+    let line = r#"{"a": 1, "b": "text", "c": true}"#;
+    let buffer = TextBuffer::with_text(format!("{line}\n"));
+    buffer.set_language(Some("json".into()));
+    let whole = buffer.highlights(0, 1);
+    let part = buffer.highlights_in_line(0, 9, 11);
+    // The window's runs are the whole line's runs, clipped to it.
+    let expected: Vec<(u64, u64, HighlightStyle)> = whole
+        .iter()
+        .filter(|s| s.end > 9 && s.start < 20)
+        .map(|s| (s.start.max(9), s.end.min(20), s.style))
+        .collect();
+    let got: Vec<(u64, u64, HighlightStyle)> = part.iter().map(|s| (s.start, s.end, s.style)).collect();
+    assert_eq!(got, expected);
+    assert!(got.iter().any(|s| s.2 == HighlightStyle::String));
+}

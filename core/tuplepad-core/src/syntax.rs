@@ -578,14 +578,35 @@ impl Syntax {
 
     /// Highlighted runs for `count` lines starting at `start_line`.
     pub fn highlights(&self, rope: &Rope, start_line: usize, count: usize) -> Vec<HighlightSpan> {
-        let Some(tree) = &self.tree else { return Vec::new() };
         let total_lines = rope.len_lines();
-        if start_line >= total_lines || count == 0 {
+        if self.tree.is_none() || start_line >= total_lines || count == 0 {
             return Vec::new();
         }
         let end_line = (start_line + count).min(total_lines);
         let start_byte = rope.line_to_byte(start_line);
         let end_byte = rope.line_to_byte(end_line).min(start_byte + MAX_HIGHLIGHT_BYTES);
+        self.highlight_bytes(rope, start_line, start_byte, end_byte, 0)
+    }
+
+    /// Highlighted runs for part of one line, UTF-16 columns `start_column..end_column` (for very
+    /// long lines, where only part is on screen).
+    pub fn highlights_in_line(&self, rope: &Rope, line: usize, start_column: usize, end_column: usize) -> Vec<HighlightSpan> {
+        if self.tree.is_none() || line >= rope.len_lines() {
+            return Vec::new();
+        }
+        let slice = rope.line(line);
+        let units = slice.len_utf16_cu();
+        let (start_column, end_column) = (start_column.min(units), end_column.min(units));
+        let line_char = rope.line_to_char(line);
+        let start_byte = rope.char_to_byte(line_char + slice.utf16_cu_to_char(start_column));
+        let end_byte = rope.char_to_byte(line_char + slice.utf16_cu_to_char(end_column)).min(start_byte + MAX_HIGHLIGHT_BYTES);
+        self.highlight_bytes(rope, line, start_byte, end_byte, start_column as u64)
+    }
+
+    /// Highlighted runs for the bytes `start_byte..end_byte`, which start on `start_line` at
+    /// UTF-16 column `start_column`.
+    fn highlight_bytes(&self, rope: &Rope, start_line: usize, start_byte: usize, end_byte: usize, start_column: u64) -> Vec<HighlightSpan> {
+        let Some(tree) = &self.tree else { return Vec::new() };
         if end_byte <= start_byte {
             return Vec::new();
         }
@@ -615,14 +636,16 @@ impl Syntax {
 
         // Turn painted bytes into runs per line, measured in UTF-16 columns.
         let mut spans = Vec::new();
-        for line in start_line..end_line {
+        for line in start_line..rope.len_lines() {
             let line_start = rope.line_to_byte(line);
             if line_start >= end_byte {
                 break;
             }
-            let slice = rope.line(line);
-            let mut byte = line_start;
-            let mut column = 0u64;
+            let from = line_start.max(start_byte);
+            let line_end = if line + 1 < rope.len_lines() { rope.line_to_byte(line + 1) } else { rope.len_bytes() };
+            let slice = rope.byte_slice(from..line_end.max(from));
+            let mut byte = from;
+            let mut column = if from == line_start { 0 } else { start_column };
             let mut current: Option<(u64, HighlightStyle)> = None;
             for chunk in slice.chunks() {
                 for c in chunk.chars() {

@@ -6,4 +6,3 @@ xcuserdata/
 DerivedData/
 *.xcuserstate
 *.af~lock~
-prototypes/*/target/
