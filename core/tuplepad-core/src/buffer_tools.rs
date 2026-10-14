@@ -15,7 +15,7 @@ pub struct BracketMatch {
 }
 
 /// Replaces the chars `start..end`, measured in the text before the batch is applied.
-struct CharEdit {
+pub(super) struct CharEdit {
     start: usize,
     end: usize,
     text: String,
@@ -75,12 +75,12 @@ impl State {
     }
 
     /// Cursors as (anchor, head) char offsets.
-    fn cursor_chars(&self, cursors: &[TextSelection]) -> Vec<(usize, usize)> {
+    pub(super) fn cursor_chars(&self, cursors: &[TextSelection]) -> Vec<(usize, usize)> {
         cursors.iter().map(|c| (self.pos_to_char(c.anchor), self.pos_to_char(c.head))).collect()
     }
 
     /// Replaces lines `first..=last` with `lines`. With no lines left, the block's line break goes too.
-    fn block_edit(&self, first: usize, last: usize, lines: &[String]) -> CharEdit {
+    pub(super) fn block_edit(&self, first: usize, last: usize, lines: &[String]) -> CharEdit {
         if lines.is_empty() {
             let (start, end) = if last + 1 < self.rope.len_lines() {
                 (self.rope.line_to_char(first), self.rope.line_to_char(last + 1))
@@ -104,7 +104,7 @@ impl State {
 
     /// Applies non-overlapping edits as one undo step. `after` gets the updated state and a function
     /// mapping old char offsets to new ones, and returns the cursors to show.
-    fn apply_edits(
+    pub(super) fn apply_edits(
         &mut self,
         mut edits: Vec<CharEdit>,
         before: Vec<TextSelection>,
@@ -133,7 +133,7 @@ impl State {
         cursors
     }
 
-    fn mapped(&self, old: &[(usize, usize)], map: &dyn Fn(usize) -> usize) -> Vec<TextSelection> {
+    pub(super) fn mapped(&self, old: &[(usize, usize)], map: &dyn Fn(usize) -> usize) -> Vec<TextSelection> {
         old.iter()
             .map(|&(anchor, head)| TextSelection { anchor: self.char_to_pos(map(anchor)), head: self.char_to_pos(map(head)) })
             .collect()

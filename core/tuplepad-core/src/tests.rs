@@ -435,3 +435,222 @@ fn fuzzy_positions_are_utf16_offsets_for_highlighting() {
     assert!(fuzzy_rank("x".into(), vec!["a".into(); 3], 10).is_empty());
     assert_eq!(fuzzy_rank("".into(), vec!["a".into(); 5], 2).len(), 2);
 }
+
+#[test]
+fn counting_and_line_results() {
+    let buffer = TextBuffer::with_text("    let total = total + 1;\nnothing\ntotal\n".into());
+    assert_eq!(buffer.count_matches(search("total", false)).unwrap(), 3);
+    let results = buffer.find_lines(search("total", false), 10).unwrap();
+    assert_eq!(results.match_count, 3);
+    assert!(!results.truncated);
+    assert_eq!(results.lines.len(), 2);
+    let first = &results.lines[0];
+    // Indentation is left out of the preview, and spans are columns of the whole line.
+    assert_eq!((first.line, first.preview.as_str(), first.preview_start), (0, "let total = total + 1;", 4));
+    assert_eq!(first.spans, vec![MatchSpan { start: 8, end: 13 }, MatchSpan { start: 16, end: 21 }]);
+    assert_eq!(results.lines[1].line, 2);
+    // A line limit keeps the count but marks the list as cut short.
+    let limited = buffer.find_lines(search("total", false), 1).unwrap();
+    assert_eq!((limited.lines.len(), limited.match_count, limited.truncated), (1, 3, true));
+}
+
+#[test]
+fn long_lines_are_previewed_around_the_match() {
+    let line = format!("{}needle{}", "x".repeat(1000), "y".repeat(1000));
+    let buffer = TextBuffer::with_text(line);
+    let results = buffer.find_lines(search("needle", false), 10).unwrap();
+    let only = &results.lines[0];
+    assert!(only.preview.len() <= 240);
+    let start = (only.spans[0].start - only.preview_start) as usize;
+    assert_eq!(&only.preview[start..start + 6], "needle");
+}
+
+#[test]
+fn replacement_previews_show_whole_lines() {
+    let buffer = TextBuffer::with_text("a = 1\nb = 2\nc = 1\n".into());
+    let preview = buffer.replacement_preview(search(r"= (\d)", true), "== $1".into(), 10).unwrap();
+    assert_eq!(preview.len(), 3);
+    assert_eq!((preview[0].line, preview[0].before.as_str(), preview[0].after.as_str()), (0, "a = 1", "a == 1"));
+    assert_eq!(preview[2].after, "c == 1");
+    // Previewing changes nothing.
+    assert_eq!(buffer.text(), "a = 1\nb = 2\nc = 1\n");
+}
+
+#[test]
+fn bookmarks_follow_their_lines() {
+    let buffer = TextBuffer::with_text("zero\none\ntwo\nthree\nfour\n".into());
+    assert!(buffer.toggle_bookmark(1));
+    assert!(buffer.toggle_bookmark(3));
+    assert_eq!(buffer.bookmarks(), vec![1, 3]);
+    // Typing within a line moves nothing.
+    buffer.edit(vec![caret(1, 0)], vec!["x".into()], EditKind::Typing, vec![]);
+    assert_eq!(buffer.bookmarks(), vec![1, 3]);
+    // A new line above pushes both down; Return at the start of a line takes its bookmark along.
+    buffer.edit(vec![caret(0, 4)], vec!["\n".into()], EditKind::Typing, vec![]);
+    assert_eq!(buffer.bookmarks(), vec![2, 4]);
+    buffer.edit(vec![caret(2, 0)], vec!["\n".into()], EditKind::Typing, vec![]);
+    assert_eq!(buffer.bookmarks(), vec![3, 5]);
+    // Deleting a whole bookmarked line removes its bookmark; lines below move up.
+    buffer.edit(vec![range((3, 0), (4, 0))], vec!["".into()], EditKind::Deletion, vec![]);
+    assert_eq!(buffer.bookmarks(), vec![4]);
+    assert_eq!(buffer.text(), "zero\n\n\ntwo\nthree\nfour\n");
+    // Undo brings the text back; the bookmark stays with "three".
+    buffer.undo();
+    assert_eq!(buffer.bookmarks(), vec![5]);
+    assert!(!buffer.toggle_bookmark(5));
+    assert!(buffer.bookmarks().is_empty());
+}
+
+#[test]
+fn bookmark_navigation_copy_and_delete() {
+    let buffer = TextBuffer::with_text("keep\nTODO one\nkeep\nTODO two\nkeep".into());
+    assert_eq!(buffer.bookmark_matching_lines(search("TODO", false)).unwrap(), 2);
+    assert_eq!(buffer.next_bookmark(0, true), Some(1));
+    assert_eq!(buffer.next_bookmark(1, true), Some(3));
+    assert_eq!(buffer.next_bookmark(3, true), Some(1)); // wraps
+    assert_eq!(buffer.next_bookmark(1, false), Some(3)); // wraps backward
+    assert_eq!(buffer.bookmarked_text(), "TODO one\nTODO two");
+    buffer.delete_bookmarked_lines(vec![caret(0, 0)]);
+    assert_eq!(buffer.text(), "keep\nkeep\nkeep");
+    assert!(buffer.bookmarks().is_empty());
+    buffer.undo();
+    assert_eq!(buffer.text(), "keep\nTODO one\nkeep\nTODO two\nkeep");
+    buffer.clear_bookmarks();
+    assert_eq!(buffer.next_bookmark(0, true), None);
+}
+
+fn search_folder(folder: &std::path::Path, pattern: &str, include: &str, exclude: &str, everything: bool) -> (Vec<FileMatches>, FolderSearchProgress) {
+    let options = FolderSearchOptions {
+        folder: folder.to_string_lossy().into_owned(),
+        query: search(pattern, false),
+        include: include.into(),
+        exclude: exclude.into(),
+        search_everything: everything,
+    };
+    let running = FolderSearch::start(options).unwrap();
+    let mut results = Vec::new();
+    for _ in 0..500 {
+        results.extend(running.take_results());
+        if running.progress().finished {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    results.extend(running.take_results());
+    let mut names: Vec<FileMatches> = results;
+    names.sort_by(|a, b| a.path.cmp(&b.path));
+    (names, running.progress())
+}
+
+fn names(results: &[FileMatches], root: &std::path::Path) -> Vec<String> {
+    results.iter().map(|r| r.path.strip_prefix(&*root.to_string_lossy()).unwrap().trim_start_matches('/').to_string()).collect()
+}
+
+#[test]
+fn folder_search_respects_gitignore_globs_and_binaries() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let write = |name: &str, bytes: &[u8]| {
+        let path = root.join(name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    };
+    write(".gitignore", b"target/\n*.log\n");
+    write("src/main.rs", b"fn main() {\n    needle();\n    needle();\n}\n");
+    write("src/lib.swift", b"let needle = 1\n");
+    write("notes.txt", b"no match here\n");
+    write("target/debug/out.rs", b"needle\n");
+    write("debug.log", b"needle\n");
+    write(".hidden/secret.txt", b"needle\n");
+    write("image.bin", b"needle\0\0\0binary");
+    write("latin1.txt", b"caf\xe9 needle\n");
+
+    let (results, progress) = search_folder(root, "needle", "", "", false);
+    assert_eq!(names(&results, root), ["latin1.txt", "src/lib.swift", "src/main.rs"]);
+    assert!(progress.finished && !progress.hit_limit);
+    assert_eq!((progress.files_matched, progress.matches, progress.skipped_binary), (3, 4, 1));
+    let main = results.iter().find(|r| r.path.ends_with("main.rs")).unwrap();
+    assert_eq!(main.lines.iter().map(|l| l.line).collect::<Vec<_>>(), [1, 2]);
+    assert_eq!(main.lines[0].preview, "needle();");
+    // A Latin-1 file is decoded, and its columns count characters.
+    let latin = results.iter().find(|r| r.path.ends_with("latin1.txt")).unwrap();
+    assert_eq!(latin.lines[0].spans[0].start, 5);
+
+    let (results, _) = search_folder(root, "needle", "*.rs", "", false);
+    assert_eq!(names(&results, root), ["src/main.rs"]);
+    let (results, _) = search_folder(root, "needle", "", "src", false);
+    assert_eq!(names(&results, root), ["latin1.txt"]);
+    let (results, _) = search_folder(root, "needle", "*.swift, *.txt", "", false);
+    assert_eq!(names(&results, root), ["latin1.txt", "src/lib.swift"]);
+
+    // Searching everything includes ignored and hidden files, but never binaries.
+    let (results, _) = search_folder(root, "needle", "", "", true);
+    assert_eq!(names(&results, root), [".hidden/secret.txt", "debug.log", "latin1.txt", "src/lib.swift", "src/main.rs", "target/debug/out.rs"]);
+
+    // Bad input fails up front.
+    let bad = |pattern: &str, folder: &str| {
+        FolderSearch::start(FolderSearchOptions {
+            folder: folder.into(), query: search(pattern, true), include: "".into(), exclude: "".into(), search_everything: false,
+        })
+    };
+    assert!(matches!(bad("(", &root.to_string_lossy()), Err(CoreError::InvalidPattern { .. })));
+    assert!(matches!(bad("", &root.to_string_lossy()), Err(CoreError::InvalidPattern { .. })));
+    assert!(matches!(bad("x", "/definitely/not/here"), Err(CoreError::Io { .. })));
+}
+
+#[test]
+fn replacing_in_a_file_keeps_its_format_and_a_backup() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("windows.txt");
+    let backup = dir.path().join("backup");
+    // Windows-1252 with CRLF line endings.
+    std::fs::write(&path, b"caf\xe9 = 1\r\nother = 1\r\n").unwrap();
+    let file = path.to_string_lossy().into_owned();
+    let preview = preview_file_replacements(file.clone(), search("= 1", false), "= 2".into(), 10).unwrap();
+    assert_eq!(preview.len(), 2);
+    assert_eq!((preview[0].before.as_str(), preview[0].after.as_str()), ("café = 1", "café = 2"));
+    let count = replace_in_file(file.clone(), search("= 1", false), "= 2".into(), backup.to_string_lossy().into_owned()).unwrap();
+    assert_eq!(count, 2);
+    assert_eq!(std::fs::read(&path).unwrap(), b"caf\xe9 = 2\r\nother = 2\r\n");
+    assert_eq!(std::fs::read(&backup).unwrap(), b"caf\xe9 = 1\r\nother = 1\r\n");
+    // No matches: the file and backup are left alone.
+    std::fs::remove_file(&backup).unwrap();
+    assert_eq!(replace_in_file(file, search("zzz", false), "y".into(), backup.to_string_lossy().into_owned()).unwrap(), 0);
+    assert!(!backup.exists());
+}
+
+#[test]
+fn folder_search_stops_promptly_inside_a_huge_file() {
+    let dir = tempfile::tempdir().unwrap();
+    // 48 MB of words: slow to search with a pattern that can't use literal shortcuts.
+    let line = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod\n";
+    std::fs::write(dir.path().join("huge.txt"), line.repeat(48 * 1024 * 1024 / line.len())).unwrap();
+    let running = FolderSearch::start(FolderSearchOptions {
+        folder: dir.path().to_string_lossy().into_owned(),
+        query: search(r"(?:\w{1,12}\s+){6}zzqq\d", true),
+        include: "".into(),
+        exclude: "".into(),
+        search_everything: true,
+    })
+    .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cancelled_at = std::time::Instant::now();
+    running.cancel();
+    // The worker notices within a chunk or two, not after the whole file.
+    while !running.progress().finished {
+        assert!(cancelled_at.elapsed() < std::time::Duration::from_secs(3), "search didn't stop");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(running.take_results().is_empty());
+}
+
+#[test]
+fn chunked_matching_finds_matches_across_chunk_edges() {
+    let mut text = "a".repeat(8 * 1024 * 1024 - 3);
+    text.push_str("needle");
+    text.push_str(&"b".repeat(100));
+    let regex = regex::Regex::new("needle").unwrap();
+    assert_eq!(search::has_match(&text, &regex, &|| false), Some(true));
+    assert_eq!(search::has_match(&text, &regex::Regex::new("zz").unwrap(), &|| false), Some(false));
+    assert_eq!(search::has_match(&text, &regex, &|| true), None);
+}

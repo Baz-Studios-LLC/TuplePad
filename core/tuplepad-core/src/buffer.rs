@@ -18,6 +18,10 @@ use crate::types::{EditKind, FileInfo, LineEnding, TextPos, TextSelection};
 mod tools;
 pub use tools::BracketMatch;
 
+#[path = "buffer_search.rs"]
+mod marks;
+pub use marks::LineResults;
+
 #[path = "buffer_files.rs"]
 mod files;
 pub use files::{AppendResult, DiskStatus};
@@ -52,6 +56,8 @@ struct State {
     syntax: Option<Syntax>,
     /// The file as it was when the text last matched it.
     disk: Option<files::DiskStamp>,
+    /// Bookmarked lines (0-based). They move with edits; lines past the end are ignored.
+    bookmarks: std::collections::BTreeSet<usize>,
 }
 
 #[uniffi::export]
@@ -103,14 +109,9 @@ impl TextBuffer {
     /// Reads a file from disk, detecting its encoding and line endings.
     #[uniffi::constructor]
     pub fn open(path: String) -> CoreResult<Arc<Self>> {
-        let bytes = fs::read(&path).map_err(|e| CoreError::Io { message: format!("{path}: {e}") })?;
-        let decoded = encoding::decode(bytes);
-        let mut state = State::new(&decoded.text, decoded.encoding);
-        state.path = Some(PathBuf::from(path));
-        state.had_decode_errors = decoded.had_errors;
-        state.stamp_disk();
-        state.detect_language();
-        Ok(Arc::new(TextBuffer { state: RwLock::new(state) }))
+        let buffer = Self::open_without_syntax(path)?;
+        buffer.write().detect_language();
+        Ok(buffer)
     }
 
     // MARK: Reading
@@ -492,6 +493,17 @@ impl TextBuffer {
 }
 
 impl TextBuffer {
+    /// Reads a file without parsing it for highlighting, for tools that only change its text.
+    pub(crate) fn open_without_syntax(path: String) -> CoreResult<Arc<Self>> {
+        let bytes = fs::read(&path).map_err(|e| CoreError::Io { message: format!("{path}: {e}") })?;
+        let decoded = encoding::decode(bytes);
+        let mut state = State::new(&decoded.text, decoded.encoding);
+        state.path = Some(PathBuf::from(path));
+        state.had_decode_errors = decoded.had_errors;
+        state.stamp_disk();
+        Ok(Arc::new(TextBuffer { state: RwLock::new(state) }))
+    }
+
     fn read(&self) -> RwLockReadGuard<'_, State> {
         self.state.read().unwrap_or_else(|e| e.into_inner())
     }
@@ -517,6 +529,7 @@ impl State {
             version: 0,
             syntax: None,
             disk: None,
+            bookmarks: Default::default(),
         }
     }
 
@@ -552,6 +565,7 @@ impl State {
 
     /// Replaces the chars `at..end` with `text`, keeping the syntax tree and line lengths in step.
     fn replace_chars(&mut self, at: usize, end: usize, text: &str) {
+        let bookmark_edit = (!self.bookmarks.is_empty()).then(|| self.line_edit_start(at, end));
         let edit = self.syntax.is_some().then(|| {
             syntax::edit_start(&self.rope, self.rope.char_to_byte(at), self.rope.char_to_byte(end))
         });
@@ -564,7 +578,11 @@ impl State {
         if let (Some(syntax), Some(edit)) = (self.syntax.as_mut(), edit) {
             syntax.edit(&syntax::finish_edit(&self.rope, edit, text.len()));
         }
-        self.note_line_lengths(at, at + text.chars().count());
+        let inserted_end = at + text.chars().count();
+        if let Some(line_edit) = bookmark_edit {
+            self.move_bookmarks(line_edit, inserted_end);
+        }
+        self.note_line_lengths(at, inserted_end);
     }
 
     fn clamp_line(&self, line: u64) -> usize {

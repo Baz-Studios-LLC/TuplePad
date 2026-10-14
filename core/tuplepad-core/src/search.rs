@@ -76,12 +76,101 @@ pub(crate) fn find(
     replacement: Option<&str>,
     limit: usize,
 ) -> (Vec<Found>, bool) {
-    let total = rope.len_chars();
     let mut found = Vec::new();
+    let stopped = visit(rope, regex, query, replacement, |f| {
+        found.push(f);
+        found.len() < limit
+    });
+    (found, stopped)
+}
+
+/// How many matches there are, without keeping them.
+pub(crate) fn count(rope: &Rope, regex: &Regex, query: &SearchQuery) -> u64 {
+    let mut total = 0;
+    visit(rope, regex, query, None, |_| {
+        total += 1;
+        true
+    });
+    total
+}
+
+/// Calls `each` with every match in document order until it returns false. Returns whether it
+/// stopped early.
+pub(crate) fn visit(
+    rope: &Rope,
+    regex: &Regex,
+    query: &SearchQuery,
+    replacement: Option<&str>,
+    each: impl FnMut(Found) -> bool,
+) -> bool {
+    visit_until(rope, regex, query, replacement, &|| false, each)
+}
+
+/// Like `find`, but gives up (returning nil) as soon as `cancelled` is set, checking between windows.
+pub(crate) fn find_cancellable(
+    rope: &Rope,
+    regex: &Regex,
+    query: &SearchQuery,
+    limit: usize,
+    cancelled: &dyn Fn() -> bool,
+) -> Option<(Vec<Found>, bool)> {
+    let mut found = Vec::new();
+    let stopped = visit_until(rope, regex, query, None, cancelled, |f| {
+        found.push(f);
+        found.len() < limit
+    });
+    if cancelled() {
+        return None;
+    }
+    Some((found, stopped))
+}
+
+/// Whether `text` has a match, checking `cancelled` between chunks of a large text (nil if cancelled).
+/// Chunks overlap, so a match up to the overlap's length is never split.
+pub(crate) fn has_match(text: &str, regex: &Regex, cancelled: &dyn Fn() -> bool) -> Option<bool> {
+    const CHUNK: usize = 8 * 1024 * 1024;
+    const OVERLAP: usize = 64 * 1024;
+    if text.len() <= CHUNK {
+        return Some(regex.is_match(text));
+    }
+    let mut start = 0;
+    loop {
+        if cancelled() {
+            return None;
+        }
+        let mut end = (start + CHUNK).min(text.len());
+        while !text.is_char_boundary(end) {
+            end += 1;
+        }
+        if regex.is_match(&text[start..end]) {
+            return Some(true);
+        }
+        if end == text.len() {
+            return Some(false);
+        }
+        start = end - OVERLAP;
+        while !text.is_char_boundary(start) {
+            start -= 1;
+        }
+    }
+}
+
+fn visit_until(
+    rope: &Rope,
+    regex: &Regex,
+    query: &SearchQuery,
+    replacement: Option<&str>,
+    cancelled: &dyn Fn() -> bool,
+    mut each: impl FnMut(Found) -> bool,
+) -> bool {
+    let total = rope.len_chars();
     let mut window_start = 0;
     // Matches before this char were already reported by the previous window.
     let mut accept_from = 0;
     loop {
+        if cancelled() {
+            return true;
+        }
         let window_end = (window_start + WINDOW_CHARS).min(total);
         let last_window = window_end == total;
         let text = rope.slice(window_start..window_end).to_string();
@@ -111,18 +200,142 @@ pub(crate) fn find(
                     template.to_string()
                 }
             });
-            found.push(Found { start, end, replacement: expanded });
-            if found.len() >= limit {
-                return (found, true);
+            if !each(Found { start, end, replacement: expanded }) {
+                return true;
             }
         }
 
         if last_window {
-            return (found, false);
+            return false;
         }
         accept_from = accept_until;
         window_start = window_end - OVERLAP_CHARS;
     }
+}
+
+/// Where a match sits in its line, in UTF-16 columns.
+#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MatchSpan {
+    pub start: u32,
+    pub end: u32,
+}
+
+/// The matches on one line, with a short excerpt of the line to show in search results.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct LineMatches {
+    /// 0-based.
+    pub line: u64,
+    /// The line without its leading indentation, cut down around the first match if it's long.
+    pub preview: String,
+    /// The UTF-16 column in the line where `preview` starts.
+    pub preview_start: u32,
+    /// The matches, in UTF-16 columns of the whole line. A match that runs onto later lines
+    /// ends at the end of this one.
+    pub spans: Vec<MatchSpan>,
+}
+
+/// A line of search results is cut down to about this many UTF-16 units.
+const PREVIEW_LENGTH: usize = 240;
+/// …starting this far before the first match when it has to be cut.
+const PREVIEW_LEAD: usize = 48;
+
+/// Groups matches (in document order) by line, with previews. At most `max_lines` lines.
+pub(crate) fn group_by_line(rope: &Rope, found: &[Found], max_lines: usize) -> Vec<LineMatches> {
+    let mut lines: Vec<LineMatches> = Vec::new();
+    for f in found {
+        let line = rope.char_to_line(f.start);
+        let first_char = rope.line_to_char(line);
+        let content = line_content(rope, line);
+        let start = (rope.char_to_utf16_cu(f.start) - rope.char_to_utf16_cu(first_char)) as u32;
+        let end_char = f.end.min(first_char + content.len_chars());
+        let end = (rope.char_to_utf16_cu(end_char) - rope.char_to_utf16_cu(first_char)) as u32;
+        let span = MatchSpan { start, end: end.max(start) };
+        match lines.last_mut() {
+            Some(last) if last.line == line as u64 => last.spans.push(span),
+            _ => {
+                if lines.len() == max_lines {
+                    break;
+                }
+                let (preview, preview_start) = preview(content, span.start as usize);
+                lines.push(LineMatches { line: line as u64, preview, preview_start, spans: vec![span] });
+            }
+        }
+    }
+    lines
+}
+
+/// A line without its trailing line break.
+pub(crate) fn line_content(rope: &Rope, line: usize) -> ropey::RopeSlice<'_> {
+    let slice = rope.line(line);
+    let len = slice.len_chars();
+    let trim = match (len.checked_sub(2).map(|i| slice.char(i)), len.checked_sub(1).map(|i| slice.char(i))) {
+        (Some('\r'), Some('\n')) => 2,
+        (_, Some('\n' | '\r')) => 1,
+        _ => 0,
+    };
+    slice.slice(..len - trim)
+}
+
+/// An excerpt of a line for search results, and the UTF-16 column it starts at.
+fn preview(content: ropey::RopeSlice<'_>, first_match: usize) -> (String, u32) {
+    let indent = content.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+    let total = content.len_utf16_cu();
+    // Skip indentation, and if the line is long, start a little before the first match.
+    let mut start = content.char_to_utf16_cu(indent).min(first_match);
+    if total - start > PREVIEW_LENGTH && first_match > start + PREVIEW_LEAD {
+        start = first_match - PREVIEW_LEAD;
+    }
+    let start_char = content.utf16_cu_to_char(start);
+    let end_char = content.utf16_cu_to_char((start + PREVIEW_LENGTH).min(total));
+    let start = content.char_to_utf16_cu(start_char);
+    (content.slice(start_char..end_char).to_string(), start as u32)
+}
+
+/// One changed stretch of lines, before and after a replacement.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct ReplacementPreview {
+    /// 0-based first line of the stretch.
+    pub line: u64,
+    pub before: String,
+    pub after: String,
+}
+
+/// What replacing every match would do, line by line. At most `max_groups` stretches.
+pub(crate) fn preview_replacements(rope: &Rope, found: &[Found], max_groups: usize) -> Vec<ReplacementPreview> {
+    let mut groups: Vec<(usize, usize, Vec<&Found>)> = Vec::new();
+    for f in found {
+        let first = rope.char_to_line(f.start);
+        let last = rope.char_to_line(f.end.max(f.start));
+        match groups.last_mut() {
+            Some(group) if first <= group.1 => {
+                group.1 = group.1.max(last);
+                group.2.push(f);
+            }
+            _ => {
+                if groups.len() == max_groups {
+                    break;
+                }
+                groups.push((first, last, vec![f]));
+            }
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(first, last, matches)| {
+            let start = rope.line_to_char(first);
+            let end = rope.line_to_char(last) + line_content(rope, last).len_chars();
+            let before = rope.slice(start..end).to_string();
+            let mut after = String::with_capacity(before.len());
+            let mut copied = start;
+            for f in matches {
+                after.extend(rope.slice(copied..f.start).chunks());
+                after.push_str(f.replacement.as_deref().unwrap_or(""));
+                copied = f.end;
+            }
+            after.extend(rope.slice(copied..end).chunks());
+            ReplacementPreview { line: first as u64, before, after }
+        })
+        .collect()
 }
 
 #[cfg(test)]
