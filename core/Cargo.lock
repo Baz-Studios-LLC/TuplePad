@@ -983,6 +983,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "tuplepad-cli"
+version = "0.1.0"
+
+[[package]]
 name = "tuplepad-core"
 version = "0.1.0"
 dependencies = [

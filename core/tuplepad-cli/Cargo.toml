@@ -1,0 +1,11 @@
+[package]
+name = "tuplepad-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The `tuplepad` terminal command: opens files in TuplePad."
+
+[[bin]]
+name = "tuplepad"
+path = "src/main.rs"

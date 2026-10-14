@@ -18,6 +18,10 @@ use crate::types::{EditKind, FileInfo, LineEnding, TextPos, TextSelection};
 mod tools;
 pub use tools::BracketMatch;
 
+#[path = "buffer_files.rs"]
+mod files;
+pub use files::{AppendResult, DiskStatus};
+
 /// The result of a search: matches in document order (anchor = start, head = end).
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
 pub struct SearchResults {
@@ -46,6 +50,8 @@ struct State {
     version: u64,
     /// The language's parser and syntax tree, if the document has a language.
     syntax: Option<Syntax>,
+    /// The file as it was when the text last matched it.
+    disk: Option<files::DiskStamp>,
 }
 
 #[uniffi::export]
@@ -80,6 +86,7 @@ impl TextBuffer {
         if modified {
             state.history.mark_unsaved();
         }
+        state.stamp_disk();
         state.detect_language();
         Ok(Arc::new(TextBuffer { state: RwLock::new(state) }))
     }
@@ -92,6 +99,7 @@ impl TextBuffer {
         let mut state = State::new(&decoded.text, decoded.encoding);
         state.path = Some(PathBuf::from(path));
         state.had_decode_errors = decoded.had_errors;
+        state.stamp_disk();
         state.detect_language();
         Ok(Arc::new(TextBuffer { state: RwLock::new(state) }))
     }
@@ -448,6 +456,7 @@ impl TextBuffer {
         let path = st.path.clone().ok_or(CoreError::NoPath)?;
         st.write_to(&path)?;
         st.mark_saved();
+        st.stamp_disk();
         Ok(())
     }
 
@@ -457,6 +466,7 @@ impl TextBuffer {
         st.write_to(&path)?;
         st.path = Some(path);
         st.mark_saved();
+        st.stamp_disk();
         if st.syntax.is_none() {
             st.detect_language();
             st.version += 1;
@@ -497,6 +507,7 @@ impl State {
             max_line_bytes: scan.max_line_bytes,
             version: 0,
             syntax: None,
+            disk: None,
         }
     }
 

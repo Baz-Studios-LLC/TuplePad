@@ -12,7 +12,7 @@ mod transform;
 mod types;
 mod wrap;
 
-pub use buffer::{BracketMatch, SearchResults, TextBuffer};
+pub use buffer::{AppendResult, BracketMatch, DiskStatus, SearchResults, TextBuffer};
 pub use encoding::{TextEncoding, supported_encodings};
 pub use error::CoreError;
 pub use search::SearchQuery;
