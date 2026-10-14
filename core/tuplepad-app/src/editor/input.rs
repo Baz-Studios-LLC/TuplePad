@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use tuplepad_core::{EditKind, Motion, TextBuffer, TextPos, TextSelection, normalize_cursors, now_seconds};
 
-use super::{Drag, Editor};
+use super::{Drag, Editor, TextDrag};
 
 const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 
@@ -59,6 +59,24 @@ impl Editor {
         }
         self.goals = None;
         self.touch();
+        self.reveal();
+    }
+
+    /// The text was replaced some other way (reload, another encoding, new line endings): keep
+    /// the carets in bounds and re-measure everything.
+    pub fn text_replaced(&mut self) {
+        self.preedit.clear();
+        self.note_any_edit();
+        let buffer = self.buffer();
+        let cursors: Vec<TextSelection> = self
+            .doc()
+            .cursors
+            .iter()
+            .map(|c| TextSelection { anchor: buffer.clamp(c.anchor), head: buffer.clamp(c.head) })
+            .collect();
+        self.doc_mut().cursors = normalize_cursors(cursors);
+        self.doc_mut().last_edited = now_seconds();
+        self.invalidate();
         self.reveal();
     }
 
@@ -333,6 +351,18 @@ impl Editor {
         self.preedit.clear();
         self.buffer().break_undo_coalescing();
 
+        // Pressing inside a selection may start dragging its text.
+        let inside = self.doc().cursors.iter().find(|c| c.anchor != c.head && c.start() <= pos && pos < c.end()).copied();
+        if let Some(selection) = inside
+            && count == 1
+            && !add
+            && !column
+            && !shift
+        {
+            self.text_drag = Some(TextDrag { selection, origin: (x, y), started: false, target: None });
+            self.drag = None;
+            return;
+        }
         if column && !add && !shift {
             self.column_drag = Some((pos.line, x + self.doc().scroll_x as f32));
             self.drag = None;
@@ -363,6 +393,22 @@ impl Editor {
     }
 
     pub fn pointer_drag(&mut self, x: f32, y: f32) {
+        if let Some(drag) = self.text_drag.as_ref() {
+            let (ox, oy) = drag.origin;
+            let started = drag.started || (x - ox).abs() > 4.0 || (y - oy).abs() > 4.0;
+            if y < 0.0 {
+                self.scroll_by(0.0, (-y).min(self.line_height * 3.0));
+            } else if y > self.height {
+                self.scroll_by(0.0, -(y - self.height).min(self.line_height * 3.0));
+            }
+            let target = started.then(|| self.hit(x, y));
+            if let Some(drag) = self.text_drag.as_mut() {
+                drag.started = started;
+                drag.target = target;
+            }
+            self.touch();
+            return;
+        }
         if let Some((line, start_x)) = self.column_drag {
             self.column_select(line, start_x, x, y);
             return;
@@ -397,9 +443,25 @@ impl Editor {
         self.touch();
     }
 
-    pub fn pointer_up(&mut self) {
+    /// Ends a drag. Dropped text moves, or is copied with ⌥ (Alt) held.
+    pub fn pointer_up(&mut self, copy: bool) {
         self.drag = None;
         self.column_drag = None;
+        let Some(drag) = self.text_drag.take() else { return };
+        if !drag.started {
+            // A click inside a selection just places the caret.
+            let pos = self.hit(drag.origin.0, drag.origin.1);
+            self.doc_mut().cursors = vec![TextSelection::caret(pos)];
+            return;
+        }
+        let Some(target) = drag.target else { return };
+        let buffer = self.buffer();
+        if let Some(moved) = buffer.move_text(drag.selection, target, copy) {
+            self.note_any_edit();
+            self.doc_mut().cursors = vec![moved];
+            self.doc_mut().last_edited = now_seconds();
+            self.reveal();
+        }
     }
 
     /// A rectangular selection from where the drag started: the same columns (by x) on every

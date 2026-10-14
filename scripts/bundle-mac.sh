@@ -15,17 +15,20 @@ PROFILE="${1:-release}"
 MINIMUM_MACOS=11.0
 
 if [ "$PROFILE" = "release" ]; then
-    cargo build --release --quiet --manifest-path "$ROOT/core/Cargo.toml" -p tuplepad-app
+    cargo build --release --quiet --manifest-path "$ROOT/core/Cargo.toml" -p tuplepad-app -p tuplepad-cli
 else
-    cargo build --quiet --manifest-path "$ROOT/core/Cargo.toml" -p tuplepad-app
+    cargo build --quiet --manifest-path "$ROOT/core/Cargo.toml" -p tuplepad-app -p tuplepad-cli
 fi
-BINARY="$ROOT/core/target/$PROFILE/TuplePad"
+BINARY="$ROOT/core/target/$PROFILE/tuplepad-app"
+TOOL="$ROOT/core/target/$PROFILE/tuplepad"
 
 APP="$ROOT/build/TuplePad.app"
 STAGE="$ROOT/build/TuplePad.app.tmp"
 rm -rf "$STAGE"
-mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
+mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources" "$STAGE/Contents/Helpers"
 cp "$BINARY" "$STAGE/Contents/MacOS/TuplePad"
+# The `tuplepad` terminal command (File ▸ Install Command Line Tool… links it onto the PATH).
+cp "$TOOL" "$STAGE/Contents/Helpers/tuplepad"
 
 # The icon: Assets.car (with the dark and tinted looks) plus AppIcon.icns for older systems.
 PARTIAL="$ROOT/build/icon-partial.plist"
@@ -54,6 +57,7 @@ set_key NSHighResolutionCapable bool true
 set_key NSSupportsAutomaticGraphicsSwitching bool true
 set_key NSHumanReadableCopyright string "MIT License"
 
+codesign --force --sign - "$STAGE/Contents/Helpers/tuplepad" >/dev/null 2>&1
 codesign --force --sign - "$STAGE" >/dev/null 2>&1
 rm -rf "$APP"
 mv "$STAGE" "$APP"

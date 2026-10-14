@@ -1,0 +1,119 @@
+import { Theme } from "theme.slint";
+import { PillButton } from "sidebar.slint";
+
+// An on/off switch with a label.
+export component Toggle inherits Rectangle {
+    in-out property <bool> on;
+    in property <string> text;
+    callback toggled(on: bool);
+    height: 28px;
+
+    HorizontalLayout {
+        spacing: 11px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 34px;
+                height: 20px;
+                border-radius: 10px;
+                background: root.on ? Theme.accent : Theme.control-pressed;
+                animate background { duration: 120ms; }
+                Rectangle {
+                    x: root.on ? parent.width - self.width - 2px : 2px;
+                    y: 2px;
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 8px;
+                    background: #FFFFFF;
+                    drop-shadow-blur: 2px;
+                    drop-shadow-offset-y: 1px;
+                    drop-shadow-color: #00000033;
+                    animate x { duration: 140ms; easing: ease-out; }
+                }
+            }
+        }
+        Text {
+            text: root.text;
+            font-size: 13px;
+            color: Theme.primary-text;
+            vertical-alignment: center;
+        }
+    }
+
+    TouchArea {
+        clicked => {
+            root.on = !root.on;
+            root.toggled(root.on);
+        }
+    }
+}
+
+// A card over a dimmed window, for short questions and options. Return accepts, Esc cancels.
+export component Sheet inherits Rectangle {
+    in property <string> title;
+    in property <string> accept-title: "OK";
+    callback accept();
+    callback cancel();
+
+    background: Theme.scrim;
+
+    // Clicks outside the card don't reach the window behind it.
+    TouchArea { }
+
+    keys := FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                root.cancel();
+                return EventResult.accept;
+            }
+            if event.text == Key.Return {
+                root.accept();
+                return EventResult.accept;
+            }
+            return EventResult.reject;
+        }
+    }
+
+    card := Rectangle {
+        width: 400px;
+        x: (parent.width - self.width) / 2;
+        y: max(60px, (parent.height - self.height) / 3);
+        height: content.preferred-height;
+        border-radius: 14px;
+        background: Theme.header-background;
+        border-width: 1px;
+        border-color: Theme.separator;
+        drop-shadow-blur: 34px;
+        drop-shadow-offset-y: 12px;
+        drop-shadow-color: #00000059;
+
+        content := VerticalLayout {
+            padding: 22px;
+            padding-top: 20px;
+            spacing: 14px;
+            Text {
+                text: root.title;
+                font-size: 15px;
+                font-weight: 650;
+                color: Theme.primary-text;
+                overflow: elide;
+            }
+            @children
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                padding-top: 6px;
+                PillButton {
+                    text: "Cancel";
+                    clicked => { root.cancel(); }
+                }
+                PillButton {
+                    text: root.accept-title;
+                    primary: true;
+                    clicked => { root.accept(); }
+                }
+            }
+        }
+    }
+}

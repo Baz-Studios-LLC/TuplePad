@@ -1,61 +1,258 @@
 import { Palette } from "std-widgets.slint";
 
-// TuplePad's colors: ivory paper and navy ink by day, ivory on midnight blue at night.
-// Syntax colors are indexed by `Span.style`: 0 is plain text, 1–23 follow HighlightStyle in the
-// core, and 24 is invisible characters.
+// The colors of one theme in light or dark. Syntax colors are indexed by `Span.style`: 0 is plain
+// text, 1–23 follow HighlightStyle in the core (keyword, string, escape, comment, number,
+// constant, function, type, variable, property, operator, punctuation, tag, attribute, label,
+// namespace, heading, emphasis, strong, link, code, inserted, deleted), and 24 is invisibles.
+export struct ThemeColors {
+    accent: color,
+    accent-text: color,
+    editor-background: color,
+    text: color,
+    line-number: color,
+    current-line-number: color,
+    current-line: color,
+    selection: color,
+    occurrence: color,
+    bracket: color,
+    bracket-border: color,
+    caret: color,
+    preedit-underline: color,
+    indent-guide: color,
+    sidebar-background: color,
+    sidebar-hover: color,
+    separator: color,
+    header-background: color,
+    status-background: color,
+    primary-text: color,
+    secondary-text: color,
+    tertiary-text: color,
+    scrollbar-thumb: color,
+    control-hover: color,
+    control-pressed: color,
+    icon: color,
+    control-border: color,
+    scrim: color,
+    drop-tint: color,
+    selected-row: color,
+    selected-row-text: color,
+    selected-row-detail: color,
+    selected-badge: color,
+    syntax: [color],
+}
+
+// The themes. TuplePad is neutral, with midnight blue only as the accent; Midnight is ivory and
+// navy by day and ivory on midnight blue at night.
+global Themes {
+    out property <ThemeColors> tuplepad-light: {
+        accent: #103474,
+        accent-text: #FFFFFF,
+        editor-background: #FFFFFF,
+        text: #1D1D1F,
+        line-number: #B4B4BA,
+        current-line-number: #6E6E73,
+        current-line: #0000000A,
+        selection: #10347429,
+        occurrence: #10347414,
+        bracket: #10347420,
+        bracket-border: #10347459,
+        caret: #103474,
+        preedit-underline: #103474,
+        indent-guide: #00000012,
+        sidebar-background: #F4F4F6,
+        sidebar-hover: #0000000A,
+        separator: #E2E2E6,
+        header-background: #FFFFFF,
+        status-background: #FAFAFB,
+        primary-text: #1D1D1F,
+        secondary-text: #86868B,
+        tertiary-text: #AEAEB2,
+        scrollbar-thumb: #0000004D,
+        control-hover: #0000000D,
+        control-pressed: #00000017,
+        icon: #6E6E73,
+        control-border: #00000024,
+        scrim: #00000038,
+        drop-tint: #10347414,
+        selected-row: #E3E4E9,
+        selected-row-text: #1D1D1F,
+        selected-row-detail: #6E6E73,
+        selected-badge: #FFFFFFCC,
+        syntax: [
+            #1D1D1F, #7C3AAD, #A3611B, #C2402A, #8B93A1, #C2410C, #C2410C, #2F5FC4, #0E7C86,
+            #1D1D1F, #3E5F7D, #1F7FA8, #6B7280, #C2273D, #A15C00, #7C3AAD, #3E5F7D, #2F5FC4,
+            #1D1D1F, #1D1D1F, #1F7FA8, #A3611B, #2E7D32, #C2273D, #C7C7CC,
+        ],
+    };
+    out property <ThemeColors> tuplepad-dark: {
+        accent: #2F5596,
+        accent-text: #FFFFFF,
+        editor-background: #1E1E21,
+        text: #E6E6E9,
+        line-number: #55555B,
+        current-line-number: #A1A1A6,
+        current-line: #FFFFFF0A,
+        selection: #4A6FB866,
+        occurrence: #FFFFFF14,
+        bracket: #8AB4FF29,
+        bracket-border: #8AB4FF73,
+        caret: #8AB4FF,
+        preedit-underline: #8AB4FF,
+        indent-guide: #FFFFFF10,
+        sidebar-background: #252528,
+        sidebar-hover: #FFFFFF0D,
+        separator: #333337,
+        header-background: #1E1E21,
+        status-background: #1A1A1D,
+        primary-text: #E6E6E9,
+        secondary-text: #98989D,
+        tertiary-text: #6E6E73,
+        scrollbar-thumb: #FFFFFF40,
+        control-hover: #FFFFFF12,
+        control-pressed: #FFFFFF1F,
+        icon: #A1A1A6,
+        control-border: #FFFFFF26,
+        scrim: #000000A0,
+        drop-tint: #3B66C433,
+        selected-row: #3A3A3F,
+        selected-row-text: #F2F2F4,
+        selected-row-detail: #A1A1A6,
+        selected-badge: #FFFFFF1A,
+        syntax: [
+            #E6E6E9, #C792EA, #E5B97A, #F2A07A, #7D8799, #F78C6C, #F78C6C, #82AAFF, #7FD1D9,
+            #E6E6E9, #B2CCD6, #89DDFF, #9AA3B2, #F07178, #FFCB6B, #C792EA, #B2CCD6, #82AAFF,
+            #E6E6E9, #E6E6E9, #89DDFF, #E5B97A, #8FD1A0, #F07178, #48484E,
+        ],
+    };
+    out property <ThemeColors> midnight-light: {
+        accent: #103474,
+        accent-text: #FFF8EC,
+        editor-background: #FFF8EC,
+        text: #1B2A4A,
+        line-number: #C4B9A5,
+        current-line-number: #6E6450,
+        current-line: #1034740A,
+        selection: #1034742E,
+        occurrence: #10347414,
+        bracket: #10347424,
+        bracket-border: #10347466,
+        caret: #103474,
+        preedit-underline: #103474,
+        indent-guide: #1B2A4A14,
+        sidebar-background: #F3EADA,
+        sidebar-hover: #1034740D,
+        separator: #E6DAC4,
+        header-background: #FFF8EC,
+        status-background: #F9F1E2,
+        primary-text: #1B2A4A,
+        secondary-text: #8C826F,
+        tertiary-text: #B3A891,
+        scrollbar-thumb: #1B2A4A40,
+        control-hover: #1B2A4A0F,
+        control-pressed: #1B2A4A1A,
+        icon: #7A705D,
+        control-border: #1B2A4A29,
+        scrim: #1B2A4A47,
+        drop-tint: #1034741A,
+        selected-row: #103474,
+        selected-row-text: #FFF8EC,
+        selected-row-detail: #FFF8ECB8,
+        selected-badge: #FFFFFF22,
+        syntax: [
+            #1B2A4A, #6B3FA0, #9A5B13, #B4441B, #9A917F, #B4441B, #B4441B, #1F4FA8, #0F6E7A,
+            #1B2A4A, #3D5878, #2C6E99, #6D6457, #B02A44, #8C5A00, #6B3FA0, #3D5878, #103474,
+            #1B2A4A, #1B2A4A, #2C6E99, #9A5B13, #3D7A3A, #B02A44, #CFC4AE,
+        ],
+    };
+    out property <ThemeColors> midnight-dark: {
+        accent: #2B4C8F,
+        accent-text: #FFF8EC,
+        editor-background: #0F1A2E,
+        text: #ECE4D4,
+        line-number: #3E4D70,
+        current-line-number: #A9B7D6,
+        current-line: #FFFFFF0B,
+        selection: #3D63B066,
+        occurrence: #FFFFFF14,
+        bracket: #9DBEFF33,
+        bracket-border: #9DBEFF80,
+        caret: #9DBEFF,
+        preedit-underline: #9DBEFF,
+        indent-guide: #FFFFFF12,
+        sidebar-background: #0A1322,
+        sidebar-hover: #FFFFFF0D,
+        separator: #1B2842,
+        header-background: #0F1A2E,
+        status-background: #0C1627,
+        primary-text: #ECE4D4,
+        secondary-text: #7E8BA8,
+        tertiary-text: #56637F,
+        scrollbar-thumb: #FFFFFF38,
+        control-hover: #FFFFFF12,
+        control-pressed: #FFFFFF1F,
+        icon: #A3AFC9,
+        control-border: #FFFFFF2E,
+        scrim: #000000A0,
+        drop-tint: #3B66C433,
+        selected-row: #2B4C8F,
+        selected-row-text: #FFF8EC,
+        selected-row-detail: #FFF8ECB8,
+        selected-badge: #FFFFFF22,
+        syntax: [
+            #ECE4D4, #C3A6FF, #F2C48D, #F5A97F, #6F7F9C, #FF9E80, #FF9E80, #8AB4FF, #7FD8E8,
+            #ECE4D4, #B9C9E8, #8FD0F0, #8D9AB5, #FF8FA3, #FFD27F, #C3A6FF, #B9C9E8, #8AB4FF,
+            #ECE4D4, #ECE4D4, #8FD0F0, #F2C48D, #9BD8A5, #FF8FA3, #3A4A6C,
+        ],
+    };
+}
 
 export global Theme {
     // 0 follows the system, 1 is always light, 2 always dark.
     in-out property <int> appearance: 0;
+    // 0 TuplePad, 1 Midnight.
+    in-out property <int> theme: 0;
     out property <bool> system-dark: Palette.color-scheme == ColorScheme.dark;
     out property <bool> dark: appearance == 0 ? system-dark : appearance == 2;
+    out property <ThemeColors> colors: theme == 1
+        ? (dark ? Themes.midnight-dark : Themes.midnight-light)
+        : (dark ? Themes.tuplepad-dark : Themes.tuplepad-light);
 
-    // Brand
-    out property <color> accent: dark ? #2B4C8F : #103474;
-    out property <color> accent-text: #FFF8EC;
-
-    // Editor
-    out property <color> editor-background: dark ? #0F1A2E : #FFF8EC;
-    out property <color> text: dark ? #ECE4D4 : #1B2A4A;
-    out property <color> line-number: dark ? #3E4D70 : #C4B9A5;
-    out property <color> current-line-number: dark ? #A9B7D6 : #6E6450;
-    out property <color> current-line: dark ? #FFFFFF0B : #1034740A;
-    out property <color> selection: dark ? #3D63B066 : #1034742E;
-    out property <color> occurrence: dark ? #FFFFFF14 : #10347414;
-    out property <color> bracket: dark ? #9DBEFF33 : #10347424;
-    out property <color> bracket-border: dark ? #9DBEFF80 : #10347466;
-    out property <color> caret: dark ? #9DBEFF : #103474;
-    out property <color> preedit-underline: dark ? #9DBEFF : #103474;
-    out property <color> indent-guide: dark ? #FFFFFF12 : #1B2A4A14;
-
-    // Chrome
-    out property <color> sidebar-background: dark ? #0A1322 : #F3EADA;
-    out property <color> sidebar-hover: dark ? #FFFFFF0D : #1034740D;
-    out property <color> separator: dark ? #1B2842 : #E6DAC4;
-    out property <color> header-background: dark ? #0F1A2E : #FFF8EC;
-    out property <color> status-background: dark ? #0C1627 : #F9F1E2;
-    out property <color> primary-text: dark ? #ECE4D4 : #1B2A4A;
-    out property <color> secondary-text: dark ? #7E8BA8 : #8C826F;
-    out property <color> tertiary-text: dark ? #56637F : #B3A891;
-    out property <color> scrollbar-thumb: dark ? #FFFFFF38 : #1B2A4A40;
-    out property <color> control-hover: dark ? #FFFFFF12 : #1B2A4A0F;
-    out property <color> control-pressed: dark ? #FFFFFF1F : #1B2A4A1A;
-    out property <color> icon: dark ? #A3AFC9 : #7A705D;
+    out property <color> accent: colors.accent;
+    out property <color> accent-text: colors.accent-text;
+    out property <color> editor-background: colors.editor-background;
+    out property <color> text: colors.text;
+    out property <color> line-number: colors.line-number;
+    out property <color> current-line-number: colors.current-line-number;
+    out property <color> current-line: colors.current-line;
+    out property <color> selection: colors.selection;
+    out property <color> occurrence: colors.occurrence;
+    out property <color> bracket: colors.bracket;
+    out property <color> bracket-border: colors.bracket-border;
+    out property <color> caret: colors.caret;
+    out property <color> preedit-underline: colors.preedit-underline;
+    out property <color> indent-guide: colors.indent-guide;
+    out property <color> sidebar-background: colors.sidebar-background;
+    out property <color> sidebar-hover: colors.sidebar-hover;
+    out property <color> separator: colors.separator;
+    out property <color> header-background: colors.header-background;
+    out property <color> status-background: colors.status-background;
+    out property <color> primary-text: colors.primary-text;
+    out property <color> secondary-text: colors.secondary-text;
+    out property <color> tertiary-text: colors.tertiary-text;
+    out property <color> scrollbar-thumb: colors.scrollbar-thumb;
+    out property <color> control-hover: colors.control-hover;
+    out property <color> control-pressed: colors.control-pressed;
+    out property <color> icon: colors.icon;
+    out property <color> control-border: colors.control-border;
+    out property <color> scrim: colors.scrim;
+    out property <color> drop-tint: colors.drop-tint;
+    out property <color> selected-row: colors.selected-row;
+    out property <color> selected-row-text: colors.selected-row-text;
+    out property <color> selected-row-detail: colors.selected-row-detail;
+    out property <color> selected-badge: colors.selected-badge;
+    out property <[color]> syntax: colors.syntax;
 
     // Fonts
     out property <length> ui-font-size: 13px;
     in-out property <string> mono-family: "Menlo";
-
-    // Syntax colors: plain, keyword, string, escape, comment, number, constant, function, type,
-    // variable, property, operator, punctuation, tag, attribute, label, namespace, heading,
-    // emphasis, strong, link, code, inserted, deleted, invisible.
-    out property <[color]> syntax: dark ? [
-        #ECE4D4, #C3A6FF, #F2C48D, #F5A97F, #6F7F9C, #FF9E80, #FF9E80, #8AB4FF, #7FD8E8,
-        #ECE4D4, #B9C9E8, #8FD0F0, #8D9AB5, #FF8FA3, #FFD27F, #C3A6FF, #B9C9E8, #8AB4FF,
-        #ECE4D4, #ECE4D4, #8FD0F0, #F2C48D, #9BD8A5, #FF8FA3, #3A4A6C,
-    ] : [
-        #1B2A4A, #6B3FA0, #9A5B13, #B4441B, #9A917F, #B4441B, #B4441B, #1F4FA8, #0F6E7A,
-        #1B2A4A, #3D5878, #2C6E99, #6D6457, #B02A44, #8C5A00, #6B3FA0, #3D5878, #103474,
-        #1B2A4A, #1B2A4A, #2C6E99, #9A5B13, #3D7A3A, #B02A44, #CFC4AE,
-    ];
 }

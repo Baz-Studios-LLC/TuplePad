@@ -10,8 +10,10 @@
 //! `{"select": doc}`, `{"open": path}`, `{"answer": "Save"}` (the next dialog's answer, or a
 //! path for Open and Save As), `{"set": {"showInvisibles": true}}` (settings), `{"resize": [w, h]}`,
 //! `{"preedit": "にほんご"}` and `{"commit": "日本語"}` (stand-ins for an input method, which
-//! can't be scripted), `{"clipboard": "text"}`, `{"saveSession": true}`, `{"dump": path}`,
-//! `{"menus": path}`, `{"shot": signal path}` (waits for `<path>.done`),
+//! can't be scripted), `{"hover": true}` and `{"drop": [paths]}` (stand-ins for files dragged from
+//! another app), `{"clipboard": "text"}`, `{"saveSession": true}`, `{"checkDisk": true}`, `{"dump": path}`,
+//! `{"menus": path}`, `{"shot": signal path}` and `{"signal": path}` (write the file, then wait
+//! for `<path>.done`: a harness takes a screenshot or changes files on disk meanwhile),
 //! `{"benchScroll": {"name", "frames", "dy"}}`, `{"benchType": {"name", "text"}}`,
 //! `{"benchJump": {"name", "count"}}`, `{"write": path}` and `{"quit": true}`.
 
@@ -195,9 +197,11 @@ fn run_next(app: Rc<App>, runner: Shared) {
                 let mut editor = app.editor.borrow_mut();
                 editor.pointer_down(n[0], n[1], has_mod(&step, "cmd"), has_mod(&step, "alt"), has_mod(&step, "shift"));
                 if n.len() >= 4 {
+                    // Through a point between, as a real drag would.
+                    editor.pointer_drag((n[0] + n[2]) / 2.0 + 3.0, (n[1] + n[3]) / 2.0 + 3.0);
                     editor.pointer_drag(n[2], n[3]);
                 }
-                editor.pointer_up();
+                editor.pointer_up(has_mod(&step, "copy"));
             }
         }
         "pointer" => {
@@ -255,6 +259,17 @@ fn run_next(app: Rc<App>, runner: Shared) {
         "commit" => app.editor.borrow_mut().insert_text(arg.as_str().unwrap_or_default()),
         "clipboard" => app.editor.borrow_mut().private_clipboard = Some(arg.as_str().unwrap_or_default().to_string()),
         "saveSession" => app.save_session(),
+        "checkDisk" => app.check_disk(),
+        // Stand-ins for files dragged from another app (winit events can't be scripted).
+        "hover" => crate::platform::post(crate::platform::Request::Hovering(arg.as_bool().unwrap_or(true))),
+        "drop" => {
+            crate::platform::post(crate::platform::Request::Hovering(false));
+            for path in arg.as_array().cloned().unwrap_or_default() {
+                let path = PathBuf::from(path.as_str().unwrap_or_default());
+                crate::platform::post(crate::platform::Request::Open { path, line: None, column: None });
+            }
+            return later(app, runner, 200);
+        }
         "menus" => {
             let menus = dump_menus(&ui);
             if let Some(path) = arg.as_str() {
@@ -268,7 +283,7 @@ fn run_next(app: Rc<App>, runner: Shared) {
                 let _ = std::fs::write(path, serde_json::to_string_pretty(&state).unwrap_or_default());
             }
         }
-        "shot" => {
+        "shot" | "signal" => {
             // A solid caret, not one caught mid-blink.
             app.editor.borrow_mut().touch();
             app.refresh();
@@ -334,6 +349,11 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "subtitle": ui.get_doc_subtitle().to_string(),
         "dark": ui.global::<Theme>().get_dark(),
         "sidebar": ui.get_sidebar_visible(),
+        "banner": ui.get_banner(),
+        "dropping": ui.get_dropping(),
+        "follow": doc.follow,
+        "revealed": app.revealed.borrow().clone(),
+        "printed": app.printed.borrow().clone(),
         "font": editor.family,
         "cell": cell,
         "line_height": line_height,
@@ -353,8 +373,13 @@ fn dump_menus(ui: &AppWindow) -> Value {
             .map(|e| json!({"id": e.id.as_str(), "title": e.title.as_str(), "enabled": e.enabled, "checked": e.checked, "shortcut": format!("{}", e.shortcut)}))
             .collect()
     };
+    let file: Vec<Value> = [ui.get_file_menu(), ui.get_file_menu_2(), ui.get_file_menu_3()].into_iter().flat_map(menu).collect();
     json!({
-        "File": menu(ui.get_file_menu()),
+        "File": file,
+        "Open Recent": menu(ui.get_recent_menu()),
+        "Reopen with Encoding": menu(ui.get_reopen_menu()),
+        "Convert to Encoding": menu(ui.get_convert_menu()),
+        "Line Endings": menu(ui.get_line_ending_menu()),
         "Edit": menu(ui.get_edit_menu()),
         "Selection": menu(ui.get_selection_menu()),
         "View": menu(ui.get_view_menu()),

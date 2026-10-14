@@ -24,8 +24,14 @@ pub struct Settings {
     pub highlight_current_line: bool,
     /// "system", "light" or "dark".
     pub appearance: String,
+    /// "tuplepad" or "midnight".
+    pub theme: String,
     pub sidebar_width: f32,
     pub sidebar_visible: bool,
+    /// Most recent first.
+    pub recent_files: Vec<String>,
+    pub print_line_numbers: bool,
+    pub print_colors: bool,
 }
 
 impl Default for Settings {
@@ -44,8 +50,12 @@ impl Default for Settings {
             show_indent_guides: true,
             highlight_current_line: true,
             appearance: "system".into(),
+            theme: "tuplepad".into(),
             sidebar_width: 264.0,
             sidebar_visible: true,
+            recent_files: Vec::new(),
+            print_line_numbers: true,
+            print_colors: true,
         }
     }
 }
@@ -82,6 +92,14 @@ impl Settings {
         unknown
     }
 
+    /// Puts a file at the top of Open Recent.
+    pub fn note_recent(&mut self, path: &std::path::Path) {
+        let path = path.to_string_lossy().into_owned();
+        self.recent_files.retain(|p| *p != path);
+        self.recent_files.insert(0, path);
+        self.recent_files.truncate(15);
+    }
+
     pub fn indentation(&self) -> tuplepad_core::Indentation {
         if self.indent_with_tabs {
             tuplepad_core::Indentation::Tabs
@@ -94,6 +112,10 @@ impl Settings {
 /// Where TuplePad keeps its settings and session: Application Support on a Mac, %APPDATA% on
 /// Windows, and the XDG data folder on Linux.
 pub fn data_folder() -> PathBuf {
+    // Tests run real (unscripted) launches against a folder of their own.
+    if let Some(folder) = std::env::var_os("TUPLEPAD_DATA_DIR") {
+        return PathBuf::from(folder);
+    }
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
     let base = if cfg!(target_os = "macos") {
         home.join("Library/Application Support")

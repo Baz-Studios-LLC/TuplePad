@@ -4,8 +4,8 @@
 //!     tuplepad +42 main.rs               open at line 42 (also main.rs:42 or main.rs:42:7)
 //!     git log | tuplepad -               open standard input as a new document
 //!
-//! It hands everything to the app through `tuplepad://` URLs, so it works whether or not
-//! TuplePad is already running.
+//! It hands everything to the app as `tuplepad://` links: over a local socket when TuplePad is
+//! running, or by launching the TuplePad it came with (on a Mac, through Launch Services).
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -30,7 +30,7 @@ Options:
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() {
-        return open_url("tuplepad://activate");
+        return deliver(&["tuplepad://activate".to_string()]);
     }
     let mut line: Option<(u64, Option<u64>)> = None;
     let mut urls = Vec::new();
@@ -59,13 +59,76 @@ fn main() -> ExitCode {
             }
         }
     }
-    for url in urls {
-        let status = open_url(&url);
-        if status != ExitCode::SUCCESS {
-            return status;
-        }
+    deliver(&urls)
+}
+
+/// Where a running TuplePad listens (as in the app's `platform::socket_path`).
+fn socket_path() -> PathBuf {
+    if let Some(path) = std::env::var_os("TUPLEPAD_SOCKET") {
+        return PathBuf::from(path);
     }
-    ExitCode::SUCCESS
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    let base = if cfg!(target_os = "macos") {
+        home.join("Library/Application Support")
+    } else if cfg!(windows) {
+        std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or(home)
+    } else {
+        std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share"))
+    };
+    base.join("TuplePad/Slint/tuplepad.sock")
+}
+
+/// Sends the links to a running TuplePad. Returns false if none is listening.
+fn send_to_running(urls: &[String]) -> bool {
+    use std::io::Write;
+    let message: String = urls.iter().map(|u| format!("{u}\n")).collect();
+    #[cfg(unix)]
+    {
+        let Ok(mut stream) = std::os::unix::net::UnixStream::connect(socket_path()) else { return false };
+        stream.write_all(message.as_bytes()).is_ok()
+    }
+    #[cfg(windows)]
+    {
+        let Ok(port) = std::fs::read_to_string(socket_path().with_extension("port")) else { return false };
+        let Ok(port) = port.trim().parse::<u16>() else { return false };
+        let Ok(mut stream) = std::net::TcpStream::connect(("127.0.0.1", port)) else { return false };
+        stream.write_all(message.as_bytes()).is_ok()
+    }
+}
+
+/// Hands the links to TuplePad: the running one, or else the one this command came with.
+fn deliver(urls: &[String]) -> ExitCode {
+    if send_to_running(urls) {
+        return ExitCode::SUCCESS;
+    }
+    // Pointed at a socket of its own (tests): never start a real TuplePad instead.
+    if std::env::var_os("TUPLEPAD_SOCKET").is_some() {
+        return fail("no TuplePad is listening at TUPLEPAD_SOCKET.");
+    }
+    let exe = std::env::current_exe().and_then(|e| e.canonicalize()).ok();
+    if cfg!(target_os = "macos") {
+        // Inside TuplePad.app/Contents/Helpers: open that app; otherwise whichever is installed.
+        let bundle = exe.as_deref().and_then(|e| e.ancestors().find(|a| a.extension().is_some_and(|x| x == "app")));
+        let mut command = Command::new("/usr/bin/open");
+        match bundle {
+            Some(app) => command.arg("-a").arg(app),
+            None => command.args(["-b", BUNDLE_ID]),
+        };
+        return match command.args(urls).status() {
+            Ok(status) if status.success() => ExitCode::SUCCESS,
+            Ok(_) => fail("couldn't open TuplePad. Is it installed?"),
+            Err(e) => fail(&format!("couldn't run /usr/bin/open: {e}")),
+        };
+    }
+    // Windows and Linux: start the TuplePad next to this command.
+    let name = if cfg!(windows) { "tuplepad-app.exe" } else { "tuplepad-app" };
+    let Some(app) = exe.as_deref().and_then(Path::parent).map(|folder| folder.join(name)).filter(|p| p.exists()) else {
+        return fail("couldn't find TuplePad next to this command.");
+    };
+    match Command::new(app).args(urls).spawn() {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(e) => fail(&format!("couldn't start TuplePad: {e}")),
+    }
 }
 
 fn fail(message: &str) -> ExitCode {
@@ -131,14 +194,6 @@ fn stdin_document() -> Result<String, String> {
     let path = std::env::temp_dir().join(format!("tuplepad-stdin-{}-{}.txt", std::process::id(), text.len()));
     std::fs::write(&path, &text).map_err(|e| format!("couldn't save standard input: {e}"))?;
     Ok(format!("tuplepad://new?from={}", encode(&path.to_string_lossy())))
-}
-
-fn open_url(url: &str) -> ExitCode {
-    match Command::new("/usr/bin/open").args(["-b", BUNDLE_ID, url]).status() {
-        Ok(status) if status.success() => ExitCode::SUCCESS,
-        Ok(_) => fail("couldn't open TuplePad. Is it installed?"),
-        Err(e) => fail(&format!("couldn't run /usr/bin/open: {e}")),
-    }
 }
 
 /// Percent-encodes everything but unreserved characters and slashes.

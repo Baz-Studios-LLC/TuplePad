@@ -11,7 +11,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use tuplepad_core::{Indentation, LineEnding, SessionStore, TextBuffer};
 
 use crate::commands::{self, Menu};
-use crate::document::Document;
+use crate::document::{Conflict, Document};
 use crate::editor::input::Modifiers;
 use crate::editor::{Editor, ViewOptions, group};
 use crate::settings::Settings;
@@ -28,9 +28,16 @@ pub struct App {
     docs_model: Rc<VecModel<DocItem>>,
     /// Slint's own palette was set to match a pinned appearance.
     palette_pinned: Cell<bool>,
+    shut_down: Cell<bool>,
     /// Sidebar items by document, with the version they show.
     doc_items: RefCell<HashMap<String, (u64, bool, DocItem)>>,
-    menus: Vec<(Menu, Rc<VecModel<MenuEntry>>)>,
+    /// The menu models, by name: "file", "file-2", "file-3" (the File menu's sections around its
+    /// submenus), "recent", "reopen", "convert", "line-ending", "edit", "selection" and "view".
+    menus: HashMap<&'static str, Rc<VecModel<MenuEntry>>>,
+    /// The folder the last Show in Finder showed, for scripted checks (which don't open one).
+    pub revealed: RefCell<Option<PathBuf>>,
+    /// The page the last Print prepared, for scripted checks (which don't print).
+    pub printed: RefCell<Option<PathBuf>>,
     language_names: HashMap<String, String>,
     pub open_ms: RefCell<Vec<(String, f64)>>,
     /// Answers for dialogs in scripted runs (they never show real ones).
@@ -60,16 +67,21 @@ impl App {
         }
         let docs_model = Rc::new(VecModel::default());
         ui.set_docs(ModelRc::from(docs_model.clone()));
-        let menus: Vec<(Menu, Rc<VecModel<MenuEntry>>)> =
-            [Menu::File, Menu::Edit, Menu::Selection, Menu::View].into_iter().map(|m| (m, Rc::new(VecModel::default()))).collect();
-        for (menu, model) in &menus {
+        let names = ["file", "file-2", "file-3", "recent", "reopen", "convert", "line-ending", "edit", "selection", "view"];
+        let menus: HashMap<&'static str, Rc<VecModel<MenuEntry>>> = names.into_iter().map(|n| (n, Rc::new(VecModel::default()))).collect();
+        for (name, model) in &menus {
             let model = ModelRc::from(model.clone());
-            match menu {
-                Menu::File => ui.set_file_menu(model),
-                Menu::Edit => ui.set_edit_menu(model),
-                Menu::Selection => ui.set_selection_menu(model),
-                Menu::View => ui.set_view_menu(model),
-                Menu::None => {}
+            match *name {
+                "file" => ui.set_file_menu(model),
+                "file-2" => ui.set_file_menu_2(model),
+                "file-3" => ui.set_file_menu_3(model),
+                "recent" => ui.set_recent_menu(model),
+                "reopen" => ui.set_reopen_menu(model),
+                "convert" => ui.set_convert_menu(model),
+                "line-ending" => ui.set_line_ending_menu(model),
+                "edit" => ui.set_edit_menu(model),
+                "selection" => ui.set_selection_menu(model),
+                _ => ui.set_view_menu(model),
             }
         }
         let app = Rc::new(App {
@@ -81,8 +93,11 @@ impl App {
             untitled_count: Cell::new(0),
             docs_model,
             palette_pinned: Cell::new(false),
+            shut_down: Cell::new(false),
             doc_items: RefCell::new(HashMap::new()),
             menus,
+            revealed: RefCell::new(None),
+            printed: RefCell::new(None),
             language_names: tuplepad_core::languages().into_iter().map(|l| (l.id, l.name)).collect(),
             open_ms: RefCell::new(Vec::new()),
             scripted_answers: scripted.then(|| RefCell::new(VecDeque::new())),
@@ -107,6 +122,7 @@ impl App {
                 _ => 0,
             };
             ui.global::<Theme>().set_appearance(appearance);
+            ui.global::<Theme>().set_theme(if settings.theme == "midnight" { 1 } else { 0 });
             // Where Slint draws the menu bar itself, its colors follow TuplePad's appearance.
             if !cfg!(target_os = "macos") || std::env::var_os("SLINT_NO_MUDA").is_some() {
                 use slint::language::ColorScheme;
@@ -191,6 +207,15 @@ impl App {
         }
         ui.set_doc_subtitle(subtitle.into());
         ui.set_wraps(doc.wrap);
+        let (banner, banner_text) = match doc.conflict {
+            Some(Conflict::Changed) => (1, format!("“{}” changed on disk, and you have unsaved changes here.", doc.name())),
+            Some(Conflict::Missing) => (2, format!("“{}” was moved or deleted. Your copy is still open.", doc.name())),
+            None => (0, String::new()),
+        };
+        ui.set_banner(banner);
+        if banner != 0 {
+            ui.set_banner_text(banner_text.into());
+        }
         ui.set_status_left(editor.status_left().into());
         let info = doc.buffer.file_info();
         let ending = match info.line_ending {
@@ -217,33 +242,90 @@ impl App {
 
         // What the menus show as enabled and checked.
         let settings = self.settings.borrow();
-        let (can_undo, can_redo, wrap) = (doc.buffer.can_undo(), doc.buffer.can_redo(), doc.wrap);
+        let has_path = doc.path().is_some();
+        let (can_undo, can_redo, wrap, follow, modified) = (doc.buffer.can_undo(), doc.buffer.can_redo(), doc.wrap, doc.follow, doc.buffer.is_modified());
+        let several = editor.docs.len() > 1;
         let enabled = |id: &str| match id {
             "edit.undo" => can_undo,
             "edit.redo" => can_redo,
+            "file.revert" => has_path && modified,
+            "file.move" | "file.show" | "view.follow" => has_path,
+            "file.close-others" => several,
             _ => true,
         };
         let checked = |id: &str| match id {
             "view.sidebar" => settings.sidebar_visible,
             "view.wrap" => wrap,
+            "view.follow" => follow,
             "view.invisibles" => settings.show_invisibles,
             "view.indent-guides" => settings.show_indent_guides,
             "view.current-line" => settings.highlight_current_line,
             "view.appearance-system" => settings.appearance == "system",
             "view.appearance-light" => settings.appearance == "light",
             "view.appearance-dark" => settings.appearance == "dark",
+            "view.theme-tuplepad" => settings.theme != "midnight",
+            "view.theme-midnight" => settings.theme == "midnight",
             _ => false,
         };
-        for (menu, model) in &self.menus {
-            let entries = commands::menu_entries(*menu, enabled, checked);
-            if model.row_count() != entries.len() {
-                model.set_vec(entries);
-                continue;
+        let mut file = commands::menu_sections(Menu::File, enabled, checked).into_iter();
+        self.set_menu("file", file.next().unwrap_or_default());
+        self.set_menu("file-2", file.next().unwrap_or_default());
+        self.set_menu("file-3", file.next().unwrap_or_default());
+        for (name, menu) in [("edit", Menu::Edit), ("selection", Menu::Selection), ("view", Menu::View)] {
+            self.set_menu(name, commands::menu_sections(menu, enabled, checked).concat());
+        }
+
+        // Open Recent, and the encodings and line endings.
+        let mut recent: Vec<MenuEntry> = settings
+            .recent_files
+            .iter()
+            .enumerate()
+            .map(|(i, path)| {
+                let path = Path::new(path);
+                let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
+                let folder = path.parent().map(tilde).unwrap_or_default();
+                commands::item_entry(format!("recent:{i}"), format!("{name}  —  {folder}"), true, None)
+            })
+            .collect();
+        if !recent.is_empty() {
+            recent.push(commands::separator_entry());
+            recent.push(commands::item_entry("recent.clear".into(), "Clear Menu".into(), true, None));
+        }
+        self.set_menu("recent", recent);
+        let current = (info.encoding.name.clone(), info.encoding.has_bom);
+        let reopen = tuplepad_core::supported_encodings()
+            .into_iter()
+            .map(|name| commands::item_entry(format!("reopen:{name}"), name.clone(), has_path, Some(name == current.0)))
+            .collect();
+        self.set_menu("reopen", reopen);
+        let mut convert: Vec<MenuEntry> = Vec::new();
+        for name in tuplepad_core::supported_encodings() {
+            let unicode = name.starts_with("UTF");
+            convert.push(commands::item_entry(format!("convert:{name}"), name.clone(), true, Some(current == (name.clone(), false))));
+            if unicode {
+                let title = format!("{name} with BOM");
+                convert.push(commands::item_entry(format!("convert:{name}+bom"), title, true, Some(current == (name.clone(), true))));
             }
-            for (index, entry) in entries.into_iter().enumerate() {
-                if model.row_data(index).as_ref() != Some(&entry) {
-                    model.set_row_data(index, entry);
-                }
+        }
+        self.set_menu("convert", convert);
+        let endings = [("lf", "LF (Mac and Linux)", LineEnding::Lf), ("crlf", "CRLF (Windows)", LineEnding::CrLf), ("cr", "CR (classic Mac)", LineEnding::Cr)];
+        let line_endings = endings
+            .into_iter()
+            .map(|(id, title, ending)| commands::item_entry(format!("line-ending:{id}"), title.into(), true, Some(info.line_ending == ending)))
+            .collect();
+        self.set_menu("line-ending", line_endings);
+    }
+
+    /// Updates one menu model, touching only the entries that changed.
+    fn set_menu(&self, name: &str, entries: Vec<MenuEntry>) {
+        let Some(model) = self.menus.get(name) else { return };
+        if model.row_count() != entries.len() {
+            model.set_vec(entries);
+            return;
+        }
+        for (index, entry) in entries.into_iter().enumerate() {
+            if model.row_data(index).as_ref() != Some(&entry) {
+                model.set_row_data(index, entry);
             }
         }
     }
@@ -328,8 +410,63 @@ impl App {
                 _ => {}
             }
         }
+        if let Some((kind, value)) = id.split_once(':') {
+            self.run_item(kind, value);
+            self.refresh();
+            return;
+        }
         match id {
             "file.new" => self.new_document(),
+            "file.save-all" => self.save_all(),
+            "file.revert" => self.revert(),
+            "file.move" => self.move_current(),
+            "file.show" => self.show_in_file_manager(),
+            "file.print" => {
+                if let Some(ui) = self.ui.upgrade() {
+                    let settings = self.settings.borrow();
+                    ui.set_print_line_numbers(settings.print_line_numbers);
+                    ui.set_print_colors(settings.print_colors);
+                    ui.set_print_sheet(true);
+                }
+            }
+            "print.confirm" | "print.cancel" => {
+                let Some(ui) = self.ui.upgrade() else { return };
+                ui.set_print_sheet(false);
+                ui.invoke_focus_editor();
+                if id == "print.confirm" {
+                    let (numbers, colors) = (ui.get_print_line_numbers(), ui.get_print_colors());
+                    self.change_settings(|s| {
+                        s.print_line_numbers = numbers;
+                        s.print_colors = colors;
+                    });
+                    self.print();
+                }
+            }
+            "file.install-tool" => self.install_command_line_tool(),
+            "file.close-others" => self.close_others(),
+            "file.close-all" => self.close_all(),
+            "recent.clear" => self.change_settings(|s| s.recent_files.clear()),
+            "disk.reload" => self.revert(),
+            "disk.keep" => {
+                let mut editor = self.editor.borrow_mut();
+                editor.buffer().acknowledge_disk_change();
+                editor.doc_mut().conflict = None;
+            }
+            "disk.save" => {
+                if self.save_current(false) {
+                    self.editor.borrow_mut().doc_mut().conflict = None;
+                }
+            }
+            "view.follow" => {
+                let mut editor = self.editor.borrow_mut();
+                let doc = editor.doc_mut();
+                doc.follow = !doc.follow;
+                if doc.follow {
+                    let end = doc.buffer.end_position();
+                    doc.cursors = vec![tuplepad_core::TextSelection::caret(end)];
+                    editor.reveal();
+                }
+            }
             "file.open" => self.open_dialog(),
             "file.save" => {
                 self.save_current(false);
@@ -345,6 +482,8 @@ impl App {
             "view.zoom-in" => self.change_settings(|s| s.font_size = (s.font_size + 1.0).min(48.0)),
             "view.zoom-out" => self.change_settings(|s| s.font_size = (s.font_size - 1.0).max(8.0)),
             "view.zoom-reset" => self.change_settings(|s| s.font_size = Settings::default().font_size),
+            "view.theme-tuplepad" => self.change_settings(|s| s.theme = "tuplepad".into()),
+            "view.theme-midnight" => self.change_settings(|s| s.theme = "midnight".into()),
             "view.appearance-system" => self.change_settings(|s| s.appearance = "system".into()),
             "view.appearance-light" => self.change_settings(|s| s.appearance = "light".into()),
             "view.appearance-dark" => self.change_settings(|s| s.appearance = "dark".into()),
@@ -355,6 +494,70 @@ impl App {
             _ => {}
         }
         self.refresh();
+    }
+
+    /// Items of the generated submenus: `recent:<index>`, `reopen:<encoding>`,
+    /// `convert:<encoding>[+bom]` and `line-ending:<lf|crlf|cr>`.
+    fn run_item(&self, kind: &str, value: &str) {
+        match kind {
+            "recent" => {
+                let path = value.parse::<usize>().ok().and_then(|i| self.settings.borrow().recent_files.get(i).cloned());
+                if let Some(path) = path {
+                    if !Path::new(&path).exists() {
+                        self.settings.borrow_mut().recent_files.retain(|p| *p != path);
+                        self.alert(&format!("“{}” can't be found.", tilde(Path::new(&path))), "It may have been moved, renamed or deleted.");
+                        return;
+                    }
+                    self.open_paths(&[PathBuf::from(path)]);
+                }
+            }
+            "reopen" => {
+                let (buffer, cursors, modified) = {
+                    let editor = self.editor.borrow();
+                    (editor.buffer(), editor.doc().cursors.clone(), editor.doc().buffer.is_modified())
+                };
+                if modified && !self.confirm("Reopen with a different encoding?", "Your unsaved changes will be lost (Undo brings them back).", "Reopen") {
+                    return;
+                }
+                let encoding = tuplepad_core::TextEncoding { name: value.to_string(), has_bom: false };
+                match buffer.reopen_with_encoding(encoding, cursors) {
+                    Ok(()) => self.editor.borrow_mut().text_replaced(),
+                    Err(error) => self.alert(&format!("TuplePad couldn't reopen the file as {value}."), &error.to_string()),
+                }
+            }
+            "convert" => {
+                let (name, bom) = match value.strip_suffix("+bom") {
+                    Some(name) => (name, true),
+                    None => (value, false),
+                };
+                let encoding = tuplepad_core::TextEncoding { name: name.to_string(), has_bom: bom };
+                let buffer = self.editor.borrow().buffer();
+                match buffer.unencodable_character(encoding.clone()) {
+                    Ok(Some(character)) => self.alert(
+                        &format!("This document can't be saved as {name}."),
+                        &format!("“{character}” and maybe other characters have no {name} equivalent. Pick another encoding, or remove them first."),
+                    ),
+                    Ok(None) => {
+                        if let Err(error) = buffer.set_encoding(encoding) {
+                            self.alert("TuplePad couldn't change the encoding.", &error.to_string());
+                        }
+                    }
+                    Err(error) => self.alert("TuplePad couldn't change the encoding.", &error.to_string()),
+                }
+            }
+            "line-ending" => {
+                let ending = match value {
+                    "crlf" => LineEnding::CrLf,
+                    "cr" => LineEnding::Cr,
+                    _ => LineEnding::Lf,
+                };
+                let mut editor = self.editor.borrow_mut();
+                let cursors = editor.doc().cursors.clone();
+                editor.buffer().convert_line_endings(ending, cursors);
+                editor.text_replaced();
+            }
+            _ => {}
+        }
     }
 
     pub fn select_document(&self, index: usize) {
@@ -419,6 +622,7 @@ impl App {
                         doc.indentation = Indentation::detect(&doc.buffer);
                     }
                     self.open_ms.borrow_mut().push((doc.name(), ms));
+                    self.settings.borrow_mut().note_recent(&absolute);
                     self.add_document(doc);
                     opened += 1;
                 }
@@ -445,6 +649,104 @@ impl App {
             let target = if current > index { current - 1 } else { current };
             editor.show_document(target);
         }
+    }
+
+    /// Files asked for from outside (Finder, the `tuplepad` command, a drop), at a line and column
+    /// if given. Files that don't exist yet open as new documents, created when saved.
+    pub fn open_requests(&self, requests: Vec<(PathBuf, Option<u64>, Option<u64>)>) {
+        for (path, line, column) in requests {
+            let path = crate::platform::absolute(&path);
+            if path.exists() {
+                self.open_paths(std::slice::from_ref(&path));
+            } else {
+                let settings = self.settings.borrow().clone();
+                let buffer = TextBuffer::untitled(tuplepad_core::TextEncoding::utf8(), LineEnding::Lf);
+                buffer.set_path(Some(path.to_string_lossy().into_owned()));
+                self.add_document(Document::new(buffer, 0, 0, settings.wrap_by_default));
+                self.drop_unused_untitled();
+            }
+            if let Some(line) = line {
+                let mut editor = self.editor.borrow_mut();
+                let target = tuplepad_core::TextPos::new(line.saturating_sub(1), column.unwrap_or(1).saturating_sub(1));
+                editor.go_to_line(target.line);
+                let pos = editor.buffer().clamp(target);
+                editor.doc_mut().cursors = vec![tuplepad_core::TextSelection::caret(pos)];
+                editor.reveal();
+            }
+        }
+        self.refresh();
+    }
+
+    /// A new untitled document holding `text` (standard input, from the `tuplepad` command).
+    pub fn new_document_with_text(&self, text: &str) {
+        self.new_document();
+        let mut editor = self.editor.borrow_mut();
+        editor.apply(|buffer, cursors| buffer.paste(cursors, text));
+        let start = tuplepad_core::TextSelection::caret(tuplepad_core::TextPos::new(0, 0));
+        editor.doc_mut().cursors = vec![start];
+        editor.reveal();
+    }
+
+    /// Brings the window to the front.
+    pub fn activate(&self) {
+        if self.is_scripted() {
+            return;
+        }
+        if let Some(ui) = self.ui.upgrade() {
+            use slint::winit_030::WinitWindowAccessor;
+            let _ = ui.show();
+            ui.window().with_winit_window(|window| window.focus_window());
+        }
+    }
+
+    /// Installs the `tuplepad` terminal command: a link to the one that comes with the app, in a
+    /// folder on the PATH. Asks for an administrator password only if no such folder is writable.
+    pub fn install_command_line_tool(&self) {
+        let Some(tool) = bundled_tool() else {
+            self.alert("The tuplepad command isn't included in this copy of TuplePad.", "Build it with scripts/bundle-mac.sh, or download TuplePad again.");
+            return;
+        };
+        if cfg!(windows) {
+            self.alert("The tuplepad command is ready.", &format!("It's at {}. Add that folder to your PATH to use it from any terminal.", tool.display()));
+            return;
+        }
+        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+        let folders: Vec<PathBuf> = match self.next_scripted_folder() {
+            Some(folder) => vec![folder],
+            None if cfg!(target_os = "macos") => vec!["/opt/homebrew/bin".into(), "/usr/local/bin".into()],
+            None => vec![home.join(".local/bin")],
+        };
+        for folder in &folders {
+            if !cfg!(target_os = "macos") {
+                let _ = std::fs::create_dir_all(folder);
+            }
+            let writable = std::fs::metadata(folder).map(|m| !m.permissions().readonly()).unwrap_or(false);
+            let link = folder.join("tuplepad");
+            if writable && (std::fs::remove_file(&link).is_ok() || !link.exists()) && symlink(&tool, &link).is_ok() {
+                self.alert_info("The tuplepad command is installed.", &command_line_examples(&link));
+                return;
+            }
+        }
+        #[cfg(target_os = "macos")]
+        if !self.is_scripted() {
+            let quoted = tool.to_string_lossy().replace('\'', "'\\\\''");
+            let script = format!(
+                "do shell script \"mkdir -p /usr/local/bin && ln -sf '{quoted}' /usr/local/bin/tuplepad\" with prompt \"TuplePad wants to install the tuplepad command in /usr/local/bin.\" with administrator privileges"
+            );
+            let output = std::process::Command::new("osascript").arg("-e").arg(script).output();
+            match output {
+                Ok(output) if output.status.success() => self.alert_info("The tuplepad command is installed.", &command_line_examples(Path::new("/usr/local/bin/tuplepad"))),
+                Ok(output) if String::from_utf8_lossy(&output.stderr).contains("-128") => {}
+                Ok(output) => self.alert("Couldn't install the tuplepad command.", String::from_utf8_lossy(&output.stderr).trim()),
+                Err(error) => self.alert("Couldn't install the tuplepad command.", &error.to_string()),
+            }
+            return;
+        }
+        self.alert("Couldn't install the tuplepad command.", "None of the usual folders for commands can be written to.");
+    }
+
+    fn next_scripted_folder(&self) -> Option<PathBuf> {
+        if self.is_scripted() { self.next_answer().map(PathBuf::from) } else { None }
     }
 
     pub fn open_dialog(&self) {
@@ -484,6 +786,7 @@ impl App {
         match result {
             Ok(()) => {
                 if new_path {
+                    self.settings.borrow_mut().note_recent(&path);
                     // A newly saved document may highlight differently.
                     let mut editor = self.editor.borrow_mut();
                     editor.doc_mut().size = std::fs::metadata(&path).map_or(0, |m| m.len());
@@ -535,6 +838,167 @@ impl App {
         self.refresh();
     }
 
+    /// Looks for changes made to open files by other apps: reloads files without unsaved
+    /// changes (Undo brings the old text back), flags conflicts and missing files, and pulls new
+    /// lines into followed logs. Runs every second and when the window comes to the front.
+    pub fn check_disk(&self) {
+        let Ok(mut editor) = self.editor.try_borrow_mut() else { return };
+        let current = editor.current;
+        let mut changed_current = false;
+        for index in 0..editor.docs.len() {
+            let doc = &mut editor.docs[index];
+            if doc.path().is_none() {
+                continue;
+            }
+            let buffer = doc.buffer.clone();
+            let modified = buffer.is_modified();
+            if doc.follow && !modified {
+                match buffer.append_from_disk() {
+                    Ok(tuplepad_core::AppendResult::Appended { .. }) => {
+                        doc.cursors = vec![tuplepad_core::TextSelection::caret(buffer.end_position())];
+                        changed_current |= index == current;
+                        continue;
+                    }
+                    Ok(tuplepad_core::AppendResult::NothingNew) => continue,
+                    _ => {}
+                }
+            }
+            match buffer.disk_status() {
+                tuplepad_core::DiskStatus::Changed if modified => doc.conflict = Some(Conflict::Changed),
+                tuplepad_core::DiskStatus::Changed => {
+                    if buffer.reload(doc.cursors.clone()).is_ok() {
+                        doc.cursors = doc.cursors.iter().map(|c| tuplepad_core::TextSelection { anchor: buffer.clamp(c.anchor), head: buffer.clamp(c.head) }).collect();
+                        doc.conflict = None;
+                        changed_current |= index == current;
+                    }
+                }
+                tuplepad_core::DiskStatus::Missing => doc.conflict = Some(Conflict::Missing),
+                _ => {
+                    if doc.conflict == Some(Conflict::Missing) {
+                        doc.conflict = None;
+                    }
+                }
+            }
+        }
+        if changed_current {
+            let follow = editor.doc().follow;
+            editor.text_replaced();
+            if follow {
+                editor.reveal();
+            }
+        }
+        drop(editor);
+        self.refresh();
+    }
+
+    /// Saves every document with unsaved changes; untitled ones ask where.
+    pub fn save_all(&self) {
+        let count = self.editor.borrow().docs.len();
+        let start = self.editor.borrow().current;
+        for index in 0..count {
+            let modified = self.editor.borrow().docs.get(index).is_some_and(|d| d.buffer.is_modified());
+            if modified {
+                self.editor.borrow_mut().select_document(index);
+                self.refresh();
+                self.save_current(false);
+            }
+        }
+        self.editor.borrow_mut().select_document(start);
+    }
+
+    /// Goes back to the file on disk. Undo brings the changes back.
+    pub fn revert(&self) {
+        let mut editor = self.editor.borrow_mut();
+        let cursors = editor.doc().cursors.clone();
+        let buffer = editor.buffer();
+        match buffer.reload(cursors) {
+            Ok(()) => {
+                editor.doc_mut().conflict = None;
+                editor.text_replaced();
+            }
+            Err(error) => {
+                drop(editor);
+                self.alert("TuplePad couldn't read the file.", &error.to_string());
+            }
+        }
+    }
+
+    /// Renames or moves the current document's file, keeping it open.
+    pub fn move_current(&self) {
+        let (buffer, name, path) = {
+            let editor = self.editor.borrow();
+            (editor.buffer(), editor.doc().name(), editor.doc().path())
+        };
+        let Some(path) = path else { return };
+        let destination = if self.is_scripted() {
+            self.next_answer().map(PathBuf::from)
+        } else {
+            let mut dialog = rfd::FileDialog::new().set_title("Rename or Move").set_file_name(&name);
+            if let Some(folder) = path.parent() {
+                dialog = dialog.set_directory(folder);
+            }
+            dialog.save_file()
+        };
+        let Some(destination) = destination else { return };
+        if destination == path {
+            return;
+        }
+        if path.exists()
+            && let Err(error) = move_file(&path, &destination)
+        {
+            self.alert(&format!("TuplePad couldn't move “{name}”."), &error.to_string());
+            return;
+        }
+        buffer.set_path(Some(destination.to_string_lossy().into_owned()));
+        self.settings.borrow_mut().note_recent(&destination);
+        let mut editor = self.editor.borrow_mut();
+        editor.doc_mut().conflict = None;
+        editor.invalidate();
+    }
+
+    /// Shows the current file in Finder (or the system's file manager).
+    pub fn show_in_file_manager(&self) {
+        let Some(path) = self.editor.borrow().doc().path() else { return };
+        *self.revealed.borrow_mut() = Some(path.clone());
+        if !self.is_scripted() {
+            reveal(&path);
+        }
+    }
+
+    pub fn print(&self) {
+        crate::print::print(self);
+    }
+
+    /// Closes every document but the current one, asking about unsaved changes.
+    pub fn close_others(&self) {
+        let keep = self.editor.borrow().doc().id.clone();
+        self.close_where(|id| id != keep);
+    }
+
+    /// Closes every document, asking about unsaved changes, and leaves a new one.
+    pub fn close_all(&self) {
+        self.close_where(|_| true);
+    }
+
+    fn close_where(&self, close: impl Fn(&str) -> bool) {
+        loop {
+            let next = self.editor.borrow().docs.iter().position(|d| close(&d.id));
+            let Some(index) = next else { break };
+            let before = self.editor.borrow().docs.len();
+            self.close_document(Some(index));
+            let after = self.editor.borrow().docs.len();
+            let replaced = before == 1 && after == 1 && self.editor.borrow().docs.iter().all(|d| !close(&d.id));
+            if after == before && !replaced {
+                // Cancelled.
+                break;
+            }
+            if replaced {
+                break;
+            }
+        }
+        self.refresh();
+    }
+
     // MARK: Dialogs
 
     fn next_answer(&self) -> Option<String> {
@@ -560,6 +1024,25 @@ impl App {
         }
     }
 
+    /// Asks a yes-or-no question; `action` names the button that goes ahead.
+    pub fn confirm(&self, title: &str, detail: &str, action: &str) -> bool {
+        if self.is_scripted() {
+            return self.next_answer().is_some_and(|a| a == action);
+        }
+        let buttons = rfd::MessageButtons::OkCancelCustom(action.into(), "Cancel".into());
+        let result = rfd::MessageDialog::new().set_level(rfd::MessageLevel::Warning).set_title(title).set_description(detail).set_buttons(buttons).show();
+        matches!(result, rfd::MessageDialogResult::Custom(ref answer) if answer == action) || result == rfd::MessageDialogResult::Ok
+    }
+
+    /// A message that isn't a problem.
+    pub fn alert_info(&self, title: &str, detail: &str) {
+        eprintln!("{title} {detail}");
+        if self.is_scripted() {
+            return;
+        }
+        rfd::MessageDialog::new().set_level(rfd::MessageLevel::Info).set_title(title).set_description(detail).show();
+    }
+
     pub fn alert(&self, title: &str, detail: &str) {
         eprintln!("{title} {detail}");
         if self.is_scripted() {
@@ -570,12 +1053,73 @@ impl App {
 
     // MARK: Session
 
+    /// The last things to do before quitting (once, however the app quits).
+    pub fn shut_down(&self) {
+        if self.shut_down.replace(true) {
+            return;
+        }
+        crate::platform::stop_listening();
+        self.save_session();
+        self.save_settings();
+    }
+
     pub fn save_session(&self) {
         if let Some(store) = &self.session
             && let Ok(mut editor) = self.editor.try_borrow_mut()
         {
             session::save(store, &mut editor, self.untitled_count.get());
         }
+    }
+}
+
+/// The `tuplepad` command that comes with the app: in the bundle's Helpers folder on a Mac,
+/// otherwise next to the app.
+fn bundled_tool() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
+    let folder = exe.parent()?;
+    let name = if cfg!(windows) { "tuplepad.exe" } else { "tuplepad" };
+    [folder.join("../Helpers").join(name), folder.join(name)].into_iter().find(|p| p.exists()).and_then(|p| p.canonicalize().ok())
+}
+
+fn symlink(target: &Path, link: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(target, link);
+    #[cfg(not(unix))]
+    return std::fs::copy(target, link).map(|_| ());
+}
+
+fn command_line_examples(link: &Path) -> String {
+    format!("It's at {}. In a terminal, try:\n\ntuplepad notes.txt\ntuplepad +42 main.rs\ngit log | tuplepad -", link.display())
+}
+
+/// Moves a file, copying it across volumes when a rename can't.
+fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
+    match std::fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            std::fs::copy(from, to)?;
+            std::fs::remove_file(from)
+        }
+    }
+}
+
+/// Opens the system's file manager with a file selected.
+fn reveal(path: &Path) {
+    use std::process::Command;
+    let result = if cfg!(target_os = "macos") {
+        Command::new("open").arg("-R").arg(path).spawn()
+    } else if cfg!(windows) {
+        Command::new("explorer").arg(format!("/select,{}", path.display())).spawn()
+    } else {
+        // The freedesktop file-manager interface selects the file; failing that, open its folder.
+        let uri = format!("array:string:file://{}", path.display());
+        Command::new("dbus-send")
+            .args(["--session", "--dest=org.freedesktop.FileManager1", "--type=method_call", "/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems", &uri, "string:"])
+            .spawn()
+            .or_else(|_| Command::new("xdg-open").arg(path.parent().unwrap_or(path)).spawn())
+    };
+    if let Err(error) = result {
+        eprintln!("couldn't show {}: {error}", path.display());
     }
 }
 

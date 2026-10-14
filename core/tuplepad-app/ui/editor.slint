@@ -53,6 +53,10 @@ export global EditorBridge {
     in property <length> gutter-width: 64px;
     in property <bool> caret-visible: true;
     in property <bool> highlight-current-line: true;
+    // Where dragged text would land.
+    in property <bool> drop-visible;
+    in property <int> drop-row;
+    in property <length> drop-x;
     in property <int> ime-row;
     in property <length> ime-x;
     // The vertical scrollbar, as fractions of the track.
@@ -65,7 +69,7 @@ export global EditorBridge {
     callback preedit(text: string);
     callback pointer-down(x: length, y: length, modifiers: KeyboardModifiers);
     callback pointer-drag(x: length, y: length);
-    callback pointer-up();
+    callback pointer-up(modifiers: KeyboardModifiers);
     callback scrolled(dx: length, dy: length);
     callback resized(width: length, height: length);
     callback scrollbar-drag(fraction: float);
@@ -224,6 +228,15 @@ export component EditorView inherits Rectangle {
             opacity: EditorBridge.caret-visible && input.has-focus ? 1 : 0;
         }
 
+        if EditorBridge.drop-visible: Rectangle {
+            x: EditorBridge.drop-x - EditorBridge.scroll-x - 1px;
+            y: root.row-y(EditorBridge.drop-row) + 1px;
+            width: 2px;
+            height: root.lh - 2px;
+            border-radius: 1px;
+            background: Theme.caret.with-alpha(0.6);
+        }
+
         // Keyboard and input-method entry point. It sits at the main caret so the input method's
         // candidate window opens there; it draws nothing, and the editor shows composing text inline.
         input := TextInput {
@@ -264,7 +277,7 @@ export component EditorView inherits Rectangle {
                     input.focus();
                     EditorBridge.pointer-down(self.mouse-x, self.mouse-y, event.modifiers);
                 } else if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
-                    EditorBridge.pointer-up();
+                    EditorBridge.pointer-up(event.modifiers);
                 }
             }
             moved => {

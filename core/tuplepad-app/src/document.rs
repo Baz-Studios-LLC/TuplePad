@@ -23,6 +23,18 @@ pub struct Document {
     pub last_edited: f64,
     /// The buffer version last written to the session snapshot.
     pub snapshot_version: Option<u64>,
+    /// Keep reading new lines from the end of the file, and stay scrolled there (logs).
+    pub follow: bool,
+    /// The file changed on disk while the document had unsaved changes, or went missing.
+    pub conflict: Option<Conflict>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Conflict {
+    /// Changed by something else while this copy has unsaved changes.
+    Changed,
+    /// Deleted or moved away.
+    Missing,
 }
 
 impl Document {
@@ -39,6 +51,8 @@ impl Document {
             indentation: None,
             last_edited: tuplepad_core::now_seconds(),
             snapshot_version: None,
+            follow: false,
+            conflict: None,
         }
     }
 

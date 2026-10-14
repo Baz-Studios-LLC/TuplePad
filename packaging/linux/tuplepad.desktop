@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=TuplePad
+GenericName=Text Editor
+Comment=A fast, beautiful text editor
+Exec=tuplepad-app %F
+Icon=tuplepad
+Terminal=false
+Categories=Utility;TextEditor;Development;
+MimeType=text/plain;text/markdown;text/x-csrc;text/x-chdr;text/x-c++src;text/x-python;text/x-rust;text/x-shellscript;text/x-log;text/csv;text/html;text/css;text/xml;application/json;application/xml;application/x-yaml;application/toml;
+StartupWMClass=tuplepad-app
+Keywords=text;editor;code;plain text;

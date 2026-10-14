@@ -48,6 +48,14 @@ pub(crate) struct Drag {
     current: TextSelection,
 }
 
+/// Selected text being dragged: it moves once the pointer has gone a few pixels.
+pub(crate) struct TextDrag {
+    selection: TextSelection,
+    origin: (f32, f32),
+    started: bool,
+    target: Option<TextPos>,
+}
+
 /// The lines changed by the last edit, so wrapped row counts can be updated without
 /// re-measuring the whole document.
 enum Dirty {
@@ -99,6 +107,8 @@ pub struct Editor {
     drag: Option<Drag>,
     /// A column selection in progress: the line and x where it started.
     column_drag: Option<(u64, f32)>,
+    /// Selected text being dragged to another place.
+    text_drag: Option<TextDrag>,
     last_click: Option<(Instant, f32, f32, u32)>,
     last_activity: Instant,
     scrollbar_until: Instant,
@@ -169,6 +179,7 @@ impl Editor {
             composed: false,
             drag: None,
             column_drag: None,
+            text_drag: None,
             last_click: None,
             last_activity: now,
             scrollbar_until: now,
@@ -793,18 +804,28 @@ impl Editor {
 
         let max_y = self.max_scroll_y();
         let content = max_y + self.height as f64;
-        let doc = self.doc();
+        let (scroll_x, scroll_y) = (self.doc().scroll_x, self.doc().scroll_y);
         bridge.set_top_row(top_row as i32);
         bridge.set_scroll_offset(offset);
-        bridge.set_scroll_x(doc.scroll_x as f32);
+        bridge.set_scroll_x(scroll_x as f32);
         bridge.set_line_height(lh);
         bridge.set_font_size(self.font_size);
         bridge.set_gutter_width(self.gutter);
         bridge.set_highlight_current_line(self.options.highlight_current_line);
+        let drop = self.text_drag.as_ref().filter(|d| d.started).and_then(|d| d.target);
+        match drop {
+            Some(target) => {
+                let (row, x) = self.locate(target);
+                bridge.set_drop_row(row as i32);
+                bridge.set_drop_x(x);
+                bridge.set_drop_visible(true);
+            }
+            None => bridge.set_drop_visible(false),
+        }
         bridge.set_ime_row(ime.0 as i32);
         bridge.set_ime_x(ime.1);
         bridge.set_thumb_size((self.height as f64 / content).min(1.0) as f32);
-        bridge.set_thumb_start(if max_y > 0.0 { (doc.scroll_y / max_y) as f32 } else { 0.0 });
+        bridge.set_thumb_start(if max_y > 0.0 { (scroll_y / max_y) as f32 } else { 0.0 });
         self.blink(ui);
         self.last_sync_ms = started.elapsed().as_secs_f64() * 1000.0;
     }

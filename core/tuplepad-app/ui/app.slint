@@ -1,7 +1,8 @@
 import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { EditorView, EditorBridge, Span, Row, Caret, Band } from "editor.slint";
-import { Sidebar, DocItem, IconButton, Icons } from "sidebar.slint";
+import { Sidebar, DocItem, IconButton, Icons, PillButton } from "sidebar.slint";
+import { Sheet, Toggle } from "controls.slint";
 
 export { Theme, EditorBridge, Span, Row, Caret, Band, DocItem, Palette }
 
@@ -37,8 +38,23 @@ export component AppWindow inherits Window {
     in-out property <bool> sidebar-visible: true;
     in-out property <length> sidebar-width: 264px;
     in property <bool> wraps;
+    // A note above the editor: 0 none, 1 the file changed on disk, 2 the file is gone.
+    in property <int> banner;
+    in property <string> banner-text;
+    // A file is being dragged over the window.
+    in property <bool> dropping;
+    // The print options sheet.
+    in-out property <bool> print-sheet;
+    in-out property <bool> print-line-numbers: true;
+    in-out property <bool> print-colors: true;
 
     in property <[MenuEntry]> file-menu;
+    in property <[MenuEntry]> file-menu-2;
+    in property <[MenuEntry]> file-menu-3;
+    in property <[MenuEntry]> recent-menu;
+    in property <[MenuEntry]> reopen-menu;
+    in property <[MenuEntry]> convert-menu;
+    in property <[MenuEntry]> line-ending-menu;
     in property <[MenuEntry]> edit-menu;
     in property <[MenuEntry]> selection-menu;
     in property <[MenuEntry]> view-menu;
@@ -56,6 +72,66 @@ export component AppWindow inherits Window {
         Menu {
             title: "File";
             for item in root.file-menu: MenuItem {
+                title: item.title;
+                shortcut: item.shortcut;
+                enabled: item.enabled;
+                checkable: item.checkable;
+                checked: item.checked;
+                activated => { root.command(item.id); }
+            }
+            Menu {
+                title: "Open Recent";
+                enabled: root.recent-menu.length > 0;
+                for item in root.recent-menu: MenuItem {
+                    title: item.title;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            for item in root.file-menu-2: MenuItem {
+                title: item.title;
+                shortcut: item.shortcut;
+                enabled: item.enabled;
+                checkable: item.checkable;
+                checked: item.checked;
+                activated => { root.command(item.id); }
+            }
+            Menu {
+                title: "Reopen with Encoding";
+                enabled: root.reopen-menu.length > 0;
+                for item in root.reopen-menu: MenuItem {
+                    title: item.title;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            Menu {
+                title: "Convert to Encoding";
+                enabled: root.convert-menu.length > 0;
+                for item in root.convert-menu: MenuItem {
+                    title: item.title;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            Menu {
+                title: "Line Endings";
+                enabled: root.line-ending-menu.length > 0;
+                for item in root.line-ending-menu: MenuItem {
+                    title: item.title;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            for item in root.file-menu-3: MenuItem {
                 title: item.title;
                 shortcut: item.shortcut;
                 enabled: item.enabled;
@@ -194,6 +270,70 @@ export component AppWindow inherits Window {
                 }
             }
 
+            Rectangle {
+                height: root.banner == 0 ? 0px : 44px;
+                clip: true;
+                animate height { duration: 160ms; easing: ease-out; }
+                background: Theme.dark ? #FFB0400F : #C2410C0D;
+                HorizontalLayout {
+                    padding-left: 18px;
+                    padding-right: 14px;
+                    spacing: 10px;
+                    VerticalLayout {
+                        alignment: center;
+                        Path {
+                            width: 16px;
+                            height: 16px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: Icons.alert;
+                            fill: transparent;
+                            stroke: Theme.dark ? #F2B36D : #B4441B;
+                            stroke-width: 1.8px;
+                            stroke-line-cap: round;
+                            stroke-line-join: round;
+                        }
+                    }
+                    Text {
+                        text: root.banner-text;
+                        font-size: 12.5px;
+                        color: Theme.primary-text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            if root.banner == 1: PillButton {
+                                text: "Keep Mine";
+                                clicked => { root.command("disk.keep"); }
+                            }
+                            if root.banner == 1: PillButton {
+                                text: "Reload";
+                                primary: true;
+                                clicked => { root.command("disk.reload"); }
+                            }
+                            if root.banner == 2: PillButton {
+                                text: "Close";
+                                clicked => { root.command("file.close"); }
+                            }
+                            if root.banner == 2: PillButton {
+                                text: "Save Again";
+                                primary: true;
+                                clicked => { root.command("disk.save"); }
+                            }
+                        }
+                    }
+                }
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.separator;
+                }
+            }
+
             editor := EditorView {
                 font-family: Theme.mono-family;
                 vertical-stretch: 1;
@@ -225,6 +365,47 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+        }
+    }
+
+    // Files dragged over the window.
+    if root.dropping: Rectangle {
+        background: Theme.drop-tint;
+        border-width: 3px;
+        border-color: Theme.dark ? #6F95E8 : Theme.accent.with-alpha(0.6);
+        border-radius: 12px;
+        Rectangle {
+            width: 220px;
+            height: 44px;
+            border-radius: 22px;
+            background: Theme.accent;
+            drop-shadow-blur: 18px;
+            drop-shadow-color: #00000033;
+            Text {
+                text: "Drop to open";
+                color: Theme.accent-text;
+                font-size: 14px;
+                font-weight: 650;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    if root.print-sheet: Sheet {
+        title: "Print “" + root.doc-title + "”";
+        accept-title: "Print…";
+        accept => { root.command("print.confirm"); }
+        cancel => { root.command("print.cancel"); }
+        Toggle {
+            text: "Line numbers";
+            on: root.print-line-numbers;
+            toggled(on) => { root.print-line-numbers = on; }
+        }
+        Toggle {
+            text: "Syntax colors";
+            on: root.print-colors;
+            toggled(on) => { root.print-colors = on; }
         }
     }
 }

@@ -1,6 +1,6 @@
 //! TuplePad: a fast, beautiful text editor for Mac, Windows and Linux.
 //!
-//! `TuplePad [files…] [--dark|--light] [--renderer skia|femtovg] [--size WxH]
+//! `tuplepad-app [files…] [--dark|--light] [--renderer skia|femtovg] [--size WxH]
 //!           [--script steps.json] [--session-dir DIR] [--set key=value]…`
 
 slint::include_modules!();
@@ -10,6 +10,8 @@ mod commands;
 mod document;
 mod editor;
 mod fonts;
+mod platform;
+mod print;
 mod script;
 mod session;
 mod settings;
@@ -64,7 +66,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = parse_args();
     let scripted = options.script.is_some();
 
-    let mut backend = slint::BackendSelector::new().backend_name("winit".into());
+    // Files and links on the command line: if TuplePad is already running, it takes them.
+    let links: Vec<String> = options
+        .files
+        .iter()
+        .map(|f| {
+            let text = f.to_string_lossy();
+            if text.starts_with("tuplepad://") { text.into_owned() } else { platform::absolute(f).to_string_lossy().into_owned() }
+        })
+        .collect();
+    if !scripted && platform::send_to_running(&links) {
+        return Ok(());
+    }
+
+    let mut backend = slint::BackendSelector::new()
+        .backend_name("winit".into())
+        .with_winit_custom_application_handler(platform::WindowEvents);
     if let Some(renderer) = &options.renderer {
         backend = backend.renderer_name(renderer.clone());
     }
@@ -105,12 +122,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let app = App::new(&ui, settings, settings_path, session_folder.map(SessionStore::new), scripted);
+    platform::set_app(&app);
+    platform::install_open_handler();
+    // Scripted runs listen only on a socket of their own (TUPLEPAD_SOCKET), for tests.
+    if !scripted || std::env::var_os("TUPLEPAD_SOCKET").is_some() {
+        platform::listen();
+    }
     if let Some(store) = &app.session {
         let count = session::restore(store, &mut app.editor.borrow_mut());
         app.untitled_count.set(count);
     }
-    if !options.files.is_empty() {
-        app.open_paths(&options.files);
+    let requests: Vec<_> = links.iter().filter_map(|link| platform::request_for(link)).collect();
+    for request in requests {
+        match request {
+            platform::Request::Open { path, line, column } => app.open_requests(vec![(path, line, column)]),
+            platform::Request::NewWithText(text) => app.new_document_with_text(&text),
+            _ => {}
+        }
     }
     if app.editor.borrow().docs.is_empty() {
         app.new_document();
@@ -123,6 +151,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let app = app.clone();
         ticker.start(slint::TimerMode::Repeated, Duration::from_millis(60), move || app.tick());
+    }
+    // Open files are checked for changes made by other apps every second.
+    let watcher = slint::Timer::default();
+    {
+        let app = app.clone();
+        watcher.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || app.check_disk());
     }
     // The session is saved every two seconds, and on quit.
     let saver = slint::Timer::default();
@@ -138,8 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         script::start(app.clone(), path)?;
     }
     ui.run()?;
-    app.save_session();
-    app.save_settings();
+    app.shut_down();
     Ok(())
 }
 
@@ -183,7 +216,7 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
     }
     {
         let edit = edit.clone();
-        bridge.on_pointer_up(move || edit(&|e| e.pointer_up()));
+        bridge.on_pointer_up(move |m| edit(&|e| e.pointer_up(m.alt)));
     }
     {
         let edit = edit.clone();

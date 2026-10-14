@@ -15,8 +15,12 @@ TuplePad is in early development. It's being rebuilt on [Slint](https://slint.de
 - **Word wrap** (⌥Z) per document. Wrapped lines keep their indentation, and carets, selection and ↑/↓ work on the wrapped rows.
 - **Input methods** for Japanese, Chinese and other languages, with the text you're composing shown in place.
 - **A Mail-style sidebar** of open documents, showing each one's location, a preview line and a dot for unsaved changes. Drag its edge to resize it, or hide it (⌃⌘S).
-- **Light and dark**, following the system or pinned from the View menu. Zoom with ⌘+ / ⌘− / ⌘0.
-- **Files:** New, Open, Save, Save As and Close, asking before closing unsaved changes. Encodings and line endings are detected and kept.
+- **Light and dark**, following the system or pinned from the View menu, in the calm TuplePad theme or ivory-and-navy Midnight. Zoom with ⌘+ / ⌘− / ⌘0.
+- **Files:** New, Open, Open Recent, Save, Save As, Save All (⌥⌘S), Revert to Saved, Rename or Move, Show in Finder, and Close, Close Others and Close All, asking before closing unsaved changes. Drop files on the window to open them, and drag selected text to move it (hold ⌥ to copy).
+- **Keeps up with your files.** When another app changes a file, TuplePad reloads it (Undo brings your text back), or shows a quiet banner offering Reload or Keep Mine if you have unsaved changes. Moved and deleted files get a banner too. **Follow End of File** (View menu) tails a growing log.
+- **Encodings and line endings:** detected and kept. Reopen with another encoding, convert to one (with or without a BOM; TuplePad warns about characters it can't hold), and switch line endings, from the File menu.
+- **The `tuplepad` terminal command** (File ▸ Install Command Line Tool…): `tuplepad notes.txt`, `tuplepad +42 main.rs` or `main.rs:42:7`, and `git log | tuplepad -`. Files that don't exist yet open as new documents. TuplePad opens from Finder and Open With.
+- **Print** (⌘P) with syntax colors and line numbers (each optional), through the Mac's print panel (with its preview and Save as PDF).
 
 The Mac app in `TuplePad/` does much more, and those features are coming to the new app milestone by milestone (see the roadmap below):
 

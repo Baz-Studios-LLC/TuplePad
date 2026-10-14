@@ -40,14 +40,42 @@ const fn separator(menu: Menu) -> Command {
     Command { id: "", title: "", menu, keys: &[], other_keys: None, toggle: false }
 }
 
+/// Where the file manager is called on each system.
+const SHOW_IN_FILE_MANAGER: &str = if cfg!(target_os = "macos") {
+    "Show in Finder"
+} else if cfg!(windows) {
+    "Show in File Explorer"
+} else {
+    "Show in Files"
+};
+
+/// Where a submenu goes in its menu. Its items are built separately (see `App::refresh`).
+const fn submenu(id: &'static str, menu: Menu) -> Command {
+    Command { id, title: "", menu, keys: &[], other_keys: None, toggle: false }
+}
+
 pub static COMMANDS: &[Command] = &[
     command("file.new", "New", Menu::File, &["Control", "n"]),
     command("file.open", "Open…", Menu::File, &["Control", "o"]),
+    submenu("submenu.recent", Menu::File),
     separator(Menu::File),
     command("file.save", "Save", Menu::File, &["Control", "s"]),
     command("file.save-as", "Save As…", Menu::File, &["Control", "Shift", "s"]),
+    command("file.save-all", "Save All", Menu::File, &["Control", "Alt", "s"]),
+    command("file.revert", "Revert to Saved", Menu::File, &[]),
+    separator(Menu::File),
+    command("file.move", "Rename or Move…", Menu::File, &[]),
+    command("file.show", SHOW_IN_FILE_MANAGER, Menu::File, &[]),
+    separator(Menu::File),
+    submenu("submenu.encoding", Menu::File),
+    separator(Menu::File),
+    command("file.print", "Print…", Menu::File, &["Control", "p"]),
+    separator(Menu::File),
+    command("file.install-tool", "Install Command Line Tool…", Menu::File, &[]),
     separator(Menu::File),
     command("file.close", "Close", Menu::File, &["Control", "w"]),
+    command("file.close-others", "Close Others", Menu::File, &["Control", "Alt", "w"]),
+    command("file.close-all", "Close All", Menu::File, &[]),
     command("edit.undo", "Undo", Menu::Edit, &["Control", "z"]),
     Command { other_keys: Some(&["Control", "y"]), ..command("edit.redo", "Redo", Menu::Edit, &["Control", "Shift", "z"]) },
     separator(Menu::Edit),
@@ -76,10 +104,14 @@ pub static COMMANDS: &[Command] = &[
     toggle("view.invisibles", "Show Invisibles", Menu::View, &[]),
     toggle("view.indent-guides", "Show Indent Guides", Menu::View, &[]),
     toggle("view.current-line", "Highlight Current Line", Menu::View, &[]),
+    toggle("view.follow", "Follow End of File", Menu::View, &[]),
     separator(Menu::View),
     command("view.zoom-in", "Zoom In", Menu::View, &["Control", "Shift?", "="]),
     command("view.zoom-out", "Zoom Out", Menu::View, &["Control", "-"]),
     command("view.zoom-reset", "Actual Size", Menu::View, &["Control", "0"]),
+    separator(Menu::View),
+    toggle("view.theme-tuplepad", "TuplePad Theme", Menu::View, &[]),
+    toggle("view.theme-midnight", "Midnight Theme", Menu::View, &[]),
     separator(Menu::View),
     toggle("view.appearance-system", "Match System Appearance", Menu::View, &[]),
     toggle("view.appearance-light", "Light Appearance", Menu::View, &[]),
@@ -92,6 +124,10 @@ const MAC: bool = cfg!(target_os = "macos");
 impl Command {
     pub fn is_separator(&self) -> bool {
         self.id.is_empty()
+    }
+
+    pub fn is_submenu(&self) -> bool {
+        self.id.starts_with("submenu.")
     }
 
     /// The shortcut on this system.
@@ -130,21 +166,40 @@ impl Command {
 
 /// The command a key press is the shortcut for.
 pub fn for_key(text: &str, control: bool, alt: bool, shift: bool, meta: bool) -> Option<&'static Command> {
-    COMMANDS.iter().filter(|c| !c.is_separator()).find(|c| c.matches(text, control, alt, shift, meta))
+    COMMANDS.iter().filter(|c| !c.is_separator() && !c.is_submenu()).find(|c| c.matches(text, control, alt, shift, meta))
 }
 
 /// Slint's title for a separator entry (an internal placeholder it turns into a separator).
 const SEPARATOR_TITLE: &str = "\u{E001}⸺";
 
-/// One menu's entries, with what's enabled and checked right now.
-pub fn menu_entries(menu: Menu, enabled: impl Fn(&str) -> bool, checked: impl Fn(&str) -> bool) -> Vec<MenuEntry> {
-    COMMANDS
-        .iter()
-        .filter(|c| c.menu == menu)
-        .map(|c| {
-            if c.is_separator() {
-                return MenuEntry { title: SEPARATOR_TITLE.into(), enabled: true, ..Default::default() };
-            }
+pub fn separator_entry() -> MenuEntry {
+    MenuEntry { title: SEPARATOR_TITLE.into(), enabled: true, ..Default::default() }
+}
+
+/// An entry for a submenu's item (recent files, encodings), which isn't in the command list.
+pub fn item_entry(id: String, title: String, enabled: bool, checked: Option<bool>) -> MenuEntry {
+    MenuEntry {
+        id: id.into(),
+        title: title.into(),
+        enabled,
+        checkable: checked.is_some(),
+        checked: checked.unwrap_or(false),
+        ..Default::default()
+    }
+}
+
+/// One menu's entries, with what's enabled and checked right now, in sections split where its
+/// submenus go.
+pub fn menu_sections(menu: Menu, enabled: impl Fn(&str) -> bool, checked: impl Fn(&str) -> bool) -> Vec<Vec<MenuEntry>> {
+    let mut sections = vec![Vec::new()];
+    for c in COMMANDS.iter().filter(|c| c.menu == menu) {
+        if c.is_submenu() {
+            sections.push(Vec::new());
+            continue;
+        }
+        let entry = if c.is_separator() {
+            separator_entry()
+        } else {
             MenuEntry {
                 id: SharedString::from(c.id),
                 title: SharedString::from(c.title),
@@ -153,8 +208,10 @@ pub fn menu_entries(menu: Menu, enabled: impl Fn(&str) -> bool, checked: impl Fn
                 checkable: c.toggle,
                 checked: c.toggle && checked(c.id),
             }
-        })
-        .collect()
+        };
+        sections.last_mut().unwrap().push(entry);
+    }
+    sections
 }
 
 #[cfg(test)]
@@ -171,6 +228,7 @@ mod tests {
         assert!(COMMANDS.iter().filter(|c| !c.is_separator()).all(|c| c.shortcut().is_empty() || Keys::from_parts(c.shortcut().iter().copied()).is_ok()));
         // No two commands share a shortcut.
         let shortcuts: Vec<_> = COMMANDS.iter().filter(|c| !c.shortcut().is_empty()).map(|c| c.shortcut()).collect();
+        assert_eq!(menu_sections(Menu::File, |_| true, |_| false).len(), 3);
         for (i, a) in shortcuts.iter().enumerate() {
             assert!(!shortcuts[i + 1..].contains(a), "{a:?} is used twice");
         }

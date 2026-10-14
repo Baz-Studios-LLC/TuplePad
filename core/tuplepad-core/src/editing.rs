@@ -628,6 +628,28 @@ impl TextBuffer {
         self.replace_ranges(cursors.to_vec(), vec![text], EditKind::Other, cursors)
     }
 
+    /// Moves (or with `copy`, copies) a selection's text to another place, as one undo step.
+    /// Returns the text at its new place, selected; `None` when dropped onto itself.
+    pub fn move_text(&self, from: TextSelection, to: TextPos, copy: bool) -> Option<TextSelection> {
+        let (start, end) = (from.start(), from.end());
+        let to = self.clamp(to);
+        if start == end || (to >= start && to <= end) {
+            return None;
+        }
+        let text = self.text_in(start, end);
+        let (ranges, texts) = if copy {
+            (vec![TextSelection::caret(to)], vec![text.clone()])
+        } else {
+            (vec![TextSelection { anchor: start, head: end }, TextSelection::caret(to)], vec![String::new(), text.clone()])
+        };
+        let after = self.edit(ranges, texts, EditKind::Other, vec![from]);
+        // Carets come back in document order; the inserted text ends at the one for `to`.
+        let inserted = if copy || to < start { *after.first()? } else { *after.last()? };
+        let length = text.encode_utf16().count() as u64;
+        let end_offset = self.utf16_offset(inserted.head);
+        Some(TextSelection { anchor: self.position_at_utf16_offset(end_offset - length), head: inserted.head })
+    }
+
     // MARK: Selecting
 
     /// ⌘D: selects the word at the last caret, then each next occurrence of the last selection
@@ -777,6 +799,20 @@ mod tests {
         assert_eq!(b.text(), "oneA\nthreeB");
         assert_eq!(after, vec![caret(0, 4), caret(1, 6)]);
         assert_eq!(b.copy_text(&[sel((0, 0), (0, 3)), sel((1, 0), (1, 5))]), "one\nthree");
+    }
+
+    #[test]
+    fn dragging_text_moves_or_copies_it() {
+        let b = buffer("one two three\nfour");
+        let moved = b.move_text(sel((0, 4), (0, 8)), TextPos::new(1, 4), false);
+        assert_eq!(b.text(), "one three\nfourtwo ");
+        assert_eq!(moved, Some(sel((1, 4), (1, 8))));
+        b.undo();
+        assert_eq!(b.text(), "one two three\nfour");
+        let copied = b.move_text(sel((0, 8), (0, 13)), TextPos::new(0, 0), true);
+        assert_eq!(b.text(), "threeone two three\nfour");
+        assert_eq!(copied, Some(sel((0, 0), (0, 5))));
+        assert_eq!(b.move_text(sel((0, 0), (0, 5)), TextPos::new(0, 2), false), None);
     }
 
     #[test]
