@@ -28,7 +28,7 @@ use slint::platform::{Key, WindowEvent};
 use slint::{ComponentHandle, RenderingState};
 
 use crate::app::App;
-use crate::{AppWindow, FindBridge, Theme};
+use crate::{AppWindow, FindBridge, SearchBridge, Theme};
 
 #[derive(Default)]
 struct FrameClock {
@@ -328,6 +328,78 @@ fn run_next(app: Rc<App>, runner: Shared) {
             return later(app, runner, 150);
         }
         "gutterClick" => app.toggle_bookmark_at_row(arg.as_u64().unwrap_or(0)),
+        "search" => {
+            // {"search": {"scope": "documents" | "folder", "replace": bool, "folder": …, "query": …,
+            //  "replacement": …, "include": …, "exclude": …, "case"/"word"/"regex"/"everything": bool,
+            //  "action": "start" | "stop" | "close" | "prepareReplace" | "applyPlan" | "cancelPlan" | "undoAll",
+            //  "activate": row, "open": row, "togglePlan": row, "undo": index}}
+            let bridge = ui.global::<SearchBridge>();
+            if let Some(scope) = arg.get("scope").and_then(Value::as_str) {
+                let replace = arg.get("replace").and_then(Value::as_bool).unwrap_or(false);
+                app.show_search(if scope == "folder" { 1 } else { 0 }, replace);
+            }
+            if let Some(folder) = arg.get("folder").and_then(Value::as_str) {
+                app.set_search_folder_path(std::path::Path::new(folder));
+            }
+            let text = |name: &str| arg.get(name).and_then(Value::as_str).map(slint::SharedString::from);
+            let flag = |name: &str| arg.get(name).and_then(Value::as_bool);
+            if let Some(t) = text("query") {
+                bridge.set_query(t);
+            }
+            if let Some(t) = text("replacement") {
+                bridge.set_replacement(t);
+            }
+            if let Some(t) = text("include") {
+                bridge.set_include(t);
+            }
+            if let Some(t) = text("exclude") {
+                bridge.set_exclude(t);
+            }
+            if let Some(on) = flag("case") {
+                bridge.set_case_sensitive(on);
+            }
+            if let Some(on) = flag("word") {
+                bridge.set_whole_word(on);
+            }
+            if let Some(on) = flag("regex") {
+                bridge.set_regex(on);
+            }
+            if let Some(on) = flag("everything") {
+                bridge.set_search_everything(on);
+            }
+            let row = |name: &str| arg.get(name).and_then(Value::as_i64).map(|n| n as i32);
+            if let Some(n) = row("activate") {
+                bridge.set_selected(n);
+                app.activate_search_row(n, 1);
+            }
+            if let Some(n) = row("open") {
+                bridge.set_selected(n);
+                app.activate_search_row(n, 2);
+            }
+            if let Some(n) = row("togglePlan").or_else(|| arg.get("togglePlan").and_then(Value::as_str).and_then(|t| app.plan_row_of(t))) {
+                app.toggle_plan_file(n);
+            }
+            if let Some(n) = row("undo") {
+                app.undo_replaced(n.max(0) as usize);
+            }
+            match arg.get("action").and_then(Value::as_str) {
+                Some("start") => app.start_search(),
+                Some("stop") => app.stop_search(),
+                Some("close") => app.hide_search(),
+                Some("prepareReplace") => app.prepare_replace(),
+                Some("applyPlan") => app.apply_plan(),
+                Some("cancelPlan") => app.cancel_plan(),
+                Some("undoAll") => app.undo_all_replaced(),
+                _ => {}
+            }
+        }
+        "waitSearch" => return wait_until(app, runner, |app| !app.search_busy(), Instant::now()),
+        "searchStatus" => {
+            let state = app.search_dump();
+            if let Some(path) = arg.as_str() {
+                let _ = std::fs::write(path, serde_json::to_string_pretty(&state).unwrap_or_default());
+            }
+        }
         "menus" => {
             let menus = dump_menus(&ui);
             if let Some(path) = arg.as_str() {
@@ -367,6 +439,14 @@ fn run_next(app: Rc<App>, runner: Shared) {
     }
     app.refresh();
     later(app, runner, pause);
+}
+
+/// Carries on once `done` holds (or after 30 seconds).
+fn wait_until(app: Rc<App>, runner: Shared, done: fn(&App) -> bool, since: Instant) {
+    if done(&app) || since.elapsed() > Duration::from_secs(30) {
+        return later(app, runner, 60);
+    }
+    slint::Timer::single_shot(Duration::from_millis(40), move || wait_until(app, runner, done, since));
 }
 
 fn wait_for(app: Rc<App>, runner: Shared, path: PathBuf, since: Instant) {

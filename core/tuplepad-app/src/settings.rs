@@ -36,6 +36,11 @@ pub struct Settings {
     pub new_document_bom: bool,
     /// "lf", "crlf" or "cr".
     pub new_document_line_ending: String,
+    /// Folders searched lately, newest first.
+    pub search_folders: Vec<String>,
+    pub search_include: String,
+    pub search_exclude: String,
+    pub search_panel_height: f32,
 }
 
 impl Default for Settings {
@@ -63,6 +68,10 @@ impl Default for Settings {
             new_document_encoding: "UTF-8".into(),
             new_document_bom: false,
             new_document_line_ending: "lf".into(),
+            search_folders: Vec::new(),
+            search_include: String::new(),
+            search_exclude: String::new(),
+            search_panel_height: 340.0,
         }
     }
 }

@@ -582,6 +582,11 @@ fn folder_search_respects_gitignore_globs_and_binaries() {
     assert_eq!(names(&results, root), ["latin1.txt"]);
     let (results, _) = search_folder(root, "needle", "*.swift, *.txt", "", false);
     assert_eq!(names(&results, root), ["latin1.txt", "src/lib.swift"]);
+    // Include patterns only narrow the search: they don't bring back ignored or hidden files.
+    let (results, _) = search_folder(root, "needle", "*.log", "", false);
+    assert!(results.is_empty());
+    let (results, _) = search_folder(root, "needle", "*.log, *.txt", "", true);
+    assert_eq!(names(&results, root), [".hidden/secret.txt", "debug.log", "latin1.txt"]);
 
     // Searching everything includes ignored and hidden files, but never binaries.
     let (results, _) = search_folder(root, "needle", "", "", true);

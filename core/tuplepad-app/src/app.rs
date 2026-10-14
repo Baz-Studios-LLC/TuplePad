@@ -24,6 +24,8 @@ pub struct App {
     pub settings_window: RefCell<Option<crate::SettingsWindow>>,
     /// The find bar's matches and status.
     pub find: RefCell<crate::find::FindState>,
+    /// The search panel's results, replace plan and what it replaced.
+    pub search: RefCell<crate::search_panel::SearchState>,
     /// What the command palette searches, and which of it is showing.
     pub palette_entries: RefCell<Vec<crate::palette::Entry>>,
     pub palette_shown: RefCell<Vec<usize>>,
@@ -103,6 +105,7 @@ impl App {
             settings_window: RefCell::new(None),
             font_choices: RefCell::new(Vec::new()),
             find: RefCell::new(Default::default()),
+            search: RefCell::new(Default::default()),
             palette_entries: RefCell::new(Vec::new()),
             palette_shown: RefCell::new(Vec::new()),
             editor: RefCell::new(editor),
@@ -522,6 +525,10 @@ impl App {
             "find.clear-marks" => self.clear_marks(),
             "find.bookmark-lines" => self.bookmark_matching_lines(),
             "find.close" => self.close_find(),
+            "search.open-documents" => self.show_search(0, false),
+            "search.files" => self.show_search(1, false),
+            "search.replace-files" => self.show_search(1, true),
+            "search.close" => self.hide_search(),
             "bookmark.toggle" => self.toggle_bookmark(),
             "bookmark.next" => self.step_bookmark(true),
             "bookmark.previous" => self.step_bookmark(false),
@@ -801,7 +808,7 @@ impl App {
         self.alert("Couldn't install the tuplepad command.", "None of the usual folders for commands can be written to.");
     }
 
-    fn next_scripted_folder(&self) -> Option<PathBuf> {
+    pub fn next_scripted_folder(&self) -> Option<PathBuf> {
         if self.is_scripted() { self.next_answer().map(PathBuf::from) } else { None }
     }
 

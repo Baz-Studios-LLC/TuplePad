@@ -93,10 +93,10 @@ impl App {
     /// The query or options changed: search again and select the first match from the caret.
     pub fn find_changed(&self) {
         self.find.borrow_mut().message = None;
-        self.start_search(Step::First);
+        self.find_matches(Step::First);
     }
 
-    fn start_search(&self, step: Step) {
+    fn find_matches(&self, step: Step) {
         let query = self.find_query();
         let (buffer, doc_id) = {
             let editor = self.editor.borrow();
@@ -215,7 +215,7 @@ impl App {
             self.show_find_status();
             self.refresh();
         } else {
-            self.start_search(if forward { Step::Next } else { Step::Previous });
+            self.find_matches(if forward { Step::Next } else { Step::Previous });
         }
     }
 
@@ -231,7 +231,7 @@ impl App {
                 editor.apply(|buffer, cursors| buffer.edit(vec![range], vec![text], EditKind::Other, cursors.to_vec()));
             }
         }
-        self.start_search(Step::Next);
+        self.find_matches(Step::Next);
     }
 
     /// Replaces every match in the document as one undo step.
@@ -253,7 +253,7 @@ impl App {
             Ok(n) => format!("Replaced {}", group(n)),
             Err(error) => error.to_string(),
         };
-        self.start_search(Step::None);
+        self.find_matches(Step::None);
         self.find.borrow_mut().message = Some(message);
         self.show_find_status();
     }
@@ -322,7 +322,7 @@ impl App {
             ui.global::<FindBridge>().set_query(text.into());
             self.find.borrow_mut().found_for = None;
             if ui.global::<FindBridge>().get_open() {
-                self.start_search(Step::None);
+                self.find_matches(Step::None);
             }
         }
     }
@@ -334,7 +334,7 @@ impl App {
             return;
         }
         self.find.borrow_mut().message = None;
-        self.start_search(Step::None);
+        self.find_matches(Step::None);
     }
 
     // MARK: Bookmarks

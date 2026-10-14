@@ -23,6 +23,10 @@ TuplePad is in early development. It's being rebuilt on [Slint](https://slint.de
 - **Encodings and line endings:** detected and kept. Reopen with another encoding, convert to one (with or without a BOM; TuplePad warns about characters it can't hold), and switch line endings, from the File menu.
 - **The `tuplepad` terminal command** (File ▸ Install Command Line Tool…): `tuplepad notes.txt`, `tuplepad +42 main.rs` or `main.rs:42:7`, and `git log | tuplepad -`. Files that don't exist yet open as new documents. TuplePad opens from Finder and Open With.
 - **Print** (⌘P) with syntax colors and line numbers (each optional), through the Mac's print panel (with its preview and Save as PDF).
+- **Find and replace** (⌘F, ⌥⌘F; Ctrl+F, Ctrl+H on Windows and Linux): finds as you type, even in huge files, and highlights every match, the current one strongest. Match Case, Whole Words and Regular Expression options; Replace and Replace All (with `$1`-style groups) are each one undo step. ⌘G / ⇧⌘G (F3 / Shift+F3) step through matches, wrapping around, and ⌘E searches for the selection. **Count Matches**, **Mark All** (⌃⌘M) to keep every match highlighted until you clear it, and **Bookmark Matching Lines**.
+- **Bookmarks:** click a line number (or ⌘F2) to bookmark a line, F2 and ⇧F2 to jump between bookmarks, and copy or delete every bookmarked line at once. Bookmarks move with your edits and come back with the session.
+- **Find in Files** (⇧⌘F) and **Find in Open Documents:** a panel under the editor with results grouped by file and each match highlighted. Use ↑ and ↓ to look through them in the editor, Return to jump there. Folder searches respect `.gitignore`, skip binary and very large files (unless you include ignored files), take include and exclude patterns (`*.rs, *.py`, `build`), and show their progress with a Stop button. Searching all of TuplePad's source for `e` (50,000 matches) takes about a quarter of a second.
+- **Replace in Files** (⌥⇧⌘F): first a preview of every change, file by file, with exactly what changes highlighted; uncheck any file to leave it alone. Open documents change in place (one undo step each, saved when you save), and other files are rewritten after a backup is kept, so each file can be undone, or all of them at once.
 
 The Mac app in `TuplePad/` does much more, and those features are coming to the new app milestone by milestone (see the roadmap below):
 
@@ -74,7 +78,7 @@ The Mac app opens from `TuplePad.xcodeproj` in Xcode (macOS 26 or later, Xcode 2
 | Part | Language | Where |
 |---|---|---|
 | Text engine: buffer (a rope), editing, undo, encodings, saving, syntax trees, search, session | Rust | `core/tuplepad-core` |
-| The app: window, editor, sidebar, menus | Slint and Rust | `core/tuplepad-app` (`ui/` and `src/`) |
+| The app: window, editor, sidebar, menus, find bar, search panel | Slint and Rust | `core/tuplepad-app` (`ui/` and `src/`) |
 | `tuplepad` terminal command | Rust | `core/tuplepad-cli` |
 | The first Mac app (reference) | Swift / SwiftUI | `TuplePad/` |
 | App icon | Icon Composer | `TuplePad/AppIcon.icon` (artwork source in `design/`) |

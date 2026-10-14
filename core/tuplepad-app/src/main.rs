@@ -15,6 +15,7 @@ mod palette;
 mod platform;
 mod print;
 mod script;
+mod search_panel;
 mod session;
 mod settings;
 mod settings_window;
@@ -285,6 +286,37 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
     {
         let app = app.clone();
         bridge.on_gutter_clicked(move |row| app.toggle_bookmark_at_row(row.max(0) as u64));
+    }
+    {
+        let search = ui.global::<SearchBridge>();
+        let a = app.clone();
+        search.on_start(move || a.start_search());
+        let a = app.clone();
+        search.on_stop(move || a.stop_search());
+        let a = app.clone();
+        search.on_close(move || a.hide_search());
+        let a = app.clone();
+        search.on_scope_changed(move || a.search_scope_changed());
+        let a = app.clone();
+        search.on_choose_folder(move || a.choose_search_folder());
+        let a = app.clone();
+        search.on_pick_folder(move |i| a.pick_search_folder(i.max(0) as usize));
+        let a = app.clone();
+        search.on_activate(move |i, how| a.activate_search_row(i, how));
+        let a = app.clone();
+        search.on_prepare_replace(move || a.prepare_replace());
+        let a = app.clone();
+        search.on_apply_plan(move || a.apply_plan());
+        let a = app.clone();
+        search.on_cancel_plan(move || a.cancel_plan());
+        let a = app.clone();
+        search.on_plan_toggle(move |i| a.toggle_plan_file(i));
+        let a = app.clone();
+        search.on_undo(move |i| a.undo_replaced(i.max(0) as usize));
+        let a = app.clone();
+        search.on_undo_all(move || a.undo_all_replaced());
+        let a = app.clone();
+        search.on_resized(move || a.search_panel_resized());
     }
     {
         let app = app.clone();

@@ -5,7 +5,7 @@ use std::io::Read;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use ignore::overrides::OverrideBuilder;
+use ignore::overrides::{Override, OverrideBuilder};
 use ignore::{WalkBuilder, WalkParallel, WalkState};
 use regex::Regex;
 use ropey::Rope;
@@ -85,11 +85,11 @@ impl FolderSearch {
     pub fn start(options: FolderSearchOptions) -> CoreResult<Arc<Self>> {
         let regex = search::compile(&options.query)?
             .ok_or_else(|| CoreError::InvalidPattern { message: "Type something to search for.".into() })?;
-        let walker = walker(&options)?;
+        let (walker, include) = walker(&options)?;
         let shared = Arc::new(Shared::default());
         let worker = Arc::clone(&shared);
         std::thread::spawn(move || {
-            run(walker, &regex, &options, &worker);
+            run(walker, &include, &regex, &options, &worker);
             worker.finished.store(true, Ordering::Release);
         });
         Ok(Arc::new(FolderSearch { shared }))
@@ -124,16 +124,20 @@ fn globs(list: &str) -> impl Iterator<Item = &str> {
     list.split(|c: char| c == ',' || c.is_whitespace()).filter(|glob| !glob.is_empty())
 }
 
-fn walker(options: &FolderSearchOptions) -> CoreResult<WalkParallel> {
+/// The walker, and the include patterns. Includes are checked separately rather than given to
+/// the walker as overrides, which would bring back files `.gitignore` leaves out.
+fn walker(options: &FolderSearchOptions) -> CoreResult<(WalkParallel, Override)> {
     let folder = std::path::Path::new(&options.folder);
     if !folder.is_dir() {
         return Err(CoreError::Io { message: format!("“{}” isn’t a folder.", options.folder) });
     }
-    let mut overrides = OverrideBuilder::new(folder);
     let bad_glob = |error: ignore::Error| CoreError::InvalidPattern { message: format!("Invalid file pattern: {error}") };
+    let mut include = OverrideBuilder::new(folder);
     for glob in globs(&options.include) {
-        overrides.add(glob).map_err(bad_glob)?;
+        include.add(glob).map_err(bad_glob)?;
     }
+    let include = include.build().map_err(bad_glob)?;
+    let mut overrides = OverrideBuilder::new(folder);
     for glob in globs(&options.exclude) {
         overrides.add(&format!("!{glob}")).map_err(bad_glob)?;
     }
@@ -146,10 +150,10 @@ fn walker(options: &FolderSearchOptions) -> CoreResult<WalkParallel> {
         .overrides(overrides)
         .filter_entry(|entry| entry.file_name() != ".git")
         .threads(std::thread::available_parallelism().map_or(4, |n| n.get()).min(12));
-    Ok(builder.build_parallel())
+    Ok((builder.build_parallel(), include))
 }
 
-fn run(walker: WalkParallel, regex: &Regex, options: &FolderSearchOptions, shared: &Arc<Shared>) {
+fn run(walker: WalkParallel, include: &Override, regex: &Regex, options: &FolderSearchOptions, shared: &Arc<Shared>) {
     walker.run(|| {
         Box::new(|entry| {
             if shared.cancelled.load(Ordering::Acquire) {
@@ -157,6 +161,9 @@ fn run(walker: WalkParallel, regex: &Regex, options: &FolderSearchOptions, share
             }
             let Ok(entry) = entry else { return WalkState::Continue };
             if !entry.file_type().is_some_and(|t| t.is_file()) {
+                return WalkState::Continue;
+            }
+            if !include.is_empty() && !include.matched(entry.path(), false).is_whitelist() {
                 return WalkState::Continue;
             }
             if let Some(found) = search_file(entry.path(), regex, options, shared) {

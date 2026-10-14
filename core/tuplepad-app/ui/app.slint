@@ -6,8 +6,9 @@ import { Sheet, Toggle } from "controls.slint";
 import { SettingsWindow, SettingsValues } from "settings.slint";
 import { CommandPalette, PaletteItem, TitlePart } from "palette.slint";
 import { FindBar, FindBridge } from "findbar.slint";
+import { SearchPanel, SearchBridge, SearchRow, PlanRow, ReplacedRow, ReplacePlanSheet } from "searchpanel.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, DocItem, Palette, SettingsWindow, SettingsValues, PaletteItem, TitlePart, FindBridge }
+export { Theme, EditorBridge, Span, Row, Caret, Band, DocItem, Palette, SettingsWindow, SettingsValues, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
@@ -76,6 +77,13 @@ export component AppWindow inherits Window {
     callback select-doc(index: int);
     callback drag-window();
     callback sidebar-resized(width: length);
+
+    // The search panel leaves the editor some room when the window gets smaller.
+    changed height => {
+        if SearchBridge.panel-height > self.height - 240px {
+            SearchBridge.panel-height = max(150px, self.height - 240px);
+        }
+    }
 
     public function focus-editor() {
         editor.focus-editor();
@@ -390,6 +398,11 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
             }
 
+            if SearchBridge.open: SearchPanel {
+                height: SearchBridge.panel-height;
+                max-panel-height: root.height - 240px;
+            }
+
             Rectangle {
                 height: 27px;
                 background: Theme.status-background;
@@ -459,6 +472,8 @@ export component AppWindow inherits Window {
             toggled(on) => { root.print-colors = on; }
         }
     }
+
+    if SearchBridge.plan-open: ReplacePlanSheet { }
 
     if root.palette-open: CommandPalette {
         items: root.palette-items;

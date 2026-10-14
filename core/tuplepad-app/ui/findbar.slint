@@ -23,12 +23,14 @@ export global FindBridge {
     callback action(id: string);
 }
 
-component SmallButton inherits Rectangle {
+export component SmallButton inherits Rectangle {
     in property <string> icon;
     in property <string> label;
     in property <bool> on;
     in property <string> tooltip;
+    in property <bool> enabled: true;
     callback clicked;
+    opacity: root.enabled ? 1 : 0.4;
     width: root.label != "" ? 30px : 28px;
     height: 26px;
     border-radius: 7px;
@@ -54,10 +56,10 @@ component SmallButton inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
 }
 
-component FieldBox inherits Rectangle {
+export component FieldBox inherits Rectangle {
     in property <bool> focused;
     height: 30px;
     border-radius: 8px;
@@ -65,6 +67,76 @@ component FieldBox inherits Rectangle {
     border-width: 1px;
     border-color: root.focused ? Theme.accent.with-alpha(0.6) : Theme.control-border;
     animate border-color { duration: 120ms; }
+}
+
+// A one-line text field with a placeholder, and optional text at its end (like a match count).
+export component InputField inherits FieldBox {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <string> trailing;
+    in property <bool> trailing-error;
+    in property <bool> mono;
+    out property <bool> has-focus: field.has-focus;
+    callback accepted();
+    callback escaped();
+    callback edited();
+    // ↓ in the field (returns whether it was used).
+    callback arrow-down() -> bool;
+    focused: field.has-focus;
+
+    public function focus-field() {
+        field.focus();
+        field.select-all();
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 8px;
+        Rectangle {
+            horizontal-stretch: 1;
+            field := TextInput {
+                width: parent.width;
+                height: parent.height;
+                text <=> root.text;
+                font-size: 13px;
+                color: Theme.primary-text;
+                vertical-alignment: center;
+                single-line: true;
+                selection-background-color: Theme.selection;
+                edited => { root.edited(); }
+                key-pressed(event) => {
+                    if event.text == Key.Return {
+                        root.accepted();
+                        return EventResult.accept;
+                    }
+                    if event.text == Key.Escape {
+                        root.escaped();
+                        return EventResult.accept;
+                    }
+                    if event.text == Key.DownArrow && root.arrow-down() {
+                        return EventResult.accept;
+                    }
+                    return EventResult.reject;
+                }
+            }
+            if root.text == "": Text {
+                width: parent.width;
+                height: parent.height;
+                text: root.placeholder;
+                font-size: 13px;
+                color: Theme.tertiary-text;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        if root.trailing != "": Text {
+            text: root.trailing;
+            font-size: 12px;
+            color: root.trailing-error ? (Theme.dark ? #FF8F8F : #C0392B) : Theme.secondary-text;
+            vertical-alignment: center;
+        }
+    }
 }
 
 export component FindBar inherits Rectangle {
