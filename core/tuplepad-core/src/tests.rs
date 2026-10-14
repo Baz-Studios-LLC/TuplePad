@@ -373,6 +373,65 @@ fn single_replacement_checks_the_range_is_still_a_match() {
 }
 
 #[test]
+fn new_documents_use_the_chosen_format() {
+    let utf16 = TextEncoding { name: "UTF-16LE".into(), has_bom: true };
+    let buffer = TextBuffer::untitled(utf16.clone(), LineEnding::CrLf);
+    assert!(!buffer.is_modified());
+    assert_eq!(buffer.file_info().encoding, utf16);
+    assert_eq!(buffer.file_info().line_ending, LineEnding::CrLf);
+}
+
+#[test]
 fn opening_a_missing_file_is_an_error() {
     assert!(matches!(TextBuffer::open("/definitely/not/here.txt".into()), Err(CoreError::Io { .. })));
+}
+
+fn ranked(query: &str, candidates: &[&str]) -> Vec<String> {
+    fuzzy_rank(query.into(), candidates.iter().map(|c| c.to_string()).collect(), 50)
+        .into_iter()
+        .map(|hit| candidates[hit.index as usize].to_string())
+        .collect()
+}
+
+#[test]
+fn fuzzy_matching_needs_the_letters_in_order() {
+    let commands = ["Duplicate Line", "Delete Line", "Sort Ascending", "Save As…"];
+    assert_eq!(ranked("dl", &commands)[..2], ["Delete Line", "Duplicate Line"]);
+    assert_eq!(ranked("sortasc", &commands), ["Sort Ascending"]);
+    assert_eq!(ranked("sort asc", &commands), ["Sort Ascending"]);
+    assert!(ranked("xyz", &commands).is_empty());
+    assert!(ranked("enil", &commands).is_empty());
+    // An empty query keeps everything, in order.
+    assert_eq!(ranked("", &commands), commands);
+}
+
+#[test]
+fn fuzzy_matching_prefers_word_starts_and_runs() {
+    // A whole-word match beats the same letters later on.
+    assert_eq!(ranked("save", &["Use Selection for Find and Save", "Save"])[0], "Save");
+    // Word starts beat letters buried in a word.
+    assert_eq!(ranked("gl", &["Toggle Line", "Go to Line…"])[0], "Go to Line…");
+    // camelCase and path segments count as word starts.
+    assert_eq!(ranked("tbr", &["tabular.rs", "src/text_buffer.rs"])[0], "src/text_buffer.rs");
+    assert_eq!(ranked("tb", &["Settings", "TextBuffer"])[0], "TextBuffer");
+    // A contiguous match beats a scattered one.
+    assert_eq!(ranked("find", &["Fold Inside Nested Docs", "Find Next"])[0], "Find Next");
+    // Letters picked out of the middle of words are noise next to a real match…
+    assert_eq!(ranked("tog", &["Chinese Traditional (Big 5)", "Toggle Comment", "Sort Ignoring Case"]), ["Toggle Comment"]);
+    // …but still match when nothing better does.
+    assert_eq!(ranked("tog", &["Chinese Traditional (Big 5)"]), ["Chinese Traditional (Big 5)"]);
+}
+
+#[test]
+fn fuzzy_positions_are_utf16_offsets_for_highlighting() {
+    let hits = fuzzy_rank("gl".into(), vec!["Go to Line".into()], 10);
+    assert_eq!(hits[0].positions, vec![0, 6]);
+    // Characters outside the BMP take two UTF-16 units.
+    let hits = fuzzy_rank("ab".into(), vec!["😀 a b".into()], 10);
+    assert_eq!(hits[0].positions, vec![3, 5]);
+    // Matching ignores case.
+    let hits = fuzzy_rank("UTF".into(), vec!["utf-8".into()], 10);
+    assert_eq!(hits[0].positions, vec![0, 1, 2]);
+    assert!(fuzzy_rank("x".into(), vec!["a".into(); 3], 10).is_empty());
+    assert_eq!(fuzzy_rank("".into(), vec!["a".into(); 5], 2).len(), 2);
 }

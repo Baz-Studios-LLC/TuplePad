@@ -62,6 +62,15 @@ impl TextBuffer {
         Self::with_text(String::new())
     }
 
+    /// An empty document that will be saved in a chosen encoding and line ending
+    /// (the defaults from Settings). Starts unmodified.
+    #[uniffi::constructor]
+    pub fn untitled(encoding: TextEncoding, line_ending: LineEnding) -> Arc<Self> {
+        let mut state = State::new("", encoding);
+        state.line_ending = line_ending;
+        Arc::new(TextBuffer { state: RwLock::new(state) })
+    }
+
     /// An untitled document with initial contents.
     #[uniffi::constructor]
     pub fn with_text(text: String) -> Arc<Self> {
