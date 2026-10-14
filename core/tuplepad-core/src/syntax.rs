@@ -195,6 +195,7 @@ pub fn languages() -> Vec<LanguageInfo> {
     let mut list: Vec<_> = LANGUAGES
         .iter()
         .map(|l| LanguageInfo { id: l.id.to_string(), name: l.name.to_string() })
+        .chain([("csv", "CSV"), ("tsv", "TSV")].map(|(id, name)| LanguageInfo { id: id.into(), name: name.into() }))
         .collect();
     list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     list
@@ -533,6 +534,32 @@ impl Syntax {
         Some(ends.into_iter().collect())
     }
 
+    /// Lines inside Markdown code blocks within a range (none for other languages).
+    pub fn code_block_lines(&self, start: usize, count: usize) -> Vec<usize> {
+        if self.id != "markdown" {
+            return Vec::new();
+        }
+        let Some(tree) = &self.tree else { return Vec::new() };
+        let end = start + count;
+        let mut lines = Vec::new();
+        let mut stack = vec![tree.root_node()];
+        while let Some(node) = stack.pop() {
+            let (first, last) = (node.start_position().row, node.end_position().row);
+            if last < start || first >= end {
+                continue;
+            }
+            if matches!(node.kind(), "fenced_code_block" | "indented_code_block") {
+                lines.extend(first.max(start)..=last.min(end - 1));
+                continue;
+            }
+            let mut cursor = node.walk();
+            stack.extend(node.children(&mut cursor));
+        }
+        lines.sort_unstable();
+        lines.dedup();
+        lines
+    }
+
     /// The document's functions, types and headings.
     #[cfg(test)]
     pub fn outline(&self, rope: &Rope, limit: usize) -> Vec<crate::outline::OutlineItem> {
@@ -757,6 +784,72 @@ fn fold_of(node: Node, rope: &Rope) -> Option<(usize, usize)> {
     let close_row = close.start_position().row;
     let end = if starts_line(close) { close_row.checked_sub(1)? } else { close_row };
     Some((open.start_position().row, end))
+}
+
+/// Code as HTML with `<span class="tp-…">` around each colored run, for the Markdown preview.
+/// Nil if the language isn't known.
+pub(crate) fn highlight_html(language_name: &str, code: &str) -> Option<std::string::String> {
+    let id = language_for_name(language_name)?;
+    let mut syntax = Syntax::new(id)?;
+    let rope = Rope::from_str(code);
+    syntax.parse(&rope);
+    let spans = syntax.highlights(&rope, 0, rope.len_lines());
+    let mut html = std::string::String::with_capacity(code.len() * 2);
+    let mut spans = spans.into_iter().peekable();
+    for (line_index, line) in code.split_inclusive('\n').enumerate() {
+        let units: Vec<u16> = line.trim_end_matches(['\n', '\r']).encode_utf16().collect();
+        let mut column = 0usize;
+        while let Some(span) = spans.next_if(|s| s.line as usize == line_index) {
+            let (start, end) = (span.start as usize, (span.end as usize).min(units.len()));
+            if start < column || start >= end {
+                continue;
+            }
+            html.push_str(&escape_html(&std::string::String::from_utf16_lossy(&units[column..start])));
+            html.push_str(&format!("<span class=\"tp-{}\">", style_class(span.style)));
+            html.push_str(&escape_html(&std::string::String::from_utf16_lossy(&units[start..end])));
+            html.push_str("</span>");
+            column = end;
+        }
+        html.push_str(&escape_html(&std::string::String::from_utf16_lossy(&units[column.min(units.len())..])));
+        if line.ends_with('\n') {
+            html.push('\n');
+        }
+    }
+    Some(html)
+}
+
+pub(crate) fn escape_html(text: &str) -> std::string::String {
+    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
+/// The CSS class name for a style, like `keyword`.
+pub(crate) fn style_class(style: HighlightStyle) -> &'static str {
+    use HighlightStyle::*;
+    match style {
+        Keyword => "keyword",
+        String => "string",
+        Escape => "escape",
+        Comment => "comment",
+        Number => "number",
+        Constant => "constant",
+        Function => "function",
+        Type => "type",
+        Variable => "variable",
+        Property => "property",
+        Operator => "operator",
+        Punctuation => "punctuation",
+        Tag => "tag",
+        Attribute => "attribute",
+        Label => "label",
+        Namespace => "namespace",
+        Heading => "heading",
+        Emphasis => "emphasis",
+        Strong => "strong",
+        Link => "link",
+        Code => "code",
+        Inserted => "inserted",
+        Deleted => "deleted",
+    }
 }
 
 /// Describes replacing the bytes `start..old_end` so a syntax tree can follow along.

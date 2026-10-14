@@ -241,3 +241,27 @@ pub fn replace_in_file(path: String, query: SearchQuery, replacement: String, ba
 pub fn preview_file_replacements(path: String, query: SearchQuery, replacement: String, max_groups: u64) -> CoreResult<Vec<ReplacementPreview>> {
     TextBuffer::open_without_syntax(path)?.replacement_preview(query, replacement, max_groups)
 }
+
+/// Files in a folder for Go to File: paths relative to the folder, sorted, at most `limit`.
+/// Skips what `.gitignore` excludes, hidden files and `.git`.
+#[uniffi::export]
+pub fn list_files(folder: String, limit: u32) -> CoreResult<Vec<String>> {
+    let root = std::path::Path::new(&folder);
+    if !root.is_dir() {
+        return Err(CoreError::Io { message: format!("“{folder}” isn’t a folder.") });
+    }
+    let mut files = Vec::new();
+    for entry in WalkBuilder::new(root).require_git(false).filter_entry(|e| e.file_name() != ".git").build().flatten() {
+        if !entry.file_type().is_some_and(|t| t.is_file()) {
+            continue;
+        }
+        if let Ok(relative) = entry.path().strip_prefix(root) {
+            files.push(relative.to_string_lossy().into_owned());
+        }
+        if files.len() >= limit as usize {
+            break;
+        }
+    }
+    files.sort_by_key(|path| path.to_lowercase());
+    Ok(files)
+}

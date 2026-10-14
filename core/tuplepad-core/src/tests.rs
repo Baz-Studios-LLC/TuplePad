@@ -761,3 +761,188 @@ fn words_for_completion() {
     assert_eq!(buffer.words(3, 10), ["total", "abc_9", "let", "total_count", "é_word"]);
     assert_eq!(buffer.words(3, 2), ["total", "abc_9"]);
 }
+
+// MARK: Built-in tools
+
+#[test]
+fn diff_aligns_changed_added_and_removed_lines() {
+    let left = "one\ntwo\nthree\nfour\n".to_string();
+    let right = "one\nTwo!\nthree\nfive\nsix\n".to_string();
+    let result = diff_texts(left, right, DiffOptions { ignore_whitespace: false, ignore_case: false });
+    let kinds: Vec<DiffKind> = result.rows.iter().map(|r| r.kind).collect();
+    assert_eq!(kinds, [DiffKind::Same, DiffKind::Changed, DiffKind::Same, DiffKind::Changed, DiffKind::Added]);
+    assert_eq!((result.added, result.removed, result.changed), (1, 0, 2));
+    assert_eq!(result.changes, vec![1, 3]);
+    let changed = &result.rows[1];
+    assert_eq!((changed.left_text.as_str(), changed.right_text.as_str()), ("two", "Two!"));
+    // "t"→"T" and the added "!" are marked, not the whole line.
+    assert_eq!(changed.left_spans, vec![MatchSpan { start: 0, end: 1 }]);
+    assert_eq!(changed.right_spans, vec![MatchSpan { start: 0, end: 1 }, MatchSpan { start: 3, end: 4 }]);
+    // Options: whitespace and case can be ignored.
+    let same = diff_texts("a  b\nC\n".into(), "a b\nc\n".into(), DiffOptions { ignore_whitespace: true, ignore_case: true });
+    assert!(same.rows.iter().all(|r| r.kind == DiffKind::Same));
+    // Removed lines, and an empty side.
+    let removed = diff_texts("a\nb\n".into(), "".into(), DiffOptions { ignore_whitespace: false, ignore_case: false });
+    assert_eq!((removed.removed, removed.rows.len()), (2, 2));
+}
+
+#[test]
+fn json_tools() {
+    let text = r#"{"b": 1.10, "a": [true, null, {"x": "y"}], "big": 12345678901234567890}"#;
+    let pretty = json_format(text.into(), 2, false).unwrap();
+    assert!(pretty.starts_with("{\n  \"b\": 1.10,"), "{pretty}");
+    assert!(pretty.contains("12345678901234567890"), "numbers keep their precision");
+    let sorted = json_format(text.into(), 0, true).unwrap();
+    assert!(sorted.starts_with("{\n\t\"a\": ["), "{sorted}");
+    assert_eq!(json_minify(pretty).unwrap(), r#"{"b":1.10,"a":[true,null,{"x":"y"}],"big":12345678901234567890}"#);
+    assert!(json_validate(text.into()).is_none());
+    match json_validate("{\n  \"a\": 1,\n  \"b\": \n}".into()) {
+        Some(CoreError::Invalid { line, .. }) => assert_eq!(line, 4),
+        other => panic!("{other:?}"),
+    }
+    let tree = json_tree(text.into(), 100);
+    assert_eq!(tree[0].kind, JsonKind::Object);
+    assert_eq!(tree[0].preview, "3 keys");
+    let x = tree.iter().find(|i| i.key == "x").unwrap();
+    assert_eq!(x.preview, "\"y\"");
+    assert_eq!(tree[x.parent.unwrap() as usize].key, "[2]");
+    let doc = "{\n  \"store\": {\n    \"books\": [\n      {\"title\": \"Dune\"},\n      {\"my title\": \"X\"}\n    ]\n  }\n}";
+    assert_eq!(json_path_at(doc.into(), 3, 18).as_deref(), Some("$.store.books[0].title"));
+    assert_eq!(json_path_at(doc.into(), 4, 20).as_deref(), Some("$.store.books[1][\"my title\"]"));
+    assert_eq!(json_path_at(doc.into(), 4, 22).as_deref(), Some("$.store.books[1]"));
+    // Between a key's colon and its value.
+    assert_eq!(json_path_at(doc.into(), 2, 13).as_deref(), Some("$.store.books"));
+}
+
+#[test]
+fn xml_tools() {
+    let text = "<root><item id=\"1\">One</item><!-- note --><item id=\"2\"><name>Two</name></item></root>";
+    let pretty = xml_format(text.into(), 2).unwrap();
+    assert_eq!(pretty, "<root>\n  <item id=\"1\">One</item>\n  <!-- note -->\n  <item id=\"2\">\n    <name>Two</name>\n  </item>\n</root>\n");
+    assert_eq!(xml_linearize(pretty).unwrap(), text);
+    assert!(xml_validate(text.into()).is_none());
+    match xml_validate("<a>\n  <b></c>\n</a>".into()) {
+        Some(CoreError::Invalid { line, .. }) => assert_eq!(line, 2),
+        other => panic!("{other:?}"),
+    }
+    assert!(matches!(xml_validate("<a><b></b>".into()), Some(CoreError::Invalid { .. })));
+    assert!(matches!(xml_validate("<a/><b/>".into()), Some(CoreError::Invalid { .. })));
+    let items = xml_xpath(text.into(), "//item/@id".into()).unwrap();
+    assert_eq!(items.iter().map(|i| i.value.as_str()).collect::<Vec<_>>(), ["1", "2"]);
+    let count = xml_xpath(text.into(), "count(//item)".into()).unwrap();
+    assert_eq!(count[0].value, "2");
+    assert!(xml_xpath(text.into(), "//[".into()).is_err());
+}
+
+#[test]
+fn encoding_and_decoding_round_trip() {
+    let text = "Héllo, wörld & <friends> 👋 = 100%";
+    for codec in [Codec::Base64, Codec::Url, Codec::HtmlEntities, Codec::Hex, Codec::QuotedPrintable] {
+        let encoded = encode_text(codec, text.into());
+        assert_ne!(encoded, text, "{codec:?}");
+        assert_eq!(decode_text(codec, encoded).unwrap(), text, "{codec:?}");
+    }
+    assert_eq!(encode_text(Codec::Base64, "hi".into()), "aGk=");
+    assert_eq!(encode_text(Codec::Url, "a b/c".into()), "a%20b%2Fc");
+    assert_eq!(encode_text(Codec::Hex, "Hi".into()), "48 69");
+    assert_eq!(decode_text(Codec::Base64, "aGk".into()).unwrap(), "hi"); // missing padding is fine
+    assert_eq!(decode_text(Codec::HtmlEntities, "&copy; &#x1F600; &amp;".into()).unwrap(), "© 😀 &");
+    assert_eq!(decode_text(Codec::Hex, "0x48, 0x69".into()).unwrap(), "Hi");
+    assert!(decode_text(Codec::Base64, "!!!".into()).is_err());
+    assert!(decode_text(Codec::Hex, "zz".into()).is_err());
+    // Long quoted-printable lines get soft breaks.
+    let long = "x".repeat(200);
+    let qp = encode_text(Codec::QuotedPrintable, long.clone());
+    assert!(qp.lines().all(|l| l.len() <= 76));
+    assert_eq!(decode_text(Codec::QuotedPrintable, qp).unwrap(), long);
+}
+
+#[test]
+fn hashes_match_known_values() {
+    assert_eq!(hash_text(HashAlgorithm::Md5, "abc".into()), "900150983cd24fb0d6963f7d28e17f72");
+    assert_eq!(hash_text(HashAlgorithm::Sha1, "abc".into()), "a9993e364706816aba3e25717850c26c9cd0d89d");
+    assert_eq!(hash_text(HashAlgorithm::Sha256, "abc".into()), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    assert!(hash_text(HashAlgorithm::Sha512, "abc".into()).starts_with("ddaf35a193617aba"));
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("f");
+    std::fs::write(&path, "abc").unwrap();
+    assert_eq!(hash_file(HashAlgorithm::Sha256, path.to_string_lossy().into_owned()).unwrap(), hash_text(HashAlgorithm::Sha256, "abc".into()));
+}
+
+#[test]
+fn markdown_preview_marks_lines_and_colors_code() {
+    let html = markdown_html("# Title\n\nSome *text*.\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n- [x] done\n".into());
+    let marker = |line: usize| html.find(&format!("data-line=\"{line}\"")).unwrap_or(usize::MAX);
+    assert!(marker(0) < html.find("<h1>Title</h1>").unwrap(), "{html}");
+    assert!(marker(2) < html.find("<p>Some <em>text</em>.</p>").unwrap(), "{html}");
+    assert!(marker(4) < html.find("<pre>").unwrap(), "{html}");
+    assert!(html.contains("<span class=\"tp-keyword\">fn</span>"), "{html}");
+    assert!(html.contains("<table>"), "{html}");
+    assert!(html.contains("checkbox"), "{html}");
+}
+
+#[test]
+fn hex_rows_show_offsets_bytes_and_ascii() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("bytes");
+    std::fs::write(&path, b"Hello, world!\n\x00\x01\xffABCDEFGH").unwrap();
+    let file = path.to_string_lossy().into_owned();
+    assert_eq!(file_size(file.clone()).unwrap(), 25);
+    let rows = hex_rows(file.clone(), 0, 10).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].hex, "48 65 6c 6c 6f 2c 20 77  6f 72 6c 64 21 0a 00 01");
+    assert_eq!(rows[0].ascii, "Hello, world!...");
+    assert_eq!((rows[1].offset, rows[1].ascii.as_str()), (16, ".ABCDEFGH"));
+    assert_eq!(hex_rows(file, 1, 1).unwrap()[0].offset, 16);
+}
+
+#[test]
+fn csv_columns_align_and_sort() {
+    let (_dir, csv) = opened("name,age\nzed,9\n\"Smith, Al\",30\namy,7\n", "people.csv");
+    assert_eq!(csv.language().as_deref(), Some("csv"));
+    assert_eq!(csv.csv_delimiter().as_deref(), Some(","));
+    let spans = csv.highlights(2, 1);
+    assert_eq!(spans.len(), 2, "a quoted comma doesn't split the field: {spans:?}");
+    assert_ne!(spans[0].style, spans[1].style);
+    csv.csv_sort(1, false, true, true, vec![]);
+    assert_eq!(csv.text(), "name,age\namy,7\nzed,9\n\"Smith, Al\",30\n");
+    csv.csv_align(vec![]);
+    assert_eq!(csv.text(), "name       ,age\namy        ,7\nzed        ,9\n\"Smith, Al\",30\n");
+    csv.csv_shrink(vec![]);
+    assert_eq!(csv.text(), "name,age\namy,7\nzed,9\n\"Smith, Al\",30\n");
+    assert_eq!(csv.csv_header(), ["name", "age"]);
+    let (_dir, semi) = opened("a;b;c\n1;2;3\n", "data.csv");
+    assert_eq!(semi.csv_delimiter().as_deref(), Some(";"));
+    semi.set_language(Some("tsv".into()));
+    assert_eq!(semi.language().as_deref(), Some("tsv"));
+}
+
+#[test]
+fn snippets_expand_with_tab_stops() {
+    let expansion = expand_snippet("fn ${1:name}($2) {\n\t$0\n}".into(), "    ".into(), "    ".into());
+    assert_eq!(expansion.text, "fn name() {\n        \n    }");
+    assert_eq!(expansion.stops.len(), 3);
+    assert_eq!(expansion.stops[0].ranges, vec![SnippetRange { line: 0, start: 3, end: 7 }]);
+    assert_eq!(expansion.stops[1].ranges, vec![SnippetRange { line: 0, start: 8, end: 8 }]);
+    assert_eq!(expansion.stops[2].ranges, vec![SnippetRange { line: 1, start: 8, end: 8 }]);
+    // A repeated stop is edited in every place; with no $0 the caret ends after the text.
+    let mirrored = expand_snippet("<${1:div}></$1>".into(), "".into(), "\t".into());
+    assert_eq!(mirrored.text, "<div></>");
+    assert_eq!(mirrored.stops[0].ranges.len(), 2);
+    assert_eq!(mirrored.stops[1].ranges, vec![SnippetRange { line: 0, start: 8, end: 8 }]);
+    // Escapes and stray dollars stay literal.
+    assert_eq!(expand_snippet("cost: \\$5 or $x".into(), "".into(), "".into()).text, "cost: $5 or $x");
+}
+
+#[test]
+fn list_files_for_quick_open() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("src")).unwrap();
+    std::fs::create_dir_all(dir.path().join("target")).unwrap();
+    for name in ["README.md", "src/main.rs", "target/out.o", ".hidden"] {
+        std::fs::write(dir.path().join(name), "x").unwrap();
+    }
+    std::fs::write(dir.path().join(".gitignore"), "target/\n").unwrap();
+    let files = list_files(dir.path().to_string_lossy().into_owned(), 100).unwrap();
+    assert_eq!(files, ["README.md", "src/main.rs"]);
+}

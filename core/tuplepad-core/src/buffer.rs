@@ -22,6 +22,9 @@ pub use tools::BracketMatch;
 mod column;
 pub use column::{ColumnInsert, NumberBase, NumberPadding, column_values};
 
+#[path = "buffer_csv.rs"]
+pub(crate) mod csv_tools;
+
 #[path = "buffer_search.rs"]
 mod marks;
 pub use marks::LineResults;
@@ -68,6 +71,8 @@ struct State {
     bookmarks: std::collections::BTreeSet<usize>,
     /// Folded regions: first line (which stays visible) → last hidden line.
     folds: std::collections::BTreeMap<usize, usize>,
+    /// The delimiter, when the document is CSV or TSV (which colors columns instead of parsing).
+    csv: Option<char>,
 }
 
 #[uniffi::export]
@@ -413,14 +418,24 @@ impl TextBuffer {
 
     /// The language used for highlighting, like "rust" or "python", or nil for plain text.
     pub fn language(&self) -> Option<String> {
-        self.read().syntax.as_ref().map(|s| s.id().to_string())
+        let st = self.read();
+        match st.csv {
+            Some('\t') => Some("tsv".into()),
+            Some(_) => Some("csv".into()),
+            None => st.syntax.as_ref().map(|s| s.id().to_string()),
+        }
     }
 
     /// Changes the highlighting language (nil for plain text) and parses the document.
     /// Takes a moment for large files, so call it off the main thread when you can.
     pub fn set_language(&self, id: Option<String>) {
         let mut st = self.write();
-        st.syntax = id.and_then(|id| Syntax::new(&id));
+        st.csv = match id.as_deref() {
+            Some("csv") => Some(csv_tools::detect_delimiter(&st.rope)).filter(|&d| d != '\t').or(Some(',')),
+            Some("tsv") => Some('\t'),
+            _ => None,
+        };
+        st.syntax = if st.csv.is_some() { None } else { id.and_then(|id| Syntax::new(&id)) };
         st.reparse();
         st.version += 1;
     }
@@ -428,6 +443,9 @@ impl TextBuffer {
     /// Colored runs for `count` lines starting at `start_line`.
     pub fn highlights(&self, start_line: u64, count: u64) -> Vec<HighlightSpan> {
         let st = self.read();
+        if let Some(delimiter) = st.csv {
+            return st.csv_highlights(delimiter, start_line as usize, count as usize);
+        }
         match &st.syntax {
             Some(syntax) => syntax.highlights(&st.rope, start_line as usize, count as usize),
             None => Vec::new(),
@@ -548,12 +566,23 @@ impl State {
             disk: None,
             bookmarks: Default::default(),
             folds: Default::default(),
+            csv: None,
         }
     }
 
     /// Picks a language from the file name (or a `#!` line) and parses.
     fn detect_language(&mut self) {
         let name = self.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned());
+        let extension = name.as_deref().and_then(|n| n.rsplit_once('.')).map(|(_, e)| e.to_lowercase());
+        self.csv = match extension.as_deref() {
+            Some("csv") => Some(csv_tools::detect_delimiter(&self.rope)),
+            Some("tsv" | "tab") => Some('\t'),
+            _ => None,
+        };
+        if self.csv.is_some() {
+            self.syntax = None;
+            return;
+        }
         self.syntax = Syntax::detect(name.as_deref().unwrap_or(""), &self.rope);
         self.reparse();
     }

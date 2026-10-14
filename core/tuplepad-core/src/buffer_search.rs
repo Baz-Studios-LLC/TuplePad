@@ -99,6 +99,13 @@ impl TextBuffer {
         words.into_iter().map(|(word, _)| word).collect()
     }
 
+    /// Lines inside fenced or indented code blocks (in Markdown), among `count` lines from `start_line`.
+    pub fn code_block_lines(&self, start_line: u64, count: u64) -> Vec<u64> {
+        let st = self.read();
+        st.syntax.as_ref().map(|s| s.code_block_lines(start_line as usize, count as usize)).unwrap_or_default()
+            .into_iter().map(|line| line as u64).collect()
+    }
+
     // MARK: Bookmarks
 
     /// Bookmarked lines, in order.
