@@ -14,6 +14,10 @@ use crate::search::{self, SearchQuery};
 use crate::syntax::{self, HighlightSpan, Syntax};
 use crate::types::{EditKind, FileInfo, LineEnding, TextPos, TextSelection};
 
+#[path = "buffer_tools.rs"]
+mod tools;
+pub use tools::BracketMatch;
+
 /// The result of a search: matches in document order (anchor = start, head = end).
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
 pub struct SearchResults {

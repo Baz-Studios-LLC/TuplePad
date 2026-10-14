@@ -298,6 +298,28 @@ fn style_for_capture(name: &str) -> Option<HighlightStyle> {
     }
 }
 
+/// How a language writes comments: a line prefix and/or a block pair.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct CommentTokens {
+    pub line: Option<&'static str>,
+    pub block: Option<(&'static str, &'static str)>,
+}
+
+pub(crate) fn comment_tokens(id: &str) -> Option<CommentTokens> {
+    let c_like = CommentTokens { line: Some("//"), block: Some(("/*", "*/")) };
+    let hash = CommentTokens { line: Some("#"), block: None };
+    let markup = CommentTokens { line: None, block: Some(("<!--", "-->")) };
+    Some(match id {
+        "c" | "cpp" | "csharp" | "go" | "java" | "javascript" | "rust" | "swift" | "typescript" | "tsx" | "php" => c_like,
+        "css" => CommentTokens { line: None, block: Some(("/*", "*/")) },
+        "python" | "ruby" | "shell" | "make" | "yaml" | "toml" => hash,
+        "lua" => CommentTokens { line: Some("--"), block: Some(("--[[", "]]")) },
+        "sql" => CommentTokens { line: Some("--"), block: Some(("/*", "*/")) },
+        "html" | "xml" | "markdown" => markup,
+        _ => return None,
+    })
+}
+
 /// One document's parser and syntax tree.
 pub(crate) struct Syntax {
     id: &'static str,
@@ -345,6 +367,24 @@ impl Syntax {
         if let Some(tree) = &mut self.tree {
             tree.edit(edit);
         }
+    }
+
+    pub fn comment_tokens(&self) -> Option<CommentTokens> {
+        comment_tokens(self.id)
+    }
+
+    /// Whether the byte sits inside a string or comment (brackets there don't count when matching).
+    pub fn in_string_or_comment(&self, byte: usize) -> bool {
+        let Some(tree) = &self.tree else { return false };
+        let mut node = tree.root_node().descendant_for_byte_range(byte, byte + 1);
+        while let Some(current) = node {
+            let kind = current.kind();
+            if kind.contains("string") || kind.contains("comment") || kind.contains("char") || kind == "regex" {
+                return true;
+            }
+            node = current.parent();
+        }
+        false
     }
 
     /// Forgets the tree so the next parse starts from scratch (after whole-document rewrites).
