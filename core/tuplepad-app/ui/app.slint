@@ -3,8 +3,10 @@ import { Theme } from "theme.slint";
 import { EditorView, EditorBridge, Span, Row, Caret, Band } from "editor.slint";
 import { Sidebar, DocItem, IconButton, Icons, PillButton } from "sidebar.slint";
 import { Sheet, Toggle } from "controls.slint";
+import { SettingsWindow, SettingsValues } from "settings.slint";
+import { CommandPalette, PaletteItem, TitlePart } from "palette.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, DocItem, Palette }
+export { Theme, EditorBridge, Span, Row, Caret, Band, DocItem, Palette, SettingsWindow, SettingsValues, PaletteItem, TitlePart }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
@@ -43,6 +45,13 @@ export component AppWindow inherits Window {
     in property <string> banner-text;
     // A file is being dragged over the window.
     in property <bool> dropping;
+    // The command palette.
+    in property <bool> palette-open;
+    in property <[PaletteItem]> palette-items;
+    in-out property <int> palette-selected;
+    callback palette-query(query: string);
+    callback palette-run(index: int);
+    callback palette-close();
     // The print options sheet.
     in-out property <bool> print-sheet;
     in-out property <bool> print-line-numbers: true;
@@ -58,6 +67,8 @@ export component AppWindow inherits Window {
     in property <[MenuEntry]> edit-menu;
     in property <[MenuEntry]> selection-menu;
     in property <[MenuEntry]> view-menu;
+    in property <[MenuEntry]> view-menu-2;
+    in property <[MenuEntry]> theme-menu;
 
     callback command(id: string);
     callback select-doc(index: int);
@@ -165,6 +176,23 @@ export component AppWindow inherits Window {
         Menu {
             title: "View";
             for item in root.view-menu: MenuItem {
+                title: item.title;
+                shortcut: item.shortcut;
+                enabled: item.enabled;
+                checkable: item.checkable;
+                checked: item.checked;
+                activated => { root.command(item.id); }
+            }
+            Menu {
+                title: "Theme";
+                for item in root.theme-menu: MenuItem {
+                    title: item.title;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            for item in root.view-menu-2: MenuItem {
                 title: item.title;
                 shortcut: item.shortcut;
                 enabled: item.enabled;
@@ -407,5 +435,13 @@ export component AppWindow inherits Window {
             on: root.print-colors;
             toggled(on) => { root.print-colors = on; }
         }
+    }
+
+    if root.palette-open: CommandPalette {
+        items: root.palette-items;
+        selected <=> root.palette-selected;
+        query-changed(query) => { root.palette-query(query); }
+        run(index) => { root.palette-run(index); }
+        close => { root.palette-close(); }
     }
 }

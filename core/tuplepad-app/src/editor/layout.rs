@@ -84,6 +84,34 @@ impl Layouter {
         self.fonts.collection.family_by_name(name).is_some()
     }
 
+    /// The installed font families whose letters are all one width, by name (hidden system
+    /// families left out).
+    pub fn monospace_families(&mut self) -> Vec<String> {
+        let names: Vec<String> = self.fonts.collection.family_names().filter(|n| !n.starts_with('.')).map(str::to_string).collect();
+        let mut families: Vec<String> = names
+            .into_iter()
+            .filter(|name| {
+                let narrow = self.measure_in(name, "iiiiiiii");
+                let wide = self.measure_in(name, "MMMMMMMM");
+                narrow > 1.0 && (narrow - wide).abs() < 0.5
+            })
+            .collect();
+        families.sort_by_key(|n| n.to_lowercase());
+        families.dedup();
+        families
+    }
+
+    /// The width of text in one family (no fallbacks), for comparing families.
+    fn measure_in(&mut self, family: &str, text: &str) -> f32 {
+        let families = [FontFamilyName::named(family)];
+        let mut builder = self.layouts.ranged_builder(&mut self.fonts, text, 1.0, false);
+        builder.push_default(FontFamily::List(Cow::Borrowed(&families)));
+        builder.push_default(StyleProperty::FontSize(16.0));
+        let mut layout: Layout<()> = builder.build(text);
+        layout.break_all_lines(None);
+        layout.full_width()
+    }
+
     /// The layout of one line (tabs already expanded), cached by its text.
     pub fn line(&mut self, text: &str) -> Rc<LineLayout> {
         if let Some(layout) = self.cache.get(text) {

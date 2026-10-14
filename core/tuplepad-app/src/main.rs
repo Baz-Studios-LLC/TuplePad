@@ -10,11 +10,13 @@ mod commands;
 mod document;
 mod editor;
 mod fonts;
+mod palette;
 mod platform;
 mod print;
 mod script;
 mod session;
 mod settings;
+mod settings_window;
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -247,8 +249,28 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
         ui.on_command(move |id| app.run_command(&id));
     }
     {
+        // Closing the main window closes Settings too, so the app quits.
+        let app = app.clone();
+        ui.window().on_close_requested(move || {
+            app.hide_settings();
+            slint::CloseRequestResponse::HideWindow
+        });
+    }
+    {
         let app = app.clone();
         ui.on_select_doc(move |index| app.select_document(index as usize));
+    }
+    {
+        let app = app.clone();
+        ui.on_palette_query(move |query| app.palette_query(&query));
+    }
+    {
+        let app = app.clone();
+        ui.on_palette_run(move |index| app.palette_run(index.max(0) as usize));
+    }
+    {
+        let app = app.clone();
+        ui.on_palette_close(move || app.close_palette());
     }
     {
         let app = app.clone();

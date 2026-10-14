@@ -1,0 +1,393 @@
+import { Theme, Themes, ThemeColors } from "theme.slint";
+import { Toggle, Segmented, Stepper, Dropdown, Section, SettingRow } from "controls.slint";
+
+// Everything the Settings window shows, set from Rust.
+export struct SettingsValues {
+    font-names: [string],
+    font-index: int,
+    font-size: int,
+    // 0 compact, 1 normal, 2 relaxed.
+    line-height: int,
+    tab-width: int,
+    use-tabs: bool,
+    detect-indentation: bool,
+    auto-close: bool,
+    smart-highlight: bool,
+    wrap: bool,
+    invisibles: bool,
+    indent-guides: bool,
+    current-line: bool,
+    encodings: [string],
+    encoding-index: int,
+    bom: bool,
+    // 0 LF, 1 CRLF, 2 CR.
+    line-ending: int,
+    // 0 system, 1 light, 2 dark.
+    appearance: int,
+    theme: int,
+}
+
+component TabButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked;
+    width: 92px;
+    height: 54px;
+    border-radius: 9px;
+    background: root.selected ? Theme.control-hover : touch.has-hover ? Theme.control-hover.with-alpha(0.5) : transparent;
+    animate background { duration: 120ms; }
+    VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+        HorizontalLayout {
+            alignment: center;
+            Path {
+                width: 20px;
+                height: 20px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: root.icon;
+                fill: transparent;
+                stroke: root.selected ? Theme.accent.mix(Theme.primary-text, Theme.dark ? 0.35 : 0.85) : Theme.icon;
+                stroke-width: 1.7px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+            }
+        }
+        Text {
+            text: root.label;
+            font-size: 11.5px;
+            font-weight: root.selected ? 650 : 500;
+            color: root.selected ? Theme.primary-text : Theme.secondary-text;
+            horizontal-alignment: center;
+        }
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// A theme, previewed with a few lines of colored code in the current light or dark look.
+component ThemeCard inherits Rectangle {
+    in property <ThemeColors> colors;
+    in property <string> name;
+    in property <string> summary;
+    in property <bool> selected;
+    callback clicked;
+    height: 128px;
+    border-radius: 12px;
+    border-width: root.selected ? 2px : 1px;
+    border-color: root.selected ? Theme.accent.mix(Theme.primary-text, Theme.dark ? 0.4 : 1.0) : Theme.separator;
+    background: Theme.header-background;
+    VerticalLayout {
+        padding: 8px;
+        spacing: 8px;
+        Rectangle {
+            height: 64px;
+            border-radius: 7px;
+            background: root.colors.editor-background;
+            border-width: 1px;
+            border-color: root.colors.separator;
+            clip: true;
+            VerticalLayout {
+                padding: 9px;
+                spacing: 5px;
+                HorizontalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    Rectangle { width: 22px; height: 6px; border-radius: 3px; background: root.colors.syntax[1]; }
+                    Rectangle { width: 34px; height: 6px; border-radius: 3px; background: root.colors.syntax[7]; }
+                    Rectangle { width: 18px; height: 6px; border-radius: 3px; background: root.colors.syntax[12]; }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    Rectangle { width: 8px; height: 6px; }
+                    Rectangle { width: 26px; height: 6px; border-radius: 3px; background: root.colors.syntax[8]; }
+                    Rectangle { width: 40px; height: 6px; border-radius: 3px; background: root.colors.syntax[2]; }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    Rectangle { width: 8px; height: 6px; }
+                    Rectangle { width: 48px; height: 6px; border-radius: 3px; background: root.colors.syntax[4]; }
+                    Rectangle { width: 14px; height: 6px; border-radius: 3px; background: root.colors.syntax[5]; }
+                }
+            }
+            Rectangle {
+                x: 0;
+                width: 3px;
+                y: 22px;
+                height: 12px;
+                background: root.colors.caret;
+            }
+        }
+        VerticalLayout {
+            spacing: 1px;
+            Text { text: root.name; font-size: 12.5px; font-weight: 650; color: Theme.primary-text; }
+            Text { text: root.summary; font-size: 11px; color: Theme.secondary-text; overflow: elide; }
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+export component SettingsWindow inherits Window {
+    title: "Settings";
+    preferred-width: 640px;
+    preferred-height: 720px;
+    min-width: 560px;
+    min-height: 560px;
+    background: Theme.sidebar-background;
+    default-font-size: Theme.ui-font-size;
+
+    in property <length> titlebar-height: 0px;
+    in-out property <int> tab: 0;
+    in property <SettingsValues> values;
+    callback set-bool(key: string, value: bool);
+    callback set-int(key: string, value: int);
+    callback drag-window();
+
+    VerticalLayout {
+        Rectangle {
+            height: root.titlebar-height + 68px;
+            TouchArea {
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.down { root.drag-window(); }
+                }
+            }
+            HorizontalLayout {
+                padding-top: root.titlebar-height;
+                alignment: center;
+                spacing: 4px;
+                TabButton {
+                    icon: "M4 7h9 M17 7h3 M4 17h3 M11 17h9 M15 4.5v5 M9 14.5v5";
+                    label: "General";
+                    selected: root.tab == 0;
+                    clicked => { root.tab = 0; }
+                }
+                TabButton {
+                    icon: "M5 5.5h14 M12 5.5v13 M9 18.5h6";
+                    label: "Editor";
+                    selected: root.tab == 1;
+                    clicked => { root.tab = 1; }
+                }
+                TabButton {
+                    icon: "M12 3.5a8.5 8.5 0 1 0 0 17a8.5 8.5 0 1 0 0-17z M12 3.5v17 M12 8h6.5 M12 12.5h8.5 M12 17h6.5";
+                    label: "Appearance";
+                    selected: root.tab == 2;
+                    clicked => { root.tab = 2; }
+                }
+            }
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.separator;
+            }
+        }
+
+        Rectangle {
+            background: Theme.header-background;
+            vertical-stretch: 1;
+
+            if root.tab == 0: VerticalLayout {
+                padding: 24px;
+                spacing: 20px;
+                alignment: start;
+                Section {
+                    title: "NEW DOCUMENTS";
+                    SettingRow {
+                        label: "Encoding";
+                        Dropdown {
+                            options: root.values.encodings;
+                            selected: root.values.encoding-index;
+                            chosen(index) => { root.set-int("encoding", index); }
+                        }
+                    }
+                    SettingRow {
+                        label: "Byte order mark";
+                        detail: "Only for Unicode encodings";
+                        Toggle { on: root.values.bom; toggled(on) => { root.set-bool("bom", on); } }
+                    }
+                    SettingRow {
+                        label: "Line endings";
+                        Segmented {
+                            options: ["LF", "CRLF", "CR"];
+                            selected: root.values.line-ending;
+                            chosen(index) => { root.set-int("line-ending", index); }
+                        }
+                    }
+                }
+                Section {
+                    title: "INDENTATION";
+                    SettingRow {
+                        label: "Indent with";
+                        Segmented {
+                            options: ["Spaces", "Tabs"];
+                            selected: root.values.use-tabs ? 1 : 0;
+                            chosen(index) => { root.set-bool("use-tabs", index == 1); }
+                        }
+                    }
+                    SettingRow {
+                        label: "Tab width";
+                        Stepper {
+                            value: root.values.tab-width;
+                            minimum: 1;
+                            maximum: 16;
+                            suffix: root.values.tab-width == 1 ? " space" : " spaces";
+                            changed(value) => { root.set-int("tab-width", value); }
+                        }
+                    }
+                    SettingRow {
+                        label: "Detect indentation";
+                        detail: "Use whatever each file already uses";
+                        Toggle { on: root.values.detect-indentation; toggled(on) => { root.set-bool("detect-indentation", on); } }
+                    }
+                }
+                Section {
+                    title: "TYPING";
+                    SettingRow {
+                        label: "Close brackets and quotes";
+                        Toggle { on: root.values.auto-close; toggled(on) => { root.set-bool("auto-close", on); } }
+                    }
+                    SettingRow {
+                        label: "Highlight other occurrences";
+                        detail: "Of the selected text, or the word at the caret";
+                        Toggle { on: root.values.smart-highlight; toggled(on) => { root.set-bool("smart-highlight", on); } }
+                    }
+                }
+            }
+
+            if root.tab == 1: VerticalLayout {
+                padding: 24px;
+                spacing: 20px;
+                alignment: start;
+                Section {
+                    title: "FONT";
+                    SettingRow {
+                        label: "Font";
+                        Dropdown {
+                            width: 220px;
+                            options: root.values.font-names;
+                            selected: root.values.font-index;
+                            list-height: 320px;
+                            chosen(index) => { root.set-int("font", index); }
+                        }
+                    }
+                    SettingRow {
+                        label: "Size";
+                        Stepper {
+                            value: root.values.font-size;
+                            minimum: 8;
+                            maximum: 48;
+                            suffix: " pt";
+                            changed(value) => { root.set-int("font-size", value); }
+                        }
+                    }
+                    SettingRow {
+                        label: "Line height";
+                        Segmented {
+                            options: ["Compact", "Normal", "Relaxed"];
+                            selected: root.values.line-height;
+                            chosen(index) => { root.set-int("line-height", index); }
+                        }
+                    }
+                }
+                Rectangle {
+                    height: 92px;
+                    border-radius: 10px;
+                    background: Theme.editor-background;
+                    border-width: 1px;
+                    border-color: Theme.separator;
+                    VerticalLayout {
+                        padding: 14px;
+                        spacing: 0px;
+                        HorizontalLayout {
+                            alignment: start;
+                            Text { text: "fn "; color: Theme.syntax[1]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                            Text { text: "greet"; color: Theme.syntax[7]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                            Text { text: "(name: "; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                            Text { text: "&str"; color: Theme.syntax[8]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                            Text { text: ") {"; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            Text { text: "    println!("; color: Theme.syntax[7]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                            Text { text: "\"Hello, {name}! 👋\""; color: Theme.syntax[2]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                            Text { text: ");"; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            Text { text: "}"; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                            Text { text: "  // 0O 1lI {[()]}"; color: Theme.syntax[4]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                        }
+                    }
+                }
+                Section {
+                    title: "DISPLAY";
+                    SettingRow {
+                        label: "Wrap lines in new documents";
+                        Toggle { on: root.values.wrap; toggled(on) => { root.set-bool("wrap", on); } }
+                    }
+                    SettingRow {
+                        label: "Show invisibles";
+                        Toggle { on: root.values.invisibles; toggled(on) => { root.set-bool("invisibles", on); } }
+                    }
+                    SettingRow {
+                        label: "Show indent guides";
+                        Toggle { on: root.values.indent-guides; toggled(on) => { root.set-bool("indent-guides", on); } }
+                    }
+                    SettingRow {
+                        label: "Highlight the current line";
+                        Toggle { on: root.values.current-line; toggled(on) => { root.set-bool("current-line", on); } }
+                    }
+                }
+            }
+
+            if root.tab == 2: VerticalLayout {
+                padding: 24px;
+                spacing: 20px;
+                alignment: start;
+                Section {
+                    SettingRow {
+                        label: "Appearance";
+                        Segmented {
+                            options: ["System", "Light", "Dark"];
+                            selected: root.values.appearance;
+                            chosen(index) => { root.set-int("appearance", index); }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: "THEME";
+                        font-size: 11px;
+                        font-weight: 650;
+                        letter-spacing: 0.4px;
+                        color: Theme.secondary-text;
+                    }
+                    GridLayout {
+                        spacing: 12px;
+                        Row {
+                            for i in [0, 1, 2]: ThemeCard {
+                                colors: Theme.dark ? Themes.darks[i] : Themes.lights[i];
+                                name: Themes.names[i];
+                                summary: Themes.summaries[i];
+                                selected: root.values.theme == i;
+                                clicked => { root.set-int("theme", i); }
+                            }
+                        }
+                        Row {
+                            for i in [3, 4]: ThemeCard {
+                                colors: Theme.dark ? Themes.darks[i] : Themes.lights[i];
+                                name: Themes.names[i];
+                                summary: Themes.summaries[i];
+                                selected: root.values.theme == i;
+                                clicked => { root.set-int("theme", i); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

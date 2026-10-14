@@ -32,6 +32,10 @@ pub struct Settings {
     pub recent_files: Vec<String>,
     pub print_line_numbers: bool,
     pub print_colors: bool,
+    pub new_document_encoding: String,
+    pub new_document_bom: bool,
+    /// "lf", "crlf" or "cr".
+    pub new_document_line_ending: String,
 }
 
 impl Default for Settings {
@@ -56,6 +60,9 @@ impl Default for Settings {
             recent_files: Vec::new(),
             print_line_numbers: true,
             print_colors: true,
+            new_document_encoding: "UTF-8".into(),
+            new_document_bom: false,
+            new_document_line_ending: "lf".into(),
         }
     }
 }
@@ -98,6 +105,20 @@ impl Settings {
         self.recent_files.retain(|p| *p != path);
         self.recent_files.insert(0, path);
         self.recent_files.truncate(15);
+    }
+
+    /// The encoding new documents start with.
+    pub fn new_document_encoding(&self) -> tuplepad_core::TextEncoding {
+        let unicode = self.new_document_encoding.starts_with("UTF");
+        tuplepad_core::TextEncoding { name: self.new_document_encoding.clone(), has_bom: unicode && self.new_document_bom }
+    }
+
+    pub fn new_document_line_ending(&self) -> tuplepad_core::LineEnding {
+        match self.new_document_line_ending.as_str() {
+            "crlf" => tuplepad_core::LineEnding::CrLf,
+            "cr" => tuplepad_core::LineEnding::Cr,
+            _ => tuplepad_core::LineEnding::Lf,
+        }
     }
 
     pub fn indentation(&self) -> tuplepad_core::Indentation {

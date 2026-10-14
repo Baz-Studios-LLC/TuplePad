@@ -102,13 +102,13 @@ component DocRow inherits Rectangle {
                 width: 32px;
                 height: 32px;
                 border-radius: 8px;
-                background: root.selected && Theme.theme == 1 ? Theme.selected-badge : root.item.tint.with-alpha(Theme.dark ? 0.22 : 0.13);
+                background: root.selected && Theme.filled-selection ? Theme.selected-badge : root.item.tint.with-alpha(Theme.dark ? 0.22 : 0.13);
                 Text {
                     text: root.item.badge;
                     font-size: 9.5px;
                     font-weight: 750;
                     letter-spacing: 0.4px;
-                    color: root.selected && Theme.theme == 1 ? Theme.selected-row-text : Theme.dark ? root.item.tint.mix(#FFFFFF, 0.45) : root.item.tint;
+                    color: root.selected && Theme.filled-selection ? Theme.selected-row-text : Theme.dark ? root.item.tint.mix(#FFFFFF, 0.45) : root.item.tint;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }

@@ -1,0 +1,167 @@
+import { Theme } from "theme.slint";
+
+// Part of a result's title: matched letters are drawn bold.
+export struct TitlePart {
+    text: string,
+    matched: bool,
+}
+
+export struct PaletteItem {
+    parts: [TitlePart],
+    detail: string,
+    // A keyboard shortcut, or what kind of thing it is ("Document", "Recent").
+    trailing: string,
+}
+
+// Fuzzy search over commands, open documents and recent files, at the top of the window.
+// ↑ and ↓ choose, Return runs, Esc closes.
+export component CommandPalette inherits Rectangle {
+    in property <[PaletteItem]> items;
+    in-out property <int> selected;
+    in property <string> placeholder: "Search commands, documents and recent files";
+    callback query-changed(query: string);
+    callback run(index: int);
+    callback close();
+
+    background: Theme.scrim.with-alpha(Theme.dark ? 0.35 : 0.2);
+
+    // A click outside the card closes it.
+    TouchArea { clicked => { root.close(); } }
+
+    card := Rectangle {
+        width: min(640px, parent.width - 80px);
+        x: (parent.width - self.width) / 2;
+        y: 64px;
+        height: content.preferred-height;
+        border-radius: 14px;
+        background: Theme.header-background;
+        border-width: 1px;
+        border-color: Theme.separator;
+        drop-shadow-blur: 40px;
+        drop-shadow-offset-y: 16px;
+        drop-shadow-color: #00000059;
+        clip: true;
+
+        // Clicks on the card stay on it.
+        TouchArea { }
+
+        content := VerticalLayout {
+            HorizontalLayout {
+                height: 52px;
+                padding-left: 18px;
+                padding-right: 18px;
+                spacing: 12px;
+                VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 17px;
+                        height: 17px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13z M15.5 15.5l5 5";
+                        fill: transparent;
+                        stroke: Theme.secondary-text;
+                        stroke-width: 2px;
+                        stroke-line-cap: round;
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    field := TextInput {
+                        width: parent.width;
+                        height: parent.height;
+                        font-size: 17px;
+                        color: Theme.primary-text;
+                        vertical-alignment: center;
+                        single-line: true;
+                        selection-background-color: Theme.selection;
+                        init => { self.focus(); }
+                        edited => {
+                            root.selected = 0;
+                            root.query-changed(self.text);
+                        }
+                        key-pressed(event) => {
+                            if event.text == Key.UpArrow {
+                                root.selected = max(0, root.selected - 1);
+                                return EventResult.accept;
+                            }
+                            if event.text == Key.DownArrow {
+                                root.selected = min(root.items.length - 1, root.selected + 1);
+                                return EventResult.accept;
+                            }
+                            if event.text == Key.Return {
+                                root.run(root.selected);
+                                return EventResult.accept;
+                            }
+                            if event.text == Key.Escape {
+                                root.close();
+                                return EventResult.accept;
+                            }
+                            return EventResult.reject;
+                        }
+                    }
+                    if field.text == "": Text {
+                        width: parent.width;
+                        height: parent.height;
+                        text: root.placeholder;
+                        font-size: 17px;
+                        color: Theme.tertiary-text;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            if root.items.length > 0: Rectangle {
+                height: 1px;
+                background: Theme.separator;
+            }
+            VerticalLayout {
+                padding: root.items.length > 0 ? 6px : 0px;
+                for item[index] in root.items: Rectangle {
+                    height: 38px;
+                    border-radius: 8px;
+                    background: index == root.selected ? Theme.accent : row-touch.has-hover ? Theme.control-hover : transparent;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 10px;
+                        HorizontalLayout {
+                            spacing: 0px;
+                            for part in item.parts: Text {
+                                text: part.text;
+                                font-size: 13.5px;
+                                font-weight: part.matched ? 750 : 450;
+                                color: index == root.selected ? Theme.accent-text : Theme.primary-text;
+                                vertical-alignment: center;
+                            }
+                        }
+                        Text {
+                            text: item.detail;
+                            font-size: 12px;
+                            color: index == root.selected ? Theme.accent-text.with-alpha(0.7) : Theme.secondary-text;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                        Text {
+                            text: item.trailing;
+                            font-size: 12.5px;
+                            color: index == root.selected ? Theme.accent-text.with-alpha(0.85) : Theme.secondary-text;
+                            vertical-alignment: center;
+                        }
+                    }
+                    row-touch := TouchArea {
+                        clicked => { root.run(index); }
+                    }
+                }
+            }
+            if root.items.length == 0 && field.text != "": Text {
+                height: 44px;
+                text: "Nothing matches";
+                font-size: 13px;
+                color: Theme.secondary-text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

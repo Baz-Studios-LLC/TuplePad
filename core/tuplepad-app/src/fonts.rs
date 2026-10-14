@@ -5,7 +5,7 @@ use crate::editor::layout::Layouter;
 /// The family name SF Mono gets here. macOS lists its upright and italic files under one hidden
 /// family with the same style, so the italic one can win; registering them again under our own
 /// name, with the right styles, makes the choice reliable.
-const MAC_SYSTEM_MONO: &str = "TuplePad System Mono";
+pub const MAC_SYSTEM_MONO: &str = "TuplePad System Mono";
 
 /// Makes the system's own monospace font available where it needs help (macOS).
 pub fn register_system_fonts() {

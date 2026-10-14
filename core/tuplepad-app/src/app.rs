@@ -18,7 +18,15 @@ use crate::settings::Settings;
 use crate::{AppWindow, DocItem, MenuEntry, Palette, Theme, fonts, session};
 
 pub struct App {
+    /// The app itself, for callbacks created later.
+    pub me: RefCell<std::rc::Weak<App>>,
     pub ui: slint::Weak<AppWindow>,
+    pub settings_window: RefCell<Option<crate::SettingsWindow>>,
+    /// What the command palette searches, and which of it is showing.
+    pub palette_entries: RefCell<Vec<crate::palette::Entry>>,
+    pub palette_shown: RefCell<Vec<usize>>,
+    /// The font choices the Settings window offers (worked out when it first opens).
+    pub font_choices: RefCell<Vec<(String, String)>>,
     pub editor: RefCell<Editor>,
     pub settings: RefCell<Settings>,
     /// Where settings are saved; `None` in scripted runs, which never save them.
@@ -67,7 +75,7 @@ impl App {
         }
         let docs_model = Rc::new(VecModel::default());
         ui.set_docs(ModelRc::from(docs_model.clone()));
-        let names = ["file", "file-2", "file-3", "recent", "reopen", "convert", "line-ending", "edit", "selection", "view"];
+        let names = ["file", "file-2", "file-3", "recent", "reopen", "convert", "line-ending", "edit", "selection", "view", "view-2", "theme"];
         let menus: HashMap<&'static str, Rc<VecModel<MenuEntry>>> = names.into_iter().map(|n| (n, Rc::new(VecModel::default()))).collect();
         for (name, model) in &menus {
             let model = ModelRc::from(model.clone());
@@ -81,11 +89,18 @@ impl App {
                 "line-ending" => ui.set_line_ending_menu(model),
                 "edit" => ui.set_edit_menu(model),
                 "selection" => ui.set_selection_menu(model),
+                "view-2" => ui.set_view_menu_2(model),
+                "theme" => ui.set_theme_menu(model),
                 _ => ui.set_view_menu(model),
             }
         }
         let app = Rc::new(App {
+            me: RefCell::new(std::rc::Weak::new()),
             ui: ui.as_weak(),
+            settings_window: RefCell::new(None),
+            font_choices: RefCell::new(Vec::new()),
+            palette_entries: RefCell::new(Vec::new()),
+            palette_shown: RefCell::new(Vec::new()),
             editor: RefCell::new(editor),
             settings: RefCell::new(settings),
             settings_path,
@@ -102,6 +117,7 @@ impl App {
             open_ms: RefCell::new(Vec::new()),
             scripted_answers: scripted.then(|| RefCell::new(VecDeque::new())),
         });
+        *app.me.borrow_mut() = Rc::downgrade(&app);
         app.apply_settings(false);
         app
     }
@@ -122,7 +138,8 @@ impl App {
                 _ => 0,
             };
             ui.global::<Theme>().set_appearance(appearance);
-            ui.global::<Theme>().set_theme(if settings.theme == "midnight" { 1 } else { 0 });
+            let theme = crate::settings_window::THEME_IDS.iter().position(|t| *t == settings.theme).unwrap_or(0);
+            ui.global::<Theme>().set_theme(theme as i32);
             // Where Slint draws the menu bar itself, its colors follow TuplePad's appearance.
             if !cfg!(target_os = "macos") || std::env::var_os("SLINT_NO_MUDA").is_some() {
                 use slint::language::ColorScheme;
@@ -143,11 +160,15 @@ impl App {
         }
         if let Ok(mut editor) = self.editor.try_borrow_mut() {
             editor.set_options(view_options(&settings));
-            if editor.font_size != settings.font_size || editor.line_height_factor != settings.line_height {
-                let family = editor.family.clone();
+            let family = fonts::pick(&mut editor.layouter, &settings.font_family);
+            if editor.family != family || editor.font_size != settings.font_size || editor.line_height_factor != settings.line_height {
                 editor.set_font(&family, settings.font_size, settings.line_height);
+                if let Some(ui) = self.ui.upgrade() {
+                    ui.global::<Theme>().set_mono_family(family.into());
+                }
             }
         }
+        self.refresh_settings_window();
         if save && let Some(path) = &self.settings_path {
             settings.save(path);
         }
@@ -263,17 +284,25 @@ impl App {
             "view.appearance-system" => settings.appearance == "system",
             "view.appearance-light" => settings.appearance == "light",
             "view.appearance-dark" => settings.appearance == "dark",
-            "view.theme-tuplepad" => settings.theme != "midnight",
-            "view.theme-midnight" => settings.theme == "midnight",
+
             _ => false,
         };
         let mut file = commands::menu_sections(Menu::File, enabled, checked).into_iter();
         self.set_menu("file", file.next().unwrap_or_default());
         self.set_menu("file-2", file.next().unwrap_or_default());
         self.set_menu("file-3", file.next().unwrap_or_default());
-        for (name, menu) in [("edit", Menu::Edit), ("selection", Menu::Selection), ("view", Menu::View)] {
+        for (name, menu) in [("edit", Menu::Edit), ("selection", Menu::Selection)] {
             self.set_menu(name, commands::menu_sections(menu, enabled, checked).concat());
         }
+        let mut view = commands::menu_sections(Menu::View, enabled, checked).into_iter();
+        self.set_menu("view", view.next().unwrap_or_default());
+        self.set_menu("view-2", view.next().unwrap_or_default());
+        let themes = crate::settings_window::THEME_IDS
+            .iter()
+            .zip(["TuplePad", "Midnight", "Graphite", "Sepia", "High Contrast"])
+            .map(|(id, name)| commands::item_entry(format!("theme:{id}"), name.into(), true, Some(settings.theme == *id)))
+            .collect();
+        self.set_menu("theme", themes);
 
         // Open Recent, and the encodings and line endings.
         let mut recent: Vec<MenuEntry> = settings
@@ -474,7 +503,10 @@ impl App {
             "file.save-as" => {
                 self.save_current(true);
             }
+            "file.close" if self.settings_focused() => self.hide_settings(),
             "file.close" => self.close_document(None),
+            "app.settings" => self.show_settings(None),
+            "view.palette" => self.open_palette(),
             "view.sidebar" => self.change_settings(|s| s.sidebar_visible = !s.sidebar_visible),
             "view.invisibles" => self.change_settings(|s| s.show_invisibles = !s.show_invisibles),
             "view.indent-guides" => self.change_settings(|s| s.show_indent_guides = !s.show_indent_guides),
@@ -482,8 +514,7 @@ impl App {
             "view.zoom-in" => self.change_settings(|s| s.font_size = (s.font_size + 1.0).min(48.0)),
             "view.zoom-out" => self.change_settings(|s| s.font_size = (s.font_size - 1.0).max(8.0)),
             "view.zoom-reset" => self.change_settings(|s| s.font_size = Settings::default().font_size),
-            "view.theme-tuplepad" => self.change_settings(|s| s.theme = "tuplepad".into()),
-            "view.theme-midnight" => self.change_settings(|s| s.theme = "midnight".into()),
+
             "view.appearance-system" => self.change_settings(|s| s.appearance = "system".into()),
             "view.appearance-light" => self.change_settings(|s| s.appearance = "light".into()),
             "view.appearance-dark" => self.change_settings(|s| s.appearance = "dark".into()),
@@ -545,6 +576,10 @@ impl App {
                     Err(error) => self.alert("TuplePad couldn't change the encoding.", &error.to_string()),
                 }
             }
+            "theme" => {
+                let value = value.to_string();
+                self.change_settings(|s| s.theme = value);
+            }
             "line-ending" => {
                 let ending = match value {
                     "crlf" => LineEnding::CrLf,
@@ -596,7 +631,7 @@ impl App {
 
     pub fn new_document(&self) {
         let settings = self.settings.borrow().clone();
-        let buffer = TextBuffer::untitled(tuplepad_core::TextEncoding::utf8(), LineEnding::Lf);
+        let buffer = TextBuffer::untitled(settings.new_document_encoding(), settings.new_document_line_ending());
         let doc = Document::new(buffer, self.next_untitled(), 0, settings.wrap_by_default);
         self.add_document(doc);
     }

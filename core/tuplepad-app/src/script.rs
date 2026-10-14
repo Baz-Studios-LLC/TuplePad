@@ -12,7 +12,8 @@
 //! `{"preedit": "にほんご"}` and `{"commit": "日本語"}` (stand-ins for an input method, which
 //! can't be scripted), `{"hover": true}` and `{"drop": [paths]}` (stand-ins for files dragged from
 //! another app), `{"clipboard": "text"}`, `{"saveSession": true}`, `{"checkDisk": true}`, `{"dump": path}`,
-//! `{"menus": path}`, `{"shot": signal path}` and `{"signal": path}` (write the file, then wait
+//! `{"settings": tab}`, `{"settingsInt": [key, value]}`, `{"settingsBool": [key, value]}` and
+//! `{"closeSettings": true}` (the Settings window), `{"menus": path}`, `{"shot": signal path}` and `{"signal": path}` (write the file, then wait
 //! for `<path>.done`: a harness takes a screenshot or changes files on disk meanwhile),
 //! `{"benchScroll": {"name", "frames", "dy"}}`, `{"benchType": {"name", "text"}}`,
 //! `{"benchJump": {"name", "count"}}`, `{"write": path}` and `{"quit": true}`.
@@ -260,6 +261,18 @@ fn run_next(app: Rc<App>, runner: Shared) {
         "clipboard" => app.editor.borrow_mut().private_clipboard = Some(arg.as_str().unwrap_or_default().to_string()),
         "saveSession" => app.save_session(),
         "checkDisk" => app.check_disk(),
+        "settings" => app.show_settings(arg.as_i64().map(|t| t as i32)),
+        "closeSettings" => app.hide_settings(),
+        "settingsInt" | "settingsBool" => {
+            let key = arg.get(0).and_then(Value::as_str).unwrap_or_default();
+            if let Some(window) = app.settings_window.borrow().as_ref() {
+                if kind == "settingsInt" {
+                    window.invoke_set_int(key.into(), arg.get(1).and_then(Value::as_i64).unwrap_or(0) as i32);
+                } else {
+                    window.invoke_set_bool(key.into(), arg.get(1).and_then(Value::as_bool).unwrap_or(false));
+                }
+            }
+        }
         // Stand-ins for files dragged from another app (winit events can't be scripted).
         "hover" => crate::platform::post(crate::platform::Request::Hovering(arg.as_bool().unwrap_or(true))),
         "drop" => {
@@ -348,6 +361,11 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "title": ui.get_doc_title().to_string(),
         "subtitle": ui.get_doc_subtitle().to_string(),
         "dark": ui.global::<Theme>().get_dark(),
+        "theme": ui.global::<Theme>().get_theme(),
+        "settings_open": app.settings_window.borrow().as_ref().is_some_and(|w| w.window().is_visible()),
+        "palette_open": ui.get_palette_open(),
+        "palette": palette_titles(&ui),
+        "palette_selected": ui.get_palette_selected(),
         "sidebar": ui.get_sidebar_visible(),
         "banner": ui.get_banner(),
         "dropping": ui.get_dropping(),
@@ -363,6 +381,18 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "clipboard": editor.private_clipboard,
         "settings": serde_json::to_value(&*app.settings.borrow()).unwrap_or_default(),
     })
+}
+
+fn palette_titles(ui: &AppWindow) -> Vec<Value> {
+    use slint::Model;
+    ui.get_palette_items()
+        .iter()
+        .map(|item| {
+            let title: String = item.parts.iter().map(|p| p.text.to_string()).collect();
+            let matched: String = item.parts.iter().filter(|p| p.matched).map(|p| p.text.to_string()).collect();
+            json!({"title": title, "matched": matched, "trailing": item.trailing.as_str()})
+        })
+        .collect()
 }
 
 fn dump_menus(ui: &AppWindow) -> Value {

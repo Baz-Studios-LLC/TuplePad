@@ -15,7 +15,9 @@ TuplePad is in early development. It's being rebuilt on [Slint](https://slint.de
 - **Word wrap** (⌥Z) per document. Wrapped lines keep their indentation, and carets, selection and ↑/↓ work on the wrapped rows.
 - **Input methods** for Japanese, Chinese and other languages, with the text you're composing shown in place.
 - **A Mail-style sidebar** of open documents, showing each one's location, a preview line and a dot for unsaved changes. Drag its edge to resize it, or hide it (⌃⌘S).
-- **Light and dark**, following the system or pinned from the View menu, in the calm TuplePad theme or ivory-and-navy Midnight. Zoom with ⌘+ / ⌘− / ⌘0.
+- **Themes:** TuplePad (neutral, with midnight blue), Midnight (ivory and navy), Graphite, Sepia and High Contrast, each in light and dark, following the system or pinned. Zoom with ⌘+ / ⌘− / ⌘0.
+- **Settings** (⌘,): font, size and line height with a live preview; indentation; typing helpers; display options; the encoding and line endings for new documents; appearance and theme. Changes apply as you make them.
+- **Command palette** (⇧⌘P): fuzzy search over every command, open document, theme and recent file, with keyboard shortcuts shown. Type a few letters (`wwr` finds Word Wrap) and press Return.
 - **Files:** New, Open, Open Recent, Save, Save As, Save All (⌥⌘S), Revert to Saved, Rename or Move, Show in Finder, and Close, Close Others and Close All, asking before closing unsaved changes. Drop files on the window to open them, and drag selected text to move it (hold ⌥ to copy).
 - **Keeps up with your files.** When another app changes a file, TuplePad reloads it (Undo brings your text back), or shows a quiet banner offering Reload or Keep Mine if you have unsaved changes. Moved and deleted files get a banner too. **Follow End of File** (View menu) tails a growing log.
 - **Encodings and line endings:** detected and kept. Reopen with another encoding, convert to one (with or without a BOM; TuplePad warns about characters it can't hold), and switch line endings, from the File menu.
