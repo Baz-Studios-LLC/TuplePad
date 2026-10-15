@@ -68,6 +68,19 @@ for app in (desktop.getChildAtIndex(i) for i in range(desktop.childCount)):
             print("editor states:", [pyatspi.stateToString(s) for s in editor.getState().getStates()])
             text = editor.queryText()
             print("editor text:", repr(text.getText(0, text.characterCount)), "caret:", text.caretOffset)
+            # How screen readers ask for the line, word and character at the caret.
+            for name in ["TEXT_BOUNDARY_LINE_START", "TEXT_BOUNDARY_WORD_START", "TEXT_BOUNDARY_CHAR"]:
+                try:
+                    print(name, repr(text.getTextAtOffset(text.caretOffset - 1, getattr(pyatspi, name))))
+                except Exception as error:
+                    print(name, "failed:", error)
+            try:
+                from gi.repository import Atspi
+                for granularity in ["LINE", "WORD", "CHAR"]:
+                    print("getStringAtOffset", granularity, repr(Atspi.Text.get_string_at_offset(editor, text.caretOffset - 1, getattr(Atspi.TextGranularity, granularity))))
+            except Exception as error:
+                print("getStringAtOffset failed:", error)
+            print("extents of first char:", text.getCharacterExtents(0, pyatspi.DESKTOP_COORDS))
 PY
 # Orca writes its log in chunks: let it quit properly so the end isn't lost, then close TuplePad.
 orca --quit > /dev/null 2>&1 || kill -INT "$ORCA" 2>/dev/null
