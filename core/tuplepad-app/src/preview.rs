@@ -187,9 +187,11 @@ impl App {
                 return;
             }
             state.synced = Some((doc.to_string(), top));
+            // Measured from the first block, so the preview keeps its top margin.
+            let base = state.positions.first().copied().unwrap_or(0.0);
             let after = state.lines.partition_point(|&line| line <= top);
-            if after == 0 {
-                0.0
+            let y = if after == 0 {
+                base
             } else {
                 let i = after - 1;
                 let (line, y) = (state.lines[i], state.positions[i]);
@@ -197,7 +199,8 @@ impl App {
                     (Some(&next_line), Some(&next_y)) if next_line > line => y + (next_y - y) * ((top - line) as f32 / (next_line - line) as f32),
                     _ => y,
                 }
-            }
+            };
+            (y - base).max(0.0)
         };
         self.preview_bridge(|b| {
             b.set_scroll_y(target);
