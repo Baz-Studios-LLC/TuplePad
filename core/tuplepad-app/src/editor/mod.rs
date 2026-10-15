@@ -151,6 +151,8 @@ pub struct Editor {
     smart_for: Option<(u64, Vec<TextSelection>)>,
     /// Scripted runs keep copy and paste away from the real clipboard.
     pub private_clipboard: Option<String>,
+    /// Text copied or cut in TuplePad, newest first (Paste from History).
+    pub clip_history: Vec<String>,
     /// Milliseconds the last `sync` took, for benchmarks.
     pub last_sync_ms: f64,
     /// Which pane the view fields above belong to (the focused one), the other pane's view,
@@ -239,6 +241,7 @@ impl Editor {
             smart: None,
             smart_for: None,
             private_clipboard: None,
+            clip_history: Vec::new(),
             last_sync_ms: 0.0,
             pane: 0,
             other: Some(panes::PaneView::second(&bridge)),

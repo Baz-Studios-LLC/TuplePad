@@ -37,7 +37,7 @@ pub use xml_tools::{XPathItem, xml_format, xml_linearize, xml_validate, xml_xpat
 pub use folder_search::{FileMatches, FolderSearch, FolderSearchOptions, FolderSearchProgress, list_files, preview_file_replacements, replace_in_file};
 pub use fuzzy::{FuzzyHit, fuzzy_rank};
 pub use outline::{OutlineItem, SymbolKind};
-pub use snippets::{SnippetExpansion, SnippetRange, SnippetStop, expand_snippet};
+pub use snippets::{SnippetExpansion, SnippetRange, SnippetStop, expand_snippet, shift_snippet_stops, snippet_trigger};
 pub use session::{DocumentRecord, SessionRecord, SessionStore, new_document_id, now_seconds};
 pub use search::{LineMatches, MatchSpan, ReplacementPreview, SearchQuery};
 pub use transform::{CaseChange, LineOperation};

@@ -15,7 +15,7 @@ use crate::document::{Conflict, Document};
 use crate::editor::input::Modifiers;
 use crate::editor::{Editor, ViewOptions, group};
 use crate::settings::Settings;
-use crate::{AppWindow, DocItem, MenuEntry, Palette, Theme, fonts, session};
+use crate::{StatusItem, AppWindow, DocItem, MenuEntry, Palette, Theme, fonts, session};
 
 pub struct App {
     /// The app itself, for callbacks created later.
@@ -35,6 +35,11 @@ pub struct App {
     pub word_index: RefCell<crate::completion::WordIndex>,
     pub outline: RefCell<crate::outline::OutlineState>,
     pub toast_timer: slint::Timer,
+    pub snippets: RefCell<crate::snippets::SnippetStore>,
+    /// The status bar's right-hand items (the language, indentation, encoding and line endings
+    /// open lists to change them).
+    status_model: Rc<VecModel<StatusItem>>,
+    pub snippet_session: RefCell<Option<crate::snippets::SnippetSession>>,
     /// For scripted runs: the last toast, tool error and HTML copied.
     pub last_toast: RefCell<Option<String>>,
     pub last_tool_error: RefCell<Option<String>>,
@@ -61,6 +66,8 @@ pub struct App {
     /// The page the last Print prepared, for scripted checks (which don't print).
     pub printed: RefCell<Option<PathBuf>>,
     language_names: HashMap<String, String>,
+    /// Every language (id and name), in the Language menu's order.
+    language_list: Vec<(String, String)>,
     pub open_ms: RefCell<Vec<(String, f64)>>,
     /// Answers for dialogs in scripted runs (they never show real ones).
     pub scripted_answers: Option<RefCell<VecDeque<String>>>,
@@ -90,9 +97,11 @@ impl App {
         }
         let docs_model = Rc::new(VecModel::default());
         ui.set_docs(ModelRc::from(docs_model.clone()));
+        let status_model = Rc::new(VecModel::default());
+        ui.set_status_items(ModelRc::from(status_model.clone()));
         let names = [
             "file", "file-2", "file-3", "recent", "reopen", "convert", "line-ending", "edit", "selection", "find", "text", "lines", "case", "whitespace", "view",
-            "view-2", "view-3", "folding", "theme", "tools", "compare", "compare-documents", "json", "xml", "csv", "encode", "decode",
+            "view-2", "view-3", "folding", "theme", "language", "tools", "compare", "compare-documents", "json", "xml", "csv", "encode", "decode",
         ];
         let menus: HashMap<&'static str, Rc<VecModel<MenuEntry>>> = names.into_iter().map(|n| (n, Rc::new(VecModel::default()))).collect();
         for (name, model) in &menus {
@@ -115,6 +124,7 @@ impl App {
                 "view-2" => ui.set_view_menu_2(model),
                 "view-3" => ui.set_view_menu_3(model),
                 "folding" => ui.set_folding_menu(model),
+                "language" => ui.set_language_menu(model),
                 "tools" => ui.set_tools_menu(model),
                 "compare" => ui.set_compare_menu(model),
                 "compare-documents" => ui.set_compare_documents_menu(model),
@@ -140,6 +150,11 @@ impl App {
             word_index: RefCell::new(Default::default()),
             outline: RefCell::new(Default::default()),
             toast_timer: slint::Timer::default(),
+            snippets: RefCell::new(crate::snippets::SnippetStore::load(
+                settings_path.as_ref().and_then(|p| p.parent()).map(|folder| folder.join("snippets.json")),
+            )),
+            snippet_session: RefCell::new(None),
+            status_model,
             last_toast: RefCell::new(None),
             last_tool_error: RefCell::new(None),
             last_copied_html: RefCell::new(None),
@@ -156,6 +171,7 @@ impl App {
             revealed: RefCell::new(None),
             printed: RefCell::new(None),
             language_names: tuplepad_core::languages().into_iter().map(|l| (l.id, l.name)).collect(),
+            language_list: tuplepad_core::languages().into_iter().map(|l| (l.id, l.name)).collect(),
             open_ms: RefCell::new(Vec::new()),
             scripted_answers: scripted.then(|| RefCell::new(VecDeque::new())),
         });
@@ -298,17 +314,24 @@ impl App {
             Indentation::Spaces(width) => format!("Spaces: {width}"),
         };
         let lines = doc.buffer.line_count();
-        ui.set_status_right(
-            format!(
-                "{}   ·   {indentation}   ·   {}{}   ·   {ending}   ·   {} {}",
-                self.language_name(doc),
-                info.encoding.name,
-                if info.encoding.has_bom { " with BOM" } else { "" },
-                group(lines),
-                if lines == 1 { "line" } else { "lines" }
-            )
-            .into(),
-        );
+        let status_items = [
+            ("status.language", self.language_name(doc)),
+            ("status.indentation", indentation),
+            ("status.encoding", format!("{}{}", info.encoding.name, if info.encoding.has_bom { " with BOM" } else { "" })),
+            ("status.line-ending", ending.to_string()),
+            ("", format!("{} {}", group(lines), if lines == 1 { "line" } else { "lines" })),
+        ];
+        ui.set_status_right(status_items.iter().map(|(_, text)| text.as_str()).collect::<Vec<_>>().join("   ·   ").into());
+        let items: Vec<StatusItem> = status_items.into_iter().map(|(id, text)| StatusItem { id: id.into(), text: text.into() }).collect();
+        if self.status_model.row_count() != items.len() {
+            self.status_model.set_vec(items);
+        } else {
+            for (index, item) in items.into_iter().enumerate() {
+                if self.status_model.row_data(index).as_ref() != Some(&item) {
+                    self.status_model.set_row_data(index, item);
+                }
+            }
+        }
 
         // What the menus show as enabled and checked.
         let settings = self.settings.borrow();
@@ -387,6 +410,12 @@ impl App {
             .map(|(i, d)| commands::item_entry(format!("compare-doc:{i}"), d.name(), true, None))
             .collect();
         self.set_menu("compare-documents", others);
+        // The Language menu: Plain Text, then every language, with this document's checked.
+        let current_language = doc.buffer.language().unwrap_or_default();
+        let mut languages = vec![commands::item_entry("language:".into(), "Plain Text".into(), true, Some(current_language.is_empty()))];
+        languages.push(commands::separator_entry());
+        languages.extend(self.language_list.iter().map(|(id, name)| commands::item_entry(format!("language:{id}"), name.clone(), true, Some(*id == current_language))));
+        self.set_menu("language", languages);
 
         // Open Recent, and the encodings and line endings.
         let mut recent: Vec<MenuEntry> = settings
@@ -488,6 +517,10 @@ impl App {
             return true;
         }
         self.editor.borrow_mut().completion = None;
+        // Tab and Shift-Tab expand snippets and move between their stops.
+        if !(control || alt || meta) && (text == "\t" || text == "\u{19}") && self.snippet_tab(shift || text == "\u{19}") {
+            return true;
+        }
         if let Some(command) = commands::for_key(text, control, alt, shift, meta) {
             self.run_command(command.id);
             return true;
@@ -611,6 +644,12 @@ impl App {
             "app.settings" => self.show_settings(None),
             "view.palette" => self.open_palette(),
             "text.goto" => self.open_palette_with(":"),
+            "tools.snippet" => self.open_snippet_list(),
+            "text.language" | "status.language" => self.open_language_list(),
+            "status.indentation" => self.open_indentation_list(),
+            "status.encoding" => self.open_encoding_list(),
+            "status.line-ending" => self.open_line_ending_list(),
+            "edit.clipboard-history" => self.open_clipboard_history(),
             "text.column" => self.open_column_editor(),
             "find.show" => self.open_find(false),
             "find.replace" => self.open_find(true),
@@ -662,7 +701,28 @@ impl App {
     /// Items of the generated submenus: `recent:<index>`, `reopen:<encoding>`,
     /// `convert:<encoding>[+bom]` and `line-ending:<lf|crlf|cr>`.
     fn run_item(&self, kind: &str, value: &str) {
+        if self.run_list_item(kind, value) {
+            return;
+        }
         match kind {
+            "language" => {
+                let mut editor = self.editor.borrow_mut();
+                editor.buffer().set_language((!value.is_empty()).then(|| value.to_string()));
+                editor.invalidate();
+            }
+            "indent" => {
+                let mut editor = self.editor.borrow_mut();
+                editor.doc_mut().indentation = Some(match value.parse::<u32>() {
+                    Ok(width) => Indentation::Spaces(width),
+                    Err(_) => Indentation::Tabs,
+                });
+                editor.invalidate();
+            }
+            "close-doc" => {
+                if let Ok(index) = value.parse::<usize>() {
+                    self.close_document(Some(index));
+                }
+            }
             "recent" => {
                 let path = value.parse::<usize>().ok().and_then(|i| self.settings.borrow().recent_files.get(i).cloned());
                 if let Some(path) = path {
@@ -873,6 +933,52 @@ impl App {
         let pos = editor.buffer().clamp(target);
         editor.doc_mut().cursors = vec![tuplepad_core::TextSelection::caret(pos)];
         editor.reveal();
+    }
+
+    /// Set Language…: every language, in the palette.
+    pub fn open_language_list(&self) {
+        let current = self.editor.borrow().buffer().language().unwrap_or_default();
+        let mut entries = vec![crate::palette::Entry { id: "language:".into(), title: "Plain Text".into(), detail: String::new(), trailing: String::new() }];
+        entries.extend(tuplepad_core::languages().into_iter().map(|l| crate::palette::Entry { id: format!("language:{}", l.id), title: l.name, detail: String::new(), trailing: String::new() }));
+        for entry in &mut entries {
+            if entry.id == format!("language:{current}") {
+                entry.trailing = "Current".into();
+            }
+        }
+        self.open_palette_list(entries, "Set the language of this document");
+    }
+
+    fn open_indentation_list(&self) {
+        let current = self.editor.borrow().indentation();
+        let mut entries: Vec<crate::palette::Entry> = std::iter::once(("indent:tabs".to_string(), "Indent with Tabs".to_string(), current == Indentation::Tabs))
+            .chain([2, 3, 4, 8].map(|w| (format!("indent:{w}"), format!("Indent with {w} Spaces"), current == Indentation::Spaces(w))))
+            .map(|(id, title, on)| crate::palette::Entry { id, title, detail: String::new(), trailing: if on { "Current".into() } else { String::new() } })
+            .collect();
+        for (id, title) in [("whitespace.indent-spaces", "Convert Indentation to Spaces"), ("whitespace.indent-tabs", "Convert Indentation to Tabs")] {
+            entries.push(crate::palette::Entry { id: id.into(), title: title.into(), detail: "The whole document".into(), trailing: String::new() });
+        }
+        self.open_palette_list(entries, "Indentation for this document");
+    }
+
+    fn open_encoding_list(&self) {
+        let current = self.editor.borrow().buffer().file_info().encoding.name;
+        let mut entries = Vec::new();
+        for name in tuplepad_core::supported_encodings() {
+            entries.push(crate::palette::Entry { id: format!("convert:{name}"), title: format!("Convert to {name}"), detail: "Saves with this encoding".into(), trailing: if name == current { "Current".into() } else { String::new() } });
+        }
+        if self.editor.borrow().doc().path().is_some() {
+            for name in tuplepad_core::supported_encodings() {
+                entries.push(crate::palette::Entry { id: format!("reopen:{name}"), title: format!("Reopen with {name}"), detail: "Reads the file again".into(), trailing: String::new() });
+            }
+        }
+        self.open_palette_list(entries, "Encoding");
+    }
+
+    fn open_line_ending_list(&self) {
+        let entries = [("lf", "LF (macOS and Linux)"), ("crlf", "CRLF (Windows)"), ("cr", "CR (classic Mac)")]
+            .map(|(id, title)| crate::palette::Entry { id: format!("line-ending:{id}"), title: format!("Convert to {title}"), detail: String::new(), trailing: String::new() })
+            .to_vec();
+        self.open_palette_list(entries, "Line endings");
     }
 
     /// A new untitled document holding `text` (standard input, from the `tuplepad` command).

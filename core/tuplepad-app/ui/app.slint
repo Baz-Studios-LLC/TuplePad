@@ -15,6 +15,12 @@ export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, P
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
+// An item at the right of the status bar; one with an id opens a list to change it.
+export struct StatusItem {
+    id: string,
+    text: string,
+}
+
 export struct MenuEntry {
     id: string,
     title: string,
@@ -42,6 +48,7 @@ export component AppWindow inherits Window {
     in property <string> doc-subtitle;
     in property <string> status-left;
     in property <string> status-right;
+    in property <[StatusItem]> status-items;
     in-out property <bool> sidebar-visible: true;
     in property <bool> outline-visible;
     // A short message at the bottom of the window.
@@ -64,6 +71,7 @@ export component AppWindow inherits Window {
     in property <[PaletteItem]> palette-items;
     in-out property <int> palette-selected;
     in-out property <string> palette-text;
+    in property <string> palette-placeholder: "Search commands, documents and recent files";
     callback palette-query(query: string);
     callback palette-run(index: int);
     callback palette-close();
@@ -86,6 +94,7 @@ export component AppWindow inherits Window {
     in property <[MenuEntry]> lines-menu;
     in property <[MenuEntry]> case-menu;
     in property <[MenuEntry]> whitespace-menu;
+    in property <[MenuEntry]> language-menu;
     in property <[MenuEntry]> tools-menu;
     in property <[MenuEntry]> compare-menu;
     in property <[MenuEntry]> compare-documents-menu;
@@ -275,6 +284,16 @@ export component AppWindow inherits Window {
             }
         }
         Menu {
+            title: "Language";
+            for item in root.language-menu: MenuItem {
+                title: item.title;
+                enabled: item.enabled;
+                checkable: item.checkable;
+                checked: item.checked;
+                activated => { root.command(item.id); }
+            }
+        }
+        Menu {
             title: "Tools";
             Menu {
                 title: "Compare";
@@ -414,6 +433,7 @@ export component AppWindow inherits Window {
             docs: root.docs;
             current: root.current-doc;
             top-inset: root.titlebar-height;
+            close(index) => { root.command("close-doc:" + index); }
             select(index) => {
                 root.select-doc(index);
                 root.focus-editor();
@@ -645,11 +665,35 @@ export component AppWindow inherits Window {
                         color: Theme.secondary-text;
                         vertical-alignment: center;
                     }
-                    Text {
-                        text: root.status-right;
-                        font-size: 11.5px;
-                        color: Theme.secondary-text;
-                        vertical-alignment: center;
+                    HorizontalLayout {
+                        spacing: 2px;
+                        for item[index] in root.status-items: HorizontalLayout {
+                            spacing: 2px;
+                            if index > 0: Text {
+                                text: "·";
+                                font-size: 11.5px;
+                                color: Theme.tertiary-text;
+                                vertical-alignment: center;
+                            }
+                            Rectangle {
+                                y: 3px;
+                                height: parent.height - 6px;
+                                width: status-label.preferred-width + 12px;
+                                border-radius: 5px;
+                                background: item.id != "" && item-touch.has-hover ? Theme.control-hover : transparent;
+                                status-label := Text {
+                                    text: item.text;
+                                    font-size: 11.5px;
+                                    color: item.id != "" && item-touch.has-hover ? Theme.primary-text : Theme.secondary-text;
+                                    vertical-alignment: center;
+                                }
+                                item-touch := TouchArea {
+                                    enabled: item.id != "";
+                                    mouse-cursor: item.id != "" ? pointer : default;
+                                    clicked => { root.command(item.id); }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -737,6 +781,7 @@ export component AppWindow inherits Window {
     if root.palette-open: CommandPalette {
         items: root.palette-items;
         text <=> root.palette-text;
+        placeholder: root.palette-placeholder;
         selected <=> root.palette-selected;
         query-changed(query) => { root.palette-query(query); }
         run(index) => { root.palette-run(index); }

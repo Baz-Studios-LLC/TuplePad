@@ -144,6 +144,7 @@ export component SettingsWindow inherits Window {
     in property <length> titlebar-height: 0px;
     in-out property <int> tab: 0;
     in property <SettingsValues> values;
+    in property <string> version;
     callback set-bool(key: string, value: bool);
     callback set-int(key: string, value: int);
     callback drag-window();
@@ -400,5 +401,14 @@ export component SettingsWindow inherits Window {
                 }
             }
         }
+    }
+
+    // Which TuplePad this is.
+    Text {
+        x: 24px;
+        y: root.height - 30px;
+        text: "TuplePad " + root.version;
+        font-size: 11px;
+        color: Theme.tertiary-text;
     }
 }

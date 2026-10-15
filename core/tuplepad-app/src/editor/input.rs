@@ -317,10 +317,21 @@ impl Editor {
 
     pub fn paste(&mut self) {
         let Some(text) = self.read_clipboard() else { return };
-        self.apply(|buffer, cursors| buffer.paste(cursors, &text));
+        self.paste_text(&text);
+    }
+
+    /// Pastes `text` as Paste would (one line per caret when the counts match).
+    pub fn paste_text(&mut self, text: &str) {
+        self.apply(|buffer, cursors| buffer.paste(cursors, text));
     }
 
     pub fn write_clipboard(&mut self, text: String) {
+        // Paste from History keeps what TuplePad copied, newest first.
+        if !text.is_empty() {
+            self.clip_history.retain(|t| *t != text);
+            self.clip_history.insert(0, text.clone());
+            self.clip_history.truncate(50);
+        }
         if self.private_clipboard.is_some() {
             self.private_clipboard = Some(text);
         } else if let Ok(mut clipboard) = arboard::Clipboard::new() {

@@ -711,6 +711,7 @@ fn dump_menus(ui: &AppWindow) -> Value {
         "Whitespace": menu(ui.get_whitespace_menu()),
         "View": view,
         "Code Folding": menu(ui.get_folding_menu()),
+        "Language": menu(ui.get_language_menu()),
         "Tools": menu(ui.get_tools_menu()),
         "Compare": menu(ui.get_compare_menu()),
         "Compare With": menu(ui.get_compare_documents_menu()),

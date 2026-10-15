@@ -90,7 +90,13 @@ pub fn entries(app: &App) -> Vec<Entry> {
     for command in COMMANDS.iter().filter(|c| !c.is_separator() && !c.is_submenu()) {
         entries.push(Entry {
             id: command.id.into(),
-            title: command.title.trim_end_matches('…').into(),
+            title: match command.menu {
+                // Items that only make sense with their submenu's name ("JSON: Format").
+                Menu::Compare | Menu::Json | Menu::Xml | Menu::Csv | Menu::Encode | Menu::Decode => {
+                    format!("{}: {}", menu_name(command.menu).trim_start_matches("Tools ▸ "), command.title.trim_end_matches('…'))
+                }
+                _ => command.title.trim_end_matches('…').into(),
+            },
             detail: menu_name(command.menu).into(),
             trailing: format_shortcut(command.shortcut()),
         });
@@ -143,11 +149,23 @@ impl App {
         self.open_palette_with("");
     }
 
+    /// The palette with a list of its own (snippets, clipboard history) instead of commands.
+    pub fn open_palette_list(&self, entries: Vec<Entry>, placeholder: &str) {
+        *self.palette_entries.borrow_mut() = entries;
+        if let Some(ui) = self.ui.upgrade() {
+            ui.set_palette_text(SharedString::default());
+            ui.set_palette_placeholder(placeholder.into());
+            ui.set_palette_open(true);
+        }
+        self.palette_query("");
+    }
+
     /// Opens the palette with some text already typed (":" for Go to Line).
     pub fn open_palette_with(&self, text: &str) {
         *self.palette_entries.borrow_mut() = entries(self);
         if let Some(ui) = self.ui.upgrade() {
             ui.set_palette_text(text.into());
+            ui.set_palette_placeholder("Search commands, documents and recent files".into());
             ui.set_palette_open(true);
         }
         self.palette_query(text);

@@ -144,6 +144,7 @@ pub static COMMANDS: &[Command] = &[
     command("bookmark.clear", "Clear Bookmarks", Menu::Find, &[]),
     Command { other_keys: Some(&["Control", "g"]), ..command("text.goto", "Go to Line…", Menu::Text, &["Control", "l"]) },
     separator(Menu::Text),
+    command("text.language", "Set Language…", Menu::None, &[]),
     Command { other_keys: Some(&["Alt", "c"]), ..command("text.column", "Column Editor…", Menu::Text, &["Control", "Alt", "c"]) },
     command("text.comment", "Toggle Comment", Menu::Text, &["Control", "/"]),
     separator(Menu::Text),

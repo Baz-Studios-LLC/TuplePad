@@ -535,8 +535,8 @@ export component EditorView inherits Rectangle {
             source: root.minimap;
             image-rendering: pixelated;
         }
-        // Where the view is.
-        Rectangle {
+        // Where the view is (when there's somewhere else to be).
+        if root.thumb-size < 1: Rectangle {
             y: root.minimap-view-y;
             height: root.minimap-view-height;
             background: Theme.dark ? #FFFFFF : #000000;

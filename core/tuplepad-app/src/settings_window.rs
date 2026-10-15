@@ -103,6 +103,7 @@ impl App {
         let Some(app) = self.me.borrow().upgrade() else { return };
         if self.settings_window.borrow().is_none() {
             let Ok(window) = SettingsWindow::new() else { return };
+            window.set_version(crate::VERSION.trim().into());
             if cfg!(target_os = "macos") {
                 window.set_titlebar_height(28.0);
             }

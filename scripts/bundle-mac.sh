@@ -39,7 +39,10 @@ if ! xcrun actool "$ROOT/TuplePad/AppIcon.icon" --compile "$STAGE/Contents/Resou
     echo "warning: couldn't compile the app icon" >&2
 fi
 
-VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/core/Cargo.toml" | head -1)"
+# Versions are named v001, v002, … (VERSION at the repository's root); the build number is
+# the plain number, which Apple wants numeric.
+VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
+BUILD_NUMBER="$((10#${VERSION#v}))"
 PLIST="$STAGE/Contents/Info.plist"
 cp "$ROOT/Config/Info.plist" "$PLIST"
 set_key() { /usr/libexec/PlistBuddy -c "Add :$1 $2 $3" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :$1 $3" "$PLIST"; }
@@ -49,7 +52,7 @@ set_key CFBundleDisplayName string TuplePad
 set_key CFBundleExecutable string TuplePad
 set_key CFBundlePackageType string APPL
 set_key CFBundleShortVersionString string "$VERSION"
-set_key CFBundleVersion string "$VERSION"
+set_key CFBundleVersion string "$BUILD_NUMBER"
 set_key CFBundleIconFile string AppIcon
 set_key CFBundleIconName string AppIcon
 set_key LSMinimumSystemVersion string "$MINIMUM_MACOS"

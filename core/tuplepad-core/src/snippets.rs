@@ -140,3 +140,89 @@ fn parse_stop(chars: &[char], i: usize) -> Option<(u32, String, usize)> {
         Some((number, String::new(), i + 1 + count))
     }
 }
+
+/// The snippet trigger word just before a caret (letters, digits, `_` and `-`), and the UTF-16
+/// column where it starts.
+pub fn snippet_trigger(line: &str, column: u64) -> Option<(u64, String)> {
+    let units: Vec<u16> = line.encode_utf16().collect();
+    let end = (column as usize).min(units.len());
+    let before = String::from_utf16_lossy(&units[..end]);
+    let word: String = before.chars().rev().take_while(|&c| c.is_alphanumeric() || c == '_' || c == '-').collect::<Vec<_>>().into_iter().rev().collect();
+    if word.is_empty() {
+        return None;
+    }
+    let start = end - word.encode_utf16().count();
+    Some((start as u64, word))
+}
+
+/// While filling in a snippet: after typing into the current stop (whose ranges were `current`
+/// and whose carets are now `carets`), later stops on the same lines move along by however much
+/// the current one grew or shrank.
+pub fn shift_snippet_stops(
+    stops: Vec<Vec<crate::TextSelection>>,
+    current: usize,
+    carets: &[crate::TextSelection],
+) -> Vec<Vec<crate::TextSelection>> {
+    use crate::{TextPos, TextSelection};
+    let mut stops = stops;
+    let Some(ranges) = stops.get(current).cloned() else { return stops };
+    let mut ranges = ranges;
+    ranges.sort_by_key(|r| r.start());
+    let mut carets = carets.to_vec();
+    carets.sort_by_key(|c| c.start());
+    if ranges.len() != carets.len() {
+        return stops;
+    }
+    // Shifts accumulate along a line: work from the right so earlier edits don't move later ones.
+    for (range, caret) in ranges.iter().zip(&carets).rev() {
+        if caret.end().line != range.end().line {
+            continue;
+        }
+        let shift = caret.end().column as i64 - range.end().column as i64;
+        if shift == 0 {
+            continue;
+        }
+        let moved = |p: TextPos| TextPos::new(p.line, (p.column as i64 + shift).max(0) as u64);
+        for (index, stop) in stops.iter_mut().enumerate() {
+            if index == current {
+                continue;
+            }
+            for other in stop.iter_mut() {
+                if other.start().line == range.end().line && other.start().column >= range.end().column {
+                    *other = TextSelection { anchor: moved(other.anchor), head: moved(other.head) };
+                }
+            }
+        }
+    }
+    stops[current] = carets;
+    stops
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{TextPos, TextSelection};
+
+    fn sel(line: u64, start: u64, end: u64) -> TextSelection {
+        TextSelection { anchor: TextPos::new(line, start), head: TextPos::new(line, end) }
+    }
+
+    #[test]
+    fn triggers_before_the_caret() {
+        assert_eq!(snippet_trigger("    fn", 6), Some((4, "fn".to_string())));
+        assert_eq!(snippet_trigger("x = my-snip", 11), Some((4, "my-snip".to_string())));
+        assert_eq!(snippet_trigger("fn ", 3), None);
+        assert_eq!(snippet_trigger("été", 3), Some((0, "été".to_string())));
+    }
+
+    #[test]
+    fn later_stops_follow_typing() {
+        // `fn name(args) {` with stop 1 at "name" (3..7) and stop 2 at "args" (8..12).
+        let stops = vec![vec![sel(0, 3, 7)], vec![sel(0, 8, 12)], vec![sel(1, 4, 4)]];
+        // "name" was replaced by "go": the caret ends at column 5.
+        let shifted = shift_snippet_stops(stops, 0, &[TextSelection::caret(TextPos::new(0, 5))]);
+        assert_eq!(shifted[1], vec![sel(0, 6, 10)]);
+        assert_eq!(shifted[2], vec![sel(1, 4, 4)]);
+        assert_eq!(shifted[0], vec![TextSelection::caret(TextPos::new(0, 5))]);
+    }
+}

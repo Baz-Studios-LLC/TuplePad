@@ -6,6 +6,9 @@
 // The scripted runs' state dump is one large `json!`.
 #![recursion_limit = "256"]
 
+/// This version's name (v001, v002, …), from VERSION at the repository's root.
+pub const VERSION: &str = include_str!("../../../VERSION");
+
 slint::include_modules!();
 
 mod app;
@@ -24,6 +27,7 @@ mod print;
 mod script;
 mod search_panel;
 mod sheets;
+mod snippets;
 mod session;
 mod settings;
 mod settings_window;
@@ -98,12 +102,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(renderer) = &options.renderer {
         backend = backend.renderer_name(renderer.clone());
     }
+    // Scripted runs open without taking the keyboard, so typing in other apps can't reach them.
     #[cfg(target_os = "macos")]
     {
-        use slint::winit_030::winit::platform::macos::WindowAttributesExtMacOS;
-        backend = backend.with_winit_window_attributes_hook(|attributes| {
-            attributes.with_titlebar_transparent(true).with_fullsize_content_view(true).with_title_hidden(true)
+        use slint::winit_030::winit::platform::macos::{EventLoopBuilderExtMacOS, WindowAttributesExtMacOS};
+        backend = backend.with_winit_window_attributes_hook(move |attributes| {
+            attributes.with_titlebar_transparent(true).with_fullsize_content_view(true).with_title_hidden(true).with_active(!scripted)
         });
+        if scripted {
+            let mut builder = slint::winit_030::winit::event_loop::EventLoop::<slint::winit_030::SlintEvent>::with_user_event();
+            builder.with_activate_ignoring_other_apps(false);
+            backend = backend.with_winit_event_loop_builder(builder);
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    if scripted {
+        backend = backend.with_winit_window_attributes_hook(|attributes| attributes.with_active(false));
     }
     backend.select()?;
     fonts::register_system_fonts();
