@@ -31,7 +31,7 @@ function Press([byte[]]$keys) {
     [array]::Reverse($keys)
     foreach ($key in $keys) { [Input]::keybd_event($key, 0, 2, [UIntPtr]::Zero); Start-Sleep -Milliseconds 40 }
 }
-$Insert = 0x2D; $Control = 0x11; $Alt = 0x12; $X = 0x58; $Down = 0x28; $HomeKey = 0x24
+$Insert = 0x2D; $Control = 0x11; $Alt = 0x12; $X = 0x58; $Down = 0x28; $HomeKey = 0x24; $Tab = 0x09
 
 # What Narrator said last, by its copy-last-phrase command.
 function Last-Phrase {
@@ -65,7 +65,10 @@ $window = $tuplepad.MainWindowHandle
 # editor then gives it the keyboard focus for sure.
 Press @($Alt)
 [Input]::SetForegroundWindow($window) | Out-Null
-Start-Sleep 2
+Start-Sleep 4
+# Coming forward, Narrator names what has the focus.
+$phrases = @()
+$phrases += Last-Phrase
 $rect = New-Object Input+Rect
 [Input]::GetWindowRect($window, [ref]$rect) | Out-Null
 [Input]::SetCursorPos([int](($rect.Left + $rect.Right) / 2), [int](($rect.Top + $rect.Bottom) / 2)) | Out-Null
@@ -73,13 +76,15 @@ $rect = New-Object Input+Rect
 Start-Sleep 4
 "In front: $([Input]::ForegroundTitle())"
 
-$phrases = @()
 $phrases += Last-Phrase
 Press @($Control, $HomeKey); Start-Sleep 3
 $phrases += Last-Phrase
 Press @($Down); Start-Sleep 3
 $phrases += Last-Phrase
 Press @($Down); Start-Sleep 3
+$phrases += Last-Phrase
+# Narrator + Tab reads the item with the focus again.
+Press @($Insert, $Tab); Start-Sleep 4
 $phrases += Last-Phrase
 
 Stop-Process -Id $tuplepad.Id -Force -ErrorAction SilentlyContinue
