@@ -23,11 +23,13 @@ const tuplepad = spawn(app, [note], { env: { ...process.env, TUPLEPAD_DATA_DIR: 
 let spoken = [];
 try {
   await sleep(10000);
-  // "Where am I?": NVDA's report-focus command (VoiceOver announces the window as it opens).
+  // "Where am I?": each screen reader's command to describe what has the keyboard focus.
   if (reader === nvda) {
     await nvda.perform(nvda.keyboardCommands.reportCurrentFocus);
-    await sleep(2000);
+  } else {
+    await voiceOver.perform(voiceOver.keyboardCommands.describeItemWithKeyboardFocus);
   }
+  await sleep(2000);
   await reader.press("ArrowDown");
   await sleep(2000);
   await reader.press("ArrowDown");
