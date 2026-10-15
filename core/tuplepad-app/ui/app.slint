@@ -55,6 +55,9 @@ export component AppWindow inherits Window {
     in property <bool> outline-visible;
     // The folder in the sidebar (Open Folder…).
     in property <string> folder-name;
+    // What the file manager and deleting are called on this system.
+    in property <string> file-manager-title: "Show in Finder";
+    in property <string> trash-title: "Move to Trash";
     in property <[FolderRow]> folder-rows;
     in-out property <int> sidebar-mode;
     // A short message at the bottom of the window.
@@ -445,6 +448,10 @@ export component AppWindow inherits Window {
             mode <=> root.sidebar-mode;
             folder-activate(index) => { root.command("folder-row:" + index); }
             folder-close => { root.command("folder.close"); }
+            file-manager-title: root.file-manager-title;
+            trash-title: root.trash-title;
+            doc-action(index, id) => { root.command("doc-action:" + index + ":" + id); }
+            folder-action(index, id) => { root.command("folder-action:" + index + ":" + id); }
             select(index) => {
                 root.select-doc(index);
                 root.focus-editor();

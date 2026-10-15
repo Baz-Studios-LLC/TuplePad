@@ -74,10 +74,15 @@ impl App {
         items.push(item("edit.paste", "Paste", true));
         items.push(separator());
         items.push(item("edit.select-all", "Select All", true));
-        *self.context_word.borrow_mut() = context;
         if let Some(ui) = self.ui.upgrade() {
-            ui.global::<EditorBridge>().set_context_items(ModelRc::from(Rc::new(VecModel::from(items))));
+            let bridge = ui.global::<EditorBridge>();
+            bridge.set_context_items(ModelRc::from(Rc::new(VecModel::from(items))));
+            bridge.set_spell_word(if context.range.is_some() { context.word.clone().into() } else { Default::default() });
+            let suggestions: Vec<slint::SharedString> = context.suggestions.iter().map(|s| s.into()).collect();
+            bridge.set_spell_suggestions(ModelRc::from(Rc::new(VecModel::from(suggestions))));
+            bridge.set_context_has_selection(has_selection);
         }
+        *self.context_word.borrow_mut() = context;
         self.refresh();
     }
 

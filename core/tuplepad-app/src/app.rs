@@ -107,6 +107,8 @@ impl App {
         }
         let docs_model = Rc::new(VecModel::default());
         ui.set_docs(ModelRc::from(docs_model.clone()));
+        ui.set_file_manager_title(commands::SHOW_IN_FILE_MANAGER.into());
+        ui.set_trash_title(commands::MOVE_TO_TRASH.into());
         let status_model = Rc::new(VecModel::default());
         ui.set_status_items(ModelRc::from(status_model.clone()));
         let names = [
@@ -376,7 +378,7 @@ impl App {
             "edit.undo" => can_undo,
             "edit.redo" => can_redo,
             "file.revert" => has_path && modified,
-            "file.move" | "file.show" | "view.follow" | "compare.saved" | "tools.hex" => has_path,
+            "file.move" | "file.show" | "file.copy-path" | "file.trash" | "view.follow" | "compare.saved" | "tools.hex" => has_path,
             "file.close-others" => several,
             _ => true,
         };
@@ -687,6 +689,14 @@ impl App {
             "file.open-folder" => self.open_folder_dialog(),
             "file.quick-open" => self.open_quick_open(),
             "folder.close" => self.close_folder(),
+            "file.copy-path" => {
+                let path = self.editor.borrow().doc().path();
+                if let Some(path) = path {
+                    self.editor.borrow_mut().write_clipboard(path.to_string_lossy().into_owned());
+                    self.show_toast("Copied the path");
+                }
+            }
+            "file.trash" => self.trash_current(),
             "tools.hex" => self.show_hex(),
             "tools.markdown-preview" => self.toggle_preview(),
             "compare.saved" => self.compare(crate::toolviews::CompareWith::Saved),
@@ -755,6 +765,22 @@ impl App {
             "compare-doc" => {
                 if let Ok(index) = value.parse::<usize>() {
                     self.compare(crate::toolviews::CompareWith::Document(index));
+                }
+            }
+            "doc-action" => {
+                // A sidebar row's menu: that document first, then the command.
+                if let Some((index, command)) = value.split_once(':')
+                    && let Ok(index) = index.parse::<usize>()
+                {
+                    self.select_document(index);
+                    self.run_command(command);
+                }
+            }
+            "folder-action" => {
+                if let Some((index, action)) = value.split_once(':')
+                    && let Ok(index) = index.parse::<usize>()
+                {
+                    self.folder_action(index, action);
                 }
             }
             "folder-row" => {
@@ -1167,6 +1193,29 @@ impl App {
     }
 
     /// Closes a document (the current one by default), asking first about unsaved changes.
+    /// Move to Trash: the document's file goes to the Trash (or Recycle Bin), and the document
+    /// closes. Unsaved changes are asked about first.
+    pub fn trash_current(&self) {
+        let (path, name, modified, index) = {
+            let editor = self.editor.borrow();
+            (editor.doc().path(), editor.doc().name(), editor.buffer().is_modified(), editor.current)
+        };
+        let Some(path) = path else { return };
+        let place = if cfg!(windows) { "Recycle Bin" } else { "Trash" };
+        if modified && !self.confirm(&format!("Move “{name}” to the {place}? Its unsaved changes will be lost."), "You can still put the file back from there.", commands::MOVE_TO_TRASH) {
+            return;
+        }
+        // Scripted runs delete their own test files rather than filling the real Trash.
+        let result = if self.is_scripted() { std::fs::remove_file(&path).map_err(|e| e.to_string()) } else { trash::delete(&path).map_err(|e| e.to_string()) };
+        if let Err(error) = result {
+            self.alert(&format!("TuplePad couldn't move “{name}” to the {place}."), &error);
+            return;
+        }
+        // The file is gone on purpose, so the document closes without asking.
+        self.remove_document(index);
+        self.show_toast(&format!("Moved “{name}” to the {place}"));
+    }
+
     pub fn close_document(&self, index: Option<usize>) {
         let index = index.unwrap_or_else(|| self.editor.borrow().current);
         let (modified, name) = {
@@ -1187,6 +1236,11 @@ impl App {
                 _ => return,
             }
         }
+        self.remove_document(index);
+    }
+
+    /// Takes a document out of the window (without asking anything).
+    fn remove_document(&self, index: usize) {
         let empty = {
             let mut editor = self.editor.borrow_mut();
             editor.remove_document(index);
@@ -1468,7 +1522,7 @@ fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 /// Opens the system's file manager with a file selected.
-fn reveal(path: &Path) {
+pub fn reveal(path: &Path) {
     use std::process::Command;
     let result = if cfg!(target_os = "macos") {
         Command::new("open").arg("-R").arg(path).spawn()

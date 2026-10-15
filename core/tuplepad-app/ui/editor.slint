@@ -71,8 +71,12 @@ export global EditorBridge {
     // Misspelled words, underlined.
     in property <[Band]> misspelled;
     in property <[Band]> misspelled-2;
-    // The context menu's items, filled in just before it opens.
+    // The context menu's items, filled in just before it opens: a misspelled word under the
+    // pointer and its suggestions, and whether there's a selection to cut.
     in property <[ContextItem]> context-items;
+    in property <string> spell-word;
+    in property <[string]> spell-suggestions;
+    in property <bool> context-has-selection;
     in property <[Band]> current-matches-2;
     in property <[Band]> marks;
     in property <[Band]> marks-2;
@@ -454,10 +458,41 @@ export component EditorView inherits Rectangle {
 
         context-menu := ContextMenuArea {
             Menu {
-                for item in EditorBridge.context-items: MenuItem {
-                    title: item.title;
-                    enabled: item.enabled;
-                    activated => { EditorBridge.context-chosen(item.id); }
+                for suggestion[i] in EditorBridge.spell-suggestions: MenuItem {
+                    title: suggestion;
+                    activated => { EditorBridge.context-chosen("spell-replace:" + i); }
+                }
+                if EditorBridge.spell-word != "" && EditorBridge.spell-suggestions.length == 0: MenuItem {
+                    title: "No Suggestions";
+                    enabled: false;
+                }
+                if EditorBridge.spell-word != "": MenuSeparator { }
+                if EditorBridge.spell-word != "": MenuItem {
+                    title: "Learn Spelling";
+                    activated => { EditorBridge.context-chosen("spell-learn"); }
+                }
+                if EditorBridge.spell-word != "": MenuItem {
+                    title: "Ignore Spelling";
+                    activated => { EditorBridge.context-chosen("spell-ignore"); }
+                }
+                if EditorBridge.spell-word != "": MenuSeparator { }
+                MenuItem {
+                    title: "Cut";
+                    enabled: EditorBridge.context-has-selection;
+                    activated => { EditorBridge.context-chosen("edit.cut"); }
+                }
+                MenuItem {
+                    title: "Copy";
+                    activated => { EditorBridge.context-chosen("edit.copy"); }
+                }
+                MenuItem {
+                    title: "Paste";
+                    activated => { EditorBridge.context-chosen("edit.paste"); }
+                }
+                MenuSeparator { }
+                MenuItem {
+                    title: "Select All";
+                    activated => { EditorBridge.context-chosen("edit.select-all"); }
                 }
             }
         }

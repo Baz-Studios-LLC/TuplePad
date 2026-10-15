@@ -57,13 +57,16 @@ const fn separator(menu: Menu) -> Command {
 }
 
 /// Where the file manager is called on each system.
-const SHOW_IN_FILE_MANAGER: &str = if cfg!(target_os = "macos") {
+pub const SHOW_IN_FILE_MANAGER: &str = if cfg!(target_os = "macos") {
     "Show in Finder"
 } else if cfg!(windows) {
     "Show in File Explorer"
 } else {
     "Show in Files"
 };
+
+/// What deleting a file is called on each system.
+pub const MOVE_TO_TRASH: &str = if cfg!(windows) { "Move to Recycle Bin" } else { "Move to Trash" };
 
 /// Where a submenu goes in its menu. Its items are built separately (see `App::refresh`).
 const fn submenu(id: &'static str, menu: Menu) -> Command {
@@ -84,6 +87,8 @@ pub static COMMANDS: &[Command] = &[
     separator(Menu::File),
     command("file.move", "Rename or Move…", Menu::File, &[]),
     command("file.show", SHOW_IN_FILE_MANAGER, Menu::File, &[]),
+    command("file.copy-path", "Copy Path", Menu::File, &[]),
+    command("file.trash", MOVE_TO_TRASH, Menu::File, &[]),
     separator(Menu::File),
     submenu("submenu.encoding", Menu::File),
     separator(Menu::File),

@@ -208,6 +208,50 @@ impl App {
         }
     }
 
+    /// A tree row's context menu.
+    pub fn folder_action(&self, index: usize, action: &str) {
+        let node = self.folder.borrow().as_ref().and_then(|s| s.rows.get(index).cloned());
+        let Some(node) = node else { return };
+        match action {
+            "open" => self.activate_folder_row(index),
+            "find" => {
+                self.set_search_folder_path(&node.path);
+                self.show_search(1, false);
+            }
+            "show" => crate::app::reveal(&node.path),
+            "copy-path" => {
+                self.editor.borrow_mut().write_clipboard(node.path.to_string_lossy().into_owned());
+                self.show_toast("Copied the path");
+            }
+            "trash" => {
+                let place = if cfg!(windows) { "Recycle Bin" } else { "Trash" };
+                let what = if node.folder { "folder" } else { "file" };
+                if !self.confirm(&format!("Move the {what} “{}” to the {place}?", node.name), "You can put it back from there.", crate::commands::MOVE_TO_TRASH) {
+                    return;
+                }
+                // Scripted runs delete their own test files rather than filling the real Trash.
+                let result = if self.is_scripted() {
+                    if node.folder { std::fs::remove_dir_all(&node.path) } else { std::fs::remove_file(&node.path) }.map_err(|e| e.to_string())
+                } else {
+                    trash::delete(&node.path).map_err(|e| e.to_string())
+                };
+                match result {
+                    Ok(()) => {
+                        if let Some(state) = self.folder.borrow_mut().as_mut()
+                            && let Some(parent) = node.path.parent()
+                        {
+                            state.changed.insert(parent.to_path_buf());
+                        }
+                        self.reload_changed_folders();
+                        self.show_toast(&format!("Moved “{}” to the {place}", node.name));
+                    }
+                    Err(error) => self.alert(&format!("TuplePad couldn't move “{}” to the {place}.", node.name), &error),
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Marks the current document in the tree (after switching documents).
     pub fn refresh_folder_tree(&self) {
         let current = self.current_path();

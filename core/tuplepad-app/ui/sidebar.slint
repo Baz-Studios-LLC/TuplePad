@@ -95,8 +95,12 @@ export global Icons {
 component DocRow inherits Rectangle {
     in property <DocItem> item;
     in property <bool> selected;
+    in property <string> file-manager-title;
+    in property <string> trash-title;
     callback clicked;
     callback close;
+    // A context menu item, by command id.
+    callback action(id: string);
 
     property <bool> hovered: touch.has-hover || close-touch.has-hover;
     height: 66px;
@@ -104,12 +108,32 @@ component DocRow inherits Rectangle {
     background: root.selected ? Theme.selected-row : root.hovered ? Theme.sidebar-hover : transparent;
     animate background { duration: 120ms; easing: ease-out; }
 
+    property <bool> saved: root.item.folder != "Not saved";
+    menu-area := ContextMenuArea {
+        Menu {
+            MenuItem { title: "Save"; activated => { root.action("file.save"); } }
+            MenuItem { title: "Save As…"; activated => { root.action("file.save-as"); } }
+            MenuItem { title: "Rename or Move…"; enabled: root.saved; activated => { root.action("file.move"); } }
+            MenuSeparator { }
+            MenuItem { title: root.file-manager-title; enabled: root.saved; activated => { root.action("file.show"); } }
+            MenuItem { title: "Copy Path"; enabled: root.saved; activated => { root.action("file.copy-path"); } }
+            MenuSeparator { }
+            MenuItem { title: "Close"; activated => { root.action("file.close"); } }
+            MenuItem { title: "Close Others"; activated => { root.action("file.close-others"); } }
+            MenuSeparator { }
+            MenuItem { title: root.trash-title; enabled: root.saved; activated => { root.action("file.trash"); } }
+        }
+    }
+
     touch := TouchArea {
         clicked => { root.clicked(); }
-        // A middle click closes the document, as on tabs.
         pointer-event(event) => {
+            // A middle click closes the document, as on tabs; a right click shows its menu.
             if event.kind == PointerEventKind.up && event.button == PointerEventButton.middle {
                 root.close();
+            }
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                menu-area.show({ x: self.mouse-x, y: self.mouse-y });
             }
         }
     }
@@ -212,7 +236,10 @@ component DocRow inherits Rectangle {
 
 component FolderRowView inherits Rectangle {
     in property <FolderRow> item;
+    in property <string> file-manager-title;
+    in property <string> trash-title;
     callback clicked;
+    callback action(id: string);
     height: 26px;
     border-radius: 6px;
     background: root.item.current ? Theme.selected-row : touch.has-hover ? Theme.sidebar-hover : transparent;
@@ -269,8 +296,24 @@ component FolderRowView inherits Rectangle {
             horizontal-stretch: 1;
         }
     }
+    menu-area := ContextMenuArea {
+        Menu {
+            if !root.item.folder: MenuItem { title: "Open"; activated => { root.action("open"); } }
+            if root.item.folder: MenuItem { title: "Find in This Folder…"; activated => { root.action("find"); } }
+            MenuSeparator { }
+            MenuItem { title: root.file-manager-title; activated => { root.action("show"); } }
+            MenuItem { title: "Copy Path"; activated => { root.action("copy-path"); } }
+            MenuSeparator { }
+            MenuItem { title: root.trash-title + "…"; activated => { root.action("trash"); } }
+        }
+    }
     touch := TouchArea {
         clicked => { root.clicked(); }
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                menu-area.show({ x: self.mouse-x, y: self.mouse-y });
+            }
+        }
     }
 }
 
@@ -284,6 +327,11 @@ export component Sidebar inherits Rectangle {
     in-out property <int> mode;
     callback folder-activate(index: int);
     callback folder-close();
+    in property <string> file-manager-title;
+    in property <string> trash-title;
+    // A document row's context menu: the row, and the command chosen.
+    callback doc-action(index: int, id: string);
+    callback folder-action(index: int, id: string);
     in property <length> top-inset;
     callback select(index: int);
     callback close(index: int);
@@ -351,6 +399,9 @@ export component Sidebar inherits Rectangle {
                     selected: index == root.current;
                     clicked => { root.select(index); }
                     close => { root.close(index); }
+                    file-manager-title: root.file-manager-title;
+                    trash-title: root.trash-title;
+                    action(id) => { root.doc-action(index, id); }
                 }
             }
         }
@@ -380,7 +431,10 @@ export component Sidebar inherits Rectangle {
                 vertical-stretch: 1;
                 for row[index] in root.folder-rows: FolderRowView {
                     item: row;
+                    file-manager-title: root.file-manager-title;
+                    trash-title: root.trash-title;
                     clicked => { root.folder-activate(index); }
+                    action(id) => { root.folder-action(index, id); }
                 }
             }
         }
