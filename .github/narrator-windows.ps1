@@ -31,7 +31,7 @@ function Press([byte[]]$keys) {
     [array]::Reverse($keys)
     foreach ($key in $keys) { [Input]::keybd_event($key, 0, 2, [UIntPtr]::Zero); Start-Sleep -Milliseconds 40 }
 }
-$Insert = 0x2D; $Control = 0x11; $Alt = 0x12; $X = 0x58; $Down = 0x28; $Home = 0x24
+$Insert = 0x2D; $Control = 0x11; $Alt = 0x12; $X = 0x58; $Down = 0x28; $HomeKey = 0x24
 
 # What Narrator said last, by its copy-last-phrase command.
 function Last-Phrase {
@@ -75,7 +75,7 @@ Start-Sleep 4
 
 $phrases = @()
 $phrases += Last-Phrase
-Press @($Control, $Home); Start-Sleep 3
+Press @($Control, $HomeKey); Start-Sleep 3
 $phrases += Last-Phrase
 Press @($Down); Start-Sleep 3
 $phrases += Last-Phrase
