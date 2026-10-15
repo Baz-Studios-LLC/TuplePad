@@ -1,5 +1,6 @@
 # Real screen readers read TuplePad while it's used with real key presses: Orca on Linux,
-# VoiceOver on macOS and NVDA on Windows (the last two driven by Guidepup).
+# VoiceOver on macOS and NVDA on Windows (driven by Guidepup), and Narrator on Windows (read back
+# through its own copy-last-phrase command).
 # Ubuntu 24.04's Orca (46): older Orca asks for lines with AT-SPI's deprecated GetTextAtOffset,
 # which AccessKit (Slint's accessibility layer) doesn't answer.
 name: Screen reader
@@ -73,3 +74,18 @@ jobs:
       - name: The screen reader reads TuplePad
         shell: bash
         run: node .github/screen-reader.mjs core/target/debug/tuplepad-app${{ runner.os == 'Windows' && '.exe' || '' }}
+
+  narrator:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+          cache-on-failure: true
+      - name: Build
+        run: cargo build --locked --manifest-path core/Cargo.toml -p tuplepad-app
+      - name: Narrator reads TuplePad
+        shell: powershell
+        run: .\.github\narrator-windows.ps1 core\target\debug\tuplepad-app.exe
