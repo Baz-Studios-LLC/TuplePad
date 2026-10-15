@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
-members = ["tuplepad-core", "tuplepad-cli", "tuplepad-app", "tuplepad-mcp", "uniffi-bindgen"]
+members = ["tuplepad-core", "tuplepad-cli", "tuplepad-app", "tuplepad-mcp"]
+# Local tooling for the first Mac app, not part of the repository.
+exclude = ["uniffi-bindgen"]
 
 [workspace.package]
 version = "0.1.0"

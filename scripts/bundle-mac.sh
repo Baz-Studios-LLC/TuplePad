@@ -8,7 +8,7 @@
 # `launch` (what the launcher uses) is optimized like `release` but rebuilds much faster.
 # Cargo's progress shows on stderr; the bundle's path is the only thing on stdout.
 #
-# The icon is compiled from TuplePad/AppIcon.icon with actool (as Xcode would), and the
+# The icon is compiled from packaging/mac/AppIcon.icon with actool (as Xcode would), and the
 # document types come from Config/Info.plist. Signing is ad hoc until the Developer ID is ready.
 set -euo pipefail
 
@@ -47,7 +47,7 @@ cp "$TOOL" "$STAGE/Contents/Helpers/tuplepad"
 
 # The icon: Assets.car (with the dark and tinted looks) plus AppIcon.icns for older systems.
 PARTIAL="$ROOT/build/icon-partial.plist"
-if ! xcrun actool "$ROOT/TuplePad/AppIcon.icon" --compile "$STAGE/Contents/Resources" \
+if ! xcrun actool "$ROOT/packaging/mac/AppIcon.icon" --compile "$STAGE/Contents/Resources" \
         --platform macosx --minimum-deployment-target "$MINIMUM_MACOS" \
         --app-icon AppIcon --output-partial-info-plist "$PARTIAL" >/dev/null; then
     echo "warning: couldn't compile the app icon" >&2

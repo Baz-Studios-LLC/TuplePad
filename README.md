@@ -80,8 +80,6 @@ TuplePad is in early development; the current version is **v001**. It's built on
 | ![Command palette](docs/screenshots/command-palette-light.png) | ![Keyboard shortcuts](docs/screenshots/keyboard-shortcuts-light.png) |
 | The command palette | Every shortcut on one sheet |
 
-`scripts/screenshots.py` takes these again from the demo project in `docs/screenshots/demo`.
-
 ## Using TuplePad with AI tools (MCP)
 
 TuplePad has a built-in [MCP](https://modelcontextprotocol.io) server, so AI tools can read and edit the documents you have open, including changes you haven't saved. It's off until you turn on **Let AI tools use TuplePad** in Settings ▸ AI, which also shows the exact commands below for your copy of TuplePad, with Copy buttons.
@@ -118,13 +116,19 @@ What keeps you in charge:
 - The status bar shows which AI tool is connected, and Settings ▸ AI keeps a log of everything it read and changed.
 - The server listens only on this computer (a local socket and 127.0.0.1), and refuses requests from web pages.
 
-## Running it
+## Download
 
-Double-click **`Launch TuplePad.command`**. It builds TuplePad (into `build/TuplePad.app`) and opens it.
+Get TuplePad from the [Releases page](https://github.com/Baz-Studios-LLC/TuplePad/releases/latest): a disk image for the Mac (Apple silicon and Intel), an installer for Windows and an AppImage for Linux. TuplePad tells you when there's a new version and updates itself (Help ▸ Check for Updates…).
 
-To work on it: `cargo run -p tuplepad-app --manifest-path core/Cargo.toml -- [files…]`. You need Rust (install it from [rustup.rs](https://rustup.rs)) and, on a Mac, Xcode's command-line tools. Windows and Linux builds come with the first release (see below).
+## Building it
 
-The first version, a native Mac app in SwiftUI, stays in `TuplePad/` as a reference; it opens from `TuplePad.xcodeproj` in Xcode (macOS 26 or later, Xcode 27).
+You need Rust (from [rustup.rs](https://rustup.rs)) and, on a Mac, Xcode's command-line tools.
+
+```bash
+cargo run -p tuplepad-app --manifest-path core/Cargo.toml -- [files…]
+```
+
+`scripts/bundle-mac.sh release` makes the Mac app, `build/TuplePad.app` (add `universal` for Apple silicon and Intel in one).
 
 ## How it's built
 
@@ -135,16 +139,13 @@ The first version, a native Mac app in SwiftUI, stays in `TuplePad/` as a refere
 | The app: window, editor, sidebar, menus, find bar, search panel, tool views | Slint and Rust | `core/tuplepad-app` (`ui/` and `src/`) |
 | MCP server (rmcp: tools, local socket, Streamable HTTP) | Rust | `core/tuplepad-mcp` |
 | `tuplepad` terminal command | Rust | `core/tuplepad-cli` |
-| The first Mac app (reference) | Swift / SwiftUI | `TuplePad/` |
-| App icon | Icon Composer | `TuplePad/AppIcon.icon` (artwork source in `design/`) |
+| App icon | Icon Composer | `packaging/mac/AppIcon.icon` |
 
 The editor draws only the lines on screen, so a document's size doesn't affect scrolling or typing speed.
 
 ## Status
 
-[docs/GOAL.md](docs/GOAL.md) is the plan to the first release, and [docs/RELEASE.md](docs/RELEASE.md) lists what's left that needs accounts (signing, notarization, updates) or other machines (Windows and Linux builds and testing).
-
-Versions are named v001, v002, v003 and so on.
+TuplePad is in early development. Versions are named v001, v002, v003 and so on.
 
 ## Credits and license
 
