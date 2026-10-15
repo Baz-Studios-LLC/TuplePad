@@ -7,9 +7,29 @@ param([string]$App)
 $ErrorActionPreference = "Stop"
 Add-Type @"
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Runtime.InteropServices;
 public static class Input {
+    public delegate bool WindowVisitor(IntPtr window, IntPtr data);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(WindowVisitor visit, IntPtr data);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
+    public static string Title(IntPtr window) {
+        var text = new StringBuilder(256);
+        GetWindowText(window, text, 256);
+        return text.ToString();
+    }
+    // Minimizes Narrator's own windows (its home, tutorial and "updates" windows take the focus).
+    public static List<string> MinimizeNarrator() {
+        var titles = new List<string>();
+        EnumWindows((window, data) => {
+            var title = Title(window);
+            if (IsWindowVisible(window) && title.Contains("Narrator")) { ShowWindow(window, 6); titles.Add(title); }
+            return true;
+        }, IntPtr.Zero);
+        return titles;
+    }
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int x, int y, uint data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
@@ -63,9 +83,14 @@ $tuplepad.Refresh()
 $window = $tuplepad.MainWindowHandle
 # Windows lets a background process bring a window forward after an Alt press; a click in the
 # editor then gives it the keyboard focus for sure.
-Press @($Alt)
-[Input]::SetForegroundWindow($window) | Out-Null
-Start-Sleep 4
+foreach ($attempt in 1..5) {
+    $minimized = [Input]::MinimizeNarrator()
+    if ($minimized.Count) { "Minimized: $($minimized -join ', ')" }
+    Press @($Alt)
+    [Input]::SetForegroundWindow($window) | Out-Null
+    Start-Sleep 4
+    if ([Input]::ForegroundTitle() -like "notes.md*") { break }
+}
 # Coming forward, Narrator names what has the focus.
 $phrases = @()
 $phrases += Last-Phrase
