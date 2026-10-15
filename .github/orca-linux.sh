@@ -7,7 +7,9 @@
 set -uo pipefail
 
 APP="$(realpath "$1")"
-WORK="$(mktemp -d)"
+WORK="${RUNNER_TEMP:-/tmp}/orca-check"
+rm -rf "$WORK"
+mkdir -p "$WORK"
 printf '# Notes\n\nSecond line here\n' > "$WORK/notes.md"
 
 Xvfb :99 -screen 0 1600x1000x24 &

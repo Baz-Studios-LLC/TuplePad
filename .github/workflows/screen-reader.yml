@@ -30,3 +30,8 @@ jobs:
         run: cargo build --locked --manifest-path core/Cargo.toml -p tuplepad-app
       - name: Orca reads TuplePad
         run: dbus-run-session -- bash .github/orca-linux.sh core/target/debug/tuplepad-app
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: orca-log
+          path: ${{ runner.temp }}/orca-check/*.txt
