@@ -36,11 +36,35 @@ sleep 2
 xdotool key --window "$WINDOW" End
 sleep 2
 
+# What AT-SPI says about the editor (its states decide whether Orca follows it).
+/usr/bin/python3 - <<'PY'
+import pyatspi
+desktop = pyatspi.Registry.getDesktop(0)
+def find(node, depth=0):
+    if node is None or depth > 40:
+        return None
+    if node.name == "Editor, notes.md":
+        return node
+    for i in range(node.childCount):
+        found = find(node.getChildAtIndex(i), depth + 1)
+        if found:
+            return found
+for app in (desktop.getChildAtIndex(i) for i in range(desktop.childCount)):
+    if app is not None and "tuplepad" in (app.name or "").lower():
+        editor = find(app)
+        if editor:
+            print("editor role:", editor.getRoleName())
+            print("editor states:", [pyatspi.stateToString(s) for s in editor.getState().getStates()])
+            text = editor.queryText()
+            print("editor text:", repr(text.getText(0, text.characterCount)), "caret:", text.caretOffset)
+PY
 kill "$APP_PID" "$ORCA" 2>/dev/null
 sleep 1
 SPOKEN="$(grep -a "SPEECH OUTPUT" "$WORK/orca.txt" || true)"
 echo "What Orca said:"
 echo "$SPOKEN" | tail -40
+echo "--- What Orca heard from TuplePad"
+grep -a -E "object:state-changed:focused|window:activate|caret-moved|text-changed|LOCUS OF FOCUS|focus_manager|Setting locus" "$WORK/orca.txt" | grep -v -i "orca\b.*frame" | tail -40
 if [ -z "$SPOKEN" ]; then
     echo "--- Orca's output"; tail -40 "$WORK/orca-out.txt"
     echo "--- Orca's debug log"; tail -60 "$WORK/orca.txt"
