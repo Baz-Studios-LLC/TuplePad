@@ -77,7 +77,8 @@ for app in (desktop.getChildAtIndex(i) for i in range(desktop.childCount)):
             try:
                 from gi.repository import Atspi
                 for granularity in ["LINE", "WORD", "CHAR"]:
-                    print("getStringAtOffset", granularity, repr(Atspi.Text.get_string_at_offset(editor, text.caretOffset - 1, getattr(Atspi.TextGranularity, granularity))))
+                    found = Atspi.Text.get_string_at_offset(editor, text.caretOffset - 1, getattr(Atspi.TextGranularity, granularity))
+                    print("getStringAtOffset", granularity, repr(found.content), found.start_offset, found.end_offset)
             except Exception as error:
                 print("getStringAtOffset failed:", error)
             print("extents of first char:", text.getCharacterExtents(0, pyatspi.DESKTOP_COORDS))

@@ -1,4 +1,6 @@
 # A real screen reader (Orca, on Linux) reads TuplePad while it's used with real key presses.
+# Ubuntu 24.04's Orca (46): older Orca asks for lines with AT-SPI's deprecated GetTextAtOffset,
+# which AccessKit (Slint's accessibility layer) doesn't answer.
 name: Screen reader
 
 on:
@@ -11,7 +13,7 @@ permissions:
 
 jobs:
   orca:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Libraries
