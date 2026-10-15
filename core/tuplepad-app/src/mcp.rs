@@ -240,7 +240,7 @@ impl tuplepad_mcp::Host for AppHost {
                 .docs
                 .iter()
                 .filter(|d| d.buffer.is_modified())
-                .filter_map(|d| d.path().map(|p| (std::fs::canonicalize(&p).unwrap_or(p), d.buffer.clone())))
+                .filter_map(|d| d.path().map(|p| (dunce::canonicalize(&p).unwrap_or(p), d.buffer.clone())))
                 .collect::<Vec<_>>()
         })?;
         find_in_folder(request, &unsaved)
@@ -340,7 +340,7 @@ fn find_in_buffer(buffer: &TextBuffer, info: &DocumentInfo, request: &tuplepad_m
 fn find_in_folder(request: &tuplepad_mcp::FindInFilesRequest, unsaved: &[(PathBuf, Arc<TextBuffer>)]) -> Result<String, String> {
     let most = request.max_results.unwrap_or(200).clamp(1, 5_000) as usize;
     let folder = crate::platform::absolute(Path::new(&request.folder));
-    let folder = std::fs::canonicalize(&folder).unwrap_or(folder);
+    let folder = dunce::canonicalize(&folder).unwrap_or(folder);
     let options = tuplepad_core::FolderSearchOptions {
         folder: folder.to_string_lossy().into_owned(),
         query: search_query(&request.query, request.regex, request.match_case, request.whole_word),
@@ -368,7 +368,7 @@ fn find_in_folder(request: &tuplepad_mcp::FindInFilesRequest, unsaved: &[(PathBu
     // Unsaved documents in the folder replace what's on disk.
     let query = search_query(&request.query, request.regex, request.match_case, request.whole_word);
     let open: Vec<&(PathBuf, Arc<TextBuffer>)> = unsaved.iter().filter(|(path, _)| path.starts_with(&folder)).collect();
-    files.retain(|f| !open.iter().any(|(path, _)| std::fs::canonicalize(&f.path).ok().as_ref() == Some(path)));
+    files.retain(|f| !open.iter().any(|(path, _)| dunce::canonicalize(&f.path).ok().as_ref() == Some(path)));
     for (path, buffer) in open {
         let found = buffer.find_lines(query.clone(), most as u64).map_err(|e| e.to_string())?;
         if !found.lines.is_empty() {
@@ -649,8 +649,8 @@ impl App {
             return Ok(i);
         }
         let as_path = crate::platform::absolute(Path::new(wanted));
-        let canonical = std::fs::canonicalize(&as_path).unwrap_or(as_path.clone());
-        if let Some(i) = editor.docs.iter().position(|d| d.path().is_some_and(|p| p == as_path || std::fs::canonicalize(&p).ok() == Some(canonical.clone()))) {
+        let canonical = dunce::canonicalize(&as_path).unwrap_or(as_path.clone());
+        if let Some(i) = editor.docs.iter().position(|d| d.path().is_some_and(|p| p == as_path || dunce::canonicalize(&p).ok() == Some(canonical.clone()))) {
             return Ok(i);
         }
         let named: Vec<usize> = editor.docs.iter().enumerate().filter(|(_, d)| d.name() == wanted).map(|(i, _)| i).collect();
@@ -922,7 +922,7 @@ impl App {
         let state = self.mcp.borrow();
         let connected = state.shared.connected();
         let status = if !settings.mcp_enabled {
-            "Claude Code, Claude Desktop and other MCP clients can read and edit your open documents. TuplePad asks you first.".to_string()
+            "AI tools like Claude Code can read and edit your open documents, once you allow it.".to_string()
         } else if let Some(error) = &state.error {
             error.clone()
         } else {

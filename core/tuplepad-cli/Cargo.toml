@@ -9,3 +9,6 @@ description = "The `tuplepad` terminal command: opens files in TuplePad."
 [[bin]]
 name = "tuplepad"
 path = "src/main.rs"
+
+[dependencies]
+dunce = "1"

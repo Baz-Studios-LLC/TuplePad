@@ -353,149 +353,148 @@ export component Sidebar inherits Rectangle {
     in property <length> top-inset;
     callback select(index: int);
     callback close(index: int);
-    callback toggle-sidebar();
     callback open-settings();
     callback drag-window();
     callback resize(width: length);
     // True while the edge is being dragged (the width follows the pointer without animating).
     out property <bool> resizing: handle.pressed;
+    // The width when it's showing. While it opens or closes, the contents keep this width and
+    // slide behind the edge, rather than squeezing.
+    in property <length> full-width: 264px;
 
     background: Theme.sidebar-background;
     clip: true;
+    min-width: 0px;
 
-    // The strip under the window buttons moves the window.
-    TouchArea {
-        y: 0;
-        height: max(root.top-inset, 12px);
-        pointer-event(event) => {
-            if event.kind == PointerEventKind.down { root.drag-window(); }
+    content := Rectangle {
+        x: root.width - root.full-width;
+        width: root.full-width;
+
+        // The strip under the window buttons moves the window.
+        TouchArea {
+            y: 0;
+            height: max(root.top-inset, 12px);
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down { root.drag-window(); }
+            }
         }
-    }
 
-    IconButton {
-        x: parent.width - self.width - 10px;
-        y: max(0px, (root.top-inset - self.height) / 2 + 2px);
-        visible: root.top-inset > 0;
-        icon: Icons.sidebar;
-        label: "Show or Hide Sidebar";
-        clicked => { root.toggle-sidebar(); }
-    }
-
-    VerticalLayout {
-        padding-top: root.top-inset + 14px;
-        padding-left: 10px;
-        padding-right: 10px;
-        padding-bottom: 12px;
-        spacing: 2px;
-
-        // DOCUMENTS, or DOCUMENTS and FOLDER as tabs when a folder is open.
-        HorizontalLayout {
+        VerticalLayout {
+            padding-top: root.top-inset + 14px;
             padding-left: 10px;
-            padding-bottom: 6px;
-            spacing: 14px;
-            for label[index] in root.folder-name == "" ? ["DOCUMENTS"] : ["DOCUMENTS", "FOLDER"]: Text {
-                accessible-role: tab;
-                accessible-label: index == 0 ? "Documents" : "Folder";
-                accessible-item-selected: root.folder-name == "" || root.mode == index;
-                accessible-action-default => { if root.folder-name != "" { root.mode = index; } }
-                text: label;
-                font-size: 10.5px;
-                font-weight: 700;
-                letter-spacing: 0.8px;
-                color: root.folder-name == "" || root.mode == index ? Theme.secondary-text : tab-touch.has-hover ? Theme.secondary-text.with-alpha(0.8) : Theme.tertiary-text.with-alpha(0.7);
-                tab-touch := TouchArea {
-                    enabled: root.folder-name != "";
-                    clicked => { root.mode = index; }
-                }
-            }
-            Rectangle { horizontal-stretch: 1; }
-        }
+            padding-right: 10px;
+            padding-bottom: 12px;
+            spacing: 2px;
 
-        if root.folder-name == "" || root.mode == 0: ListView {
-            accessible-label: "Open documents";
-            vertical-stretch: 1;
-            for doc[index] in root.docs: Rectangle {
-                height: 68px;
-                DocRow {
-                    y: 0;
-                    height: 66px;
-                    item: doc;
-                    selected: index == root.current;
-                    clicked => { root.select(index); }
-                    close => { root.close(index); }
-                    file-manager-title: root.file-manager-title;
-                    trash-title: root.trash-title;
-                    action(id) => { root.doc-action(index, id); }
-                }
-            }
-        }
-
-        if root.folder-name != "" && root.mode == 1: VerticalLayout {
-            vertical-stretch: 1;
-            spacing: 4px;
+            // DOCUMENTS, or DOCUMENTS and FOLDER as tabs when a folder is open.
             HorizontalLayout {
-                height: 28px;
                 padding-left: 10px;
-                spacing: 6px;
-                Text {
-                    text: root.folder-name;
-                    font-size: 13px;
-                    font-weight: 650;
-                    color: Theme.primary-text;
-                    vertical-alignment: center;
-                    overflow: elide;
-                    horizontal-stretch: 1;
+                padding-bottom: 6px;
+                spacing: 14px;
+                for label[index] in root.folder-name == "" ? ["DOCUMENTS"] : ["DOCUMENTS", "FOLDER"]: Text {
+                    accessible-role: tab;
+                    accessible-label: index == 0 ? "Documents" : "Folder";
+                    accessible-item-selected: root.folder-name == "" || root.mode == index;
+                    accessible-action-default => { if root.folder-name != "" { root.mode = index; } }
+                    text: label;
+                    font-size: 10.5px;
+                    font-weight: 700;
+                    letter-spacing: 0.8px;
+                    color: root.folder-name == "" || root.mode == index ? Theme.secondary-text : tab-touch.has-hover ? Theme.secondary-text.with-alpha(0.8) : Theme.tertiary-text.with-alpha(0.7);
+                    tab-touch := TouchArea {
+                        enabled: root.folder-name != "";
+                        clicked => { root.mode = index; }
+                    }
                 }
-                IconButton {
-                    icon: Icons.close;
-                    label: "Close Folder";
-                    clicked => { root.folder-close(); }
-                }
+                Rectangle { horizontal-stretch: 1; }
             }
-            ListView {
-                accessible-label: "Folder files";
+
+            if root.folder-name == "" || root.mode == 0: ListView {
+                accessible-label: "Open documents";
                 vertical-stretch: 1;
-                for row[index] in root.folder-rows: FolderRowView {
-                    item: row;
-                    file-manager-title: root.file-manager-title;
-                    trash-title: root.trash-title;
-                    clicked => { root.folder-activate(index); }
-                    action(id) => { root.folder-action(index, id); }
+                for doc[index] in root.docs: Rectangle {
+                    height: 68px;
+                    DocRow {
+                        y: 0;
+                        height: 66px;
+                        item: doc;
+                        selected: index == root.current;
+                        clicked => { root.select(index); }
+                        close => { root.close(index); }
+                        file-manager-title: root.file-manager-title;
+                        trash-title: root.trash-title;
+                        action(id) => { root.doc-action(index, id); }
+                    }
+                }
+            }
+
+            if root.folder-name != "" && root.mode == 1: VerticalLayout {
+                vertical-stretch: 1;
+                spacing: 4px;
+                HorizontalLayout {
+                    height: 28px;
+                    padding-left: 10px;
+                    spacing: 6px;
+                    Text {
+                        text: root.folder-name;
+                        font-size: 13px;
+                        font-weight: 650;
+                        color: Theme.primary-text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    IconButton {
+                        icon: Icons.close;
+                        label: "Close Folder";
+                        clicked => { root.folder-close(); }
+                    }
+                }
+                ListView {
+                    accessible-label: "Folder files";
+                    vertical-stretch: 1;
+                    for row[index] in root.folder-rows: FolderRowView {
+                        item: row;
+                        file-manager-title: root.file-manager-title;
+                        trash-title: root.trash-title;
+                        clicked => { root.folder-activate(index); }
+                        action(id) => { root.folder-action(index, id); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: 10px;
+                alignment: space-between;
+                Text {
+                    text: root.docs.length == 1 ? "1 document" : root.docs.length + " documents";
+                    font-size: 11px;
+                    color: Theme.tertiary-text;
+                    vertical-alignment: center;
+                }
+                // Settings (appearance included: most people set it once).
+                IconButton {
+                    icon: Icons.gear;
+                    label: "Settings";
+                    clicked => { root.open-settings(); }
                 }
             }
         }
 
-        HorizontalLayout {
-            padding-left: 10px;
-            alignment: space-between;
-            Text {
-                text: root.docs.length == 1 ? "1 document" : root.docs.length + " documents";
-                font-size: 11px;
-                color: Theme.tertiary-text;
-                vertical-alignment: center;
-            }
-            // Settings (appearance included: most people set it once).
-            IconButton {
-                icon: Icons.gear;
-                label: "Settings";
-                clicked => { root.open-settings(); }
-            }
+        // The divider, which also resizes the sidebar.
+        Rectangle {
+            x: parent.width - 1px;
+            width: 1px;
+            background: Theme.separator;
         }
-    }
-
-    // The divider, which also resizes the sidebar.
-    Rectangle {
-        x: parent.width - 1px;
-        width: 1px;
-        background: Theme.separator;
-    }
-    handle := TouchArea {
-        x: parent.width - 4px;
-        width: 8px;
-        mouse-cursor: col-resize;
-        // The handle moves with the edge, so the offset from where it was grabbed is what's left to do.
-        moved => {
-            if self.pressed { root.resize(root.width + self.mouse-x - self.pressed-x); }
+        handle := TouchArea {
+            x: parent.width - 4px;
+            width: 8px;
+            mouse-cursor: col-resize;
+            // The handle moves with the edge, so the offset from where it was grabbed is what's left to do.
+            moved => {
+                if self.pressed { root.resize(root.width + self.mouse-x - self.pressed-x); }
+            }
         }
     }
 }

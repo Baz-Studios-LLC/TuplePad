@@ -208,7 +208,7 @@ component ThemeCard inherits Rectangle {
 export component SettingsWindow inherits Window {
     title: "Settings";
     preferred-width: 640px;
-    preferred-height: 800px;
+    preferred-height: 840px;
     min-width: 560px;
     min-height: 560px;
     background: Theme.sidebar-background;
@@ -635,6 +635,8 @@ export component SettingsWindow inherits Window {
                                 font-size: 12.5px;
                                 color: Theme.primary-text;
                                 selection-background-color: Theme.selection;
+                                // Selected text keeps its color (some systems' default is white, unreadable on the light selection).
+                                selection-foreground-color: Theme.primary-text;
                                 edited => { root.snippet-edited(); }
                             }
                         }

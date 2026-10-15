@@ -59,6 +59,23 @@ pub fn values(settings: &Settings, fonts: &[(String, String)]) -> SettingsValues
     }
 }
 
+/// A snippet's body as the Settings field shows it: tabs (one indent level each) as four spaces,
+/// since some systems' fonts draw a tab character as a box.
+fn body_for_field(body: &str) -> String {
+    body.replace('\t', "    ")
+}
+
+/// And back: each four spaces at the start of a line is one indent level again.
+fn body_from_field(text: &str) -> String {
+    text.split('\n')
+        .map(|line| {
+            let spaces = line.len() - line.trim_start_matches(' ').len();
+            format!("{}{}", "\t".repeat(spaces / 4), &line[spaces / 4 * 4..])
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Applies one change from the window.
 fn set_bool(settings: &mut Settings, key: &str, value: bool) {
     match key {
@@ -225,7 +242,7 @@ impl App {
         window.set_snippet_trigger(snippet.trigger.into());
         window.set_snippet_name(snippet.name.into());
         window.set_snippet_language(language as i32);
-        window.set_snippet_body(snippet.body.into());
+        window.set_snippet_body(body_for_field(&snippet.body).into());
         window.set_snippet_index(index);
     }
 
@@ -240,7 +257,7 @@ impl App {
             snippet.trigger = window.get_snippet_trigger().trim().to_string();
             snippet.name = window.get_snippet_name().to_string();
             snippet.language = language;
-            snippet.body = window.get_snippet_body().to_string();
+            snippet.body = body_from_field(&window.get_snippet_body());
             store.save();
         }
         self.show_snippet_list();
@@ -324,6 +341,15 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn snippet_bodies_show_tabs_as_spaces() {
+        let body = "fn ${1:name}() {\n\t$0\n\t\tdeeper\n}";
+        assert_eq!(body_for_field(body), "fn ${1:name}() {\n    $0\n        deeper\n}");
+        assert_eq!(body_from_field(&body_for_field(body)), body);
+        // Spaces that aren't a whole indent level stay as they are.
+        assert_eq!(body_from_field("a\n  two\n      six"), "a\n  two\n\t  six");
+    }
 
     #[test]
     fn changes_from_the_window() {

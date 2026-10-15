@@ -171,10 +171,10 @@ export component Segmented inherits Rectangle {
             }
             border-radius: 6px;
             background: index == root.selected ? Theme.header-background : transparent;
-            // (A shadow with no blur still draws, so unselected segments have none at all.)
-            drop-shadow-blur: 3px;
-            drop-shadow-offset-y: 1px;
-            drop-shadow-color: index == root.selected ? #0000001F : transparent;
+            // A hairline rather than a small shadow, which some Linux graphics drivers draw as
+            // garbage.
+            border-width: index == root.selected ? 1px : 0px;
+            border-color: Theme.separator;
             animate background { duration: 120ms; }
             HorizontalLayout {
                 padding-left: 12px;
@@ -377,10 +377,10 @@ export component Section inherits VerticalLayout {
         border-width: 1px;
         border-color: Theme.separator;
         VerticalLayout {
-            padding-left: 14px;
-            padding-right: 14px;
-            padding-top: 6px;
-            padding-bottom: 6px;
+            padding-left: 16px;
+            padding-right: 16px;
+            padding-top: 5px;
+            padding-bottom: 5px;
             @children
         }
     }
@@ -390,11 +390,15 @@ export component Section inherits VerticalLayout {
 export component SettingRow inherits HorizontalLayout {
     in property <string> label;
     in property <string> detail;
-    min-height: 42px;
+    // Every row gets the same room above and below, whether or not it has a detail line.
+    min-height: 46px;
+    padding-top: 9px;
+    padding-bottom: 9px;
     spacing: 16px;
     VerticalLayout {
         alignment: center;
         horizontal-stretch: 1;
+        spacing: 3px;
         Text {
             text: root.label;
             font-size: 13px;

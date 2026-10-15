@@ -141,7 +141,7 @@ pub fn target() -> Result<Target, String> {
             Target::AppImage(path)
         });
     }
-    let exe = std::env::current_exe().and_then(|p| p.canonicalize()).map_err(|e| e.to_string())?;
+    let exe = std::env::current_exe().and_then(dunce::canonicalize).map_err(|e| e.to_string())?;
     let development = "This copy of TuplePad was built from source, so it can't update itself. Download the new version instead.";
     let target = if cfg!(target_os = "macos") {
         let bundle = exe.ancestors().nth(3).filter(|p| p.extension().is_some_and(|e| e == "app")).ok_or(development)?;

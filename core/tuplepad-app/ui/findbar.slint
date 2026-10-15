@@ -116,6 +116,8 @@ export component InputField inherits FieldBox {
                 vertical-alignment: center;
                 single-line: true;
                 selection-background-color: Theme.selection;
+                // Selected text keeps its color (some systems' default is white, unreadable on the light selection).
+                selection-foreground-color: Theme.primary-text;
                 edited => { root.edited(); }
                 key-pressed(event) => {
                     if event.text == Key.Return {
@@ -211,6 +213,8 @@ export component FindBar inherits Rectangle {
                             vertical-alignment: center;
                             single-line: true;
                             selection-background-color: Theme.selection;
+                            // Selected text keeps its color (some systems' default is white, unreadable on the light selection).
+                            selection-foreground-color: Theme.primary-text;
                             edited => { FindBridge.changed(); }
                             key-pressed(event) => {
                                 if event.text == Key.Return {
@@ -280,6 +284,8 @@ export component FindBar inherits Rectangle {
                             vertical-alignment: center;
                             single-line: true;
                             selection-background-color: Theme.selection;
+                            // Selected text keeps its color (some systems' default is white, unreadable on the light selection).
+                            selection-foreground-color: Theme.primary-text;
                             key-pressed(event) => {
                                 if event.text == Key.Return {
                                     FindBridge.replace();

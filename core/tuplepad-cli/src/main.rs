@@ -198,7 +198,7 @@ fn deliver(urls: &[String]) -> ExitCode {
 /// Starts the TuplePad this command came with (on a Mac, through Launch Services), handing it
 /// the links; `background` keeps it from coming to the front.
 fn start_app(urls: &[String], background: bool) -> ExitCode {
-    let exe = std::env::current_exe().and_then(|e| e.canonicalize()).ok();
+    let exe = std::env::current_exe().and_then(dunce::canonicalize).ok();
     if cfg!(target_os = "macos") {
         // Inside TuplePad.app/Contents/Helpers: open that app; otherwise whichever is installed.
         let bundle = exe.as_deref().and_then(|e| e.ancestors().find(|a| a.extension().is_some_and(|x| x == "app")));

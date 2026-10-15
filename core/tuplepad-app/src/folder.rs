@@ -136,7 +136,7 @@ impl App {
 
     /// Shows a folder in the sidebar and watches it for changes.
     pub fn open_folder(&self, folder: &Path) {
-        let root = std::fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
+        let root = dunce::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
         if !root.is_dir() {
             return;
         }

@@ -818,7 +818,7 @@ pub(crate) fn rope_char_to_pos(rope: &Rope, index: usize) -> TextPos {
 /// so a failed save never leaves a half-written file. Follows symlinks and keeps
 /// the existing file's permissions.
 fn write_atomically<'a>(path: &Path, chunks: impl Iterator<Item = &'a str>, encoding: &TextEncoding) -> CoreResult<()> {
-    let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let target = dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     // Replacing the file by renaming would get past a read-only (locked) file; respect it instead.
     if let Ok(metadata) = fs::metadata(&target) {
         if metadata.is_dir() {

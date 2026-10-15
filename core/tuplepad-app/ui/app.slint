@@ -46,6 +46,8 @@ export component AppWindow inherits Window {
 
     // Room for the window buttons when the content runs under the title bar (macOS).
     in property <length> titlebar-height: 0px;
+    // Where the sidebar button rests when the sidebar is closed: past the window buttons on a Mac.
+    property <length> sidebar-button-x: root.titlebar-height > 0 ? 84px : 12px;
     in property <[DocItem]> docs;
     in property <int> current-doc;
     in property <string> doc-title;
@@ -453,7 +455,9 @@ export component AppWindow inherits Window {
     HorizontalLayout {
         sidebar := Sidebar {
             width: root.sidebar-visible ? root.sidebar-width : 0px;
-            animate width { duration: self.resizing ? 0ms : 180ms; easing: ease-in-out; }
+            full-width: root.sidebar-width;
+            // Starts and settles gently, so the slide reads as one motion.
+            animate width { duration: self.resizing ? 0ms : 260ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
             docs: root.docs;
             current: root.current-doc;
             top-inset: root.titlebar-height;
@@ -471,7 +475,6 @@ export component AppWindow inherits Window {
                 root.select-doc(index);
                 root.focus-editor();
             }
-            toggle-sidebar => { root.command("view.sidebar"); }
             open-settings => { root.command("app.settings"); }
             drag-window => { root.drag-window(); }
             resize(width) => { root.sidebar-resized(width); }
@@ -489,20 +492,11 @@ export component AppWindow inherits Window {
                 }
 
                 HorizontalLayout {
-                    // Clear the window buttons when the sidebar is hidden.
-                    padding-left: !root.sidebar-visible && root.titlebar-height > 0 ? 84px : 16px;
+                    // The title clears the sidebar button as the sidebar closes (it follows the
+                    // sidebar's width as it slides, so they move together).
+                    padding-left: max(16px, root.sidebar-button-x + 30px + 8px - sidebar.width);
                     padding-right: 12px;
                     spacing: 8px;
-                    animate padding-left { duration: 180ms; easing: ease-in-out; }
-
-                    if !root.sidebar-visible: VerticalLayout {
-                        alignment: center;
-                        IconButton {
-                            icon: Icons.sidebar;
-                            label: "Show or Hide Sidebar";
-                            clicked => { root.command("view.sidebar"); }
-                        }
-                    }
 
                     VerticalLayout {
                         alignment: center;
@@ -828,10 +822,20 @@ export component AppWindow inherits Window {
         }
     }
 
+    // One button shows and hides the sidebar. It rides the sidebar's edge as it slides, and
+    // comes to rest beside the window buttons (or the window's edge) when the sidebar is closed.
+    IconButton {
+        x: max(root.sidebar-button-x, sidebar.width - self.width - 10px);
+        y: root.titlebar-height > 0 ? max(0px, (root.titlebar-height - self.height) / 2 + 2px) : (44px - self.height) / 2;
+        icon: Icons.sidebar;
+        label: "Show or Hide Sidebar";
+        clicked => { root.command("view.sidebar"); }
+    }
+
     // The toast: a short message that goes away by itself.
     Rectangle {
         property <bool> shown: root.toast-shown && root.toast != "";
-        x: (parent.width - self.width) / 2 + (root.sidebar-visible ? root.sidebar-width / 2 : 0);
+        x: (parent.width - self.width) / 2 + sidebar.width / 2;
         y: parent.height - 27px - self.height - (shown ? 18px : 6px);
         width: label.preferred-width + 32px;
         height: 34px;

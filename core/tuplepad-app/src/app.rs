@@ -965,7 +965,7 @@ impl App {
     pub fn open_paths(&self, paths: &[PathBuf]) -> usize {
         let mut opened = 0;
         for path in paths {
-            let absolute = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+            let absolute = dunce::canonicalize(path).unwrap_or_else(|_| path.clone());
             let existing = self.editor.borrow().docs.iter().position(|d| d.path().as_deref() == Some(absolute.as_path()));
             if let Some(index) = existing {
                 self.editor.borrow_mut().select_document(index);
@@ -1548,12 +1548,12 @@ impl App {
 /// The `tuplepad` command that comes with the app: in the bundle's Helpers folder on a Mac,
 /// otherwise next to the app.
 fn bundled_tool() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
+    let exe = dunce::canonicalize(std::env::current_exe().ok()?).ok()?;
     let folder = exe.parent()?;
     let name = if cfg!(windows) { "tuplepad.exe" } else { "tuplepad" };
     // Contents/Helpers in a Mac bundle, bin beside TuplePad.exe on Windows (where TuplePad.exe
     // and tuplepad.exe can't share a folder), else beside the app.
-    [folder.join("../Helpers").join(name), folder.join("bin").join(name), folder.join(name)].into_iter().find(|p| p.exists()).and_then(|p| p.canonicalize().ok())
+    [folder.join("../Helpers").join(name), folder.join("bin").join(name), folder.join(name)].into_iter().find(|p| p.exists()).and_then(|p| dunce::canonicalize(p).ok())
 }
 
 fn symlink(target: &Path, link: &Path) -> std::io::Result<()> {

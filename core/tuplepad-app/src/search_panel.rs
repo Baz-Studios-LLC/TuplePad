@@ -246,7 +246,7 @@ impl App {
 
     fn set_search_folder(&self, folder: Option<PathBuf>) {
         // The real path, so results match open documents (which are opened by their real paths).
-        let folder = folder.map(|f| std::fs::canonicalize(&f).unwrap_or(f));
+        let folder = folder.map(|f| dunce::canonicalize(&f).unwrap_or(f));
         if let Some(folder) = &folder {
             let mut settings = self.settings.borrow_mut();
             let text = folder.to_string_lossy().into_owned();
