@@ -46,6 +46,32 @@ jobs:
           if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y; }
           & $iscc /DAppVersion=$version /DSourceDir="$PWD\core\target\release" packaging\windows\tuplepad.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+      - name: Install, open and uninstall
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist\*-setup.exe | Select-Object -First 1).FullName
+          Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+          $app = Join-Path $env:LOCALAPPDATA "Programs\TuplePad"
+          foreach ($file in "TuplePad.exe", "bin\tuplepad.exe", "unins000.exe") {
+            if (-not (Test-Path (Join-Path $app $file))) { throw "$file wasn't installed" }
+          }
+          if ((Get-ItemProperty HKCU:\Environment).Path -notlike "*$app\bin*") { throw "bin isn't on the PATH" }
+          if (-not (Test-Path -LiteralPath "HKCU:\Software\Classes\*\shell\TuplePad\command")) { throw "Edit with TuplePad isn't in File Explorer's menu" }
+          & (Join-Path $app "bin\tuplepad.exe") --version
+          if ($LASTEXITCODE -ne 0) { throw "the tuplepad command didn't run" }
+          # The installed app runs a script.
+          $dump = Join-Path $env:RUNNER_TEMP "installed.json"
+          $steps = Join-Path $env:RUNNER_TEMP "installed-steps.json"
+          ConvertTo-Json @(@{ type = "typed in the installed TuplePad" }, @{ dump = $dump }, @{ quit = $true }) | Set-Content $steps
+          $run = Start-Process (Join-Path $app "TuplePad.exe") -ArgumentList "--script", $steps, "--session-dir", (Join-Path $env:RUNNER_TEMP "installed-session") -PassThru
+          if (-not $run.WaitForExit(120000)) { $run.Kill(); throw "the installed TuplePad didn't finish its script" }
+          if (-not (Select-String -Path $dump -Pattern "typed in the installed TuplePad" -Quiet)) { throw "the installed TuplePad's dump is wrong" }
+          # The uninstaller runs a copy of itself, so wait for the files to go.
+          Start-Process (Join-Path $app "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path (Join-Path $app "TuplePad.exe")) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
+          if (Test-Path (Join-Path $app "TuplePad.exe")) { throw "uninstalling left TuplePad.exe" }
+          if ((Get-ItemProperty HKCU:\Environment).Path -like "*$app\bin*") { throw "uninstalling left bin on the PATH" }
       - uses: actions/upload-artifact@v5
         with:
           name: windows-x64
