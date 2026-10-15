@@ -66,7 +66,7 @@ TuplePad is in early development; the current version is **v001**. It's built on
 - **Minimap:** the document in miniature beside the scrollbar; click or drag to scroll. It's drawn once and redrawn only when what it shows changes, so it doesn't slow big files.
 - **Split view** (⌘\ side by side, ⌃⌘\ top and bottom): the same document twice, each with its own carets, or two different ones. Drag the divider to resize.
 - **Updates:** TuplePad looks for a new version once a day (or Help ▸ Check for Updates…) and shows what's new. Install and Relaunch downloads it, checks its signature, and reopens TuplePad with your documents, unsaved changes too. Turn the daily check off in Settings ▸ General.
-- **Screen readers:** every button, switch, list and field has a name and state, and the editor reads the line you're on and where the caret is.
+- **Screen readers** (VoiceOver, Narrator and Orca): every button, switch, list and field has a name and state. The editor reads the line you're on and follows the caret as it moves, and the Markdown preview reads in order: headings, paragraphs, lists, code and tables.
 
 ## Screenshots
 
