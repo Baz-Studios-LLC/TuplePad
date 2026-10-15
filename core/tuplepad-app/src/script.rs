@@ -575,6 +575,19 @@ fn run_next(app: Rc<App>, runner: Shared) {
         }
         "waitSpelling" => return wait_until(app, runner, |_| tuplepad_core::spelling_ready(), Instant::now()),
         "waitSearch" => return wait_until(app, runner, |app| !app.search_busy(), Instant::now()),
+        // Updates: {"updates": "check" | "install" | "skip" | "later" | "cancel" | "show" | "download"}.
+        "updates" => match arg.as_str().unwrap_or_default() {
+            "check" => app.check_for_updates(true),
+            "install" => app.install_update(),
+            "skip" => app.skip_update(),
+            "later" => app.close_update_sheet(),
+            "cancel" => app.cancel_update(),
+            "show" => app.show_update_sheet(),
+            "download" => app.open_release_page(),
+            other => eprintln!("updates: unknown action {other}"),
+        },
+        // Waits for a check or an install to finish (the tick picks up what the worker did).
+        "waitUpdates" => return wait_until(app, runner, |app| { app.update_tick(); !app.update_busy() }, Instant::now()),
         "searchStatus" => {
             let state = app.search_dump();
             if let Some(path) = arg.as_str() {
@@ -830,6 +843,7 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "misspelled": misspelled,
         "mcp": app.mcp_dump(),
         "shortcuts": app.shortcuts_dump(),
+        "update": app.update_dump(),
         "sidebar_mode": ui.get_sidebar_mode(),
         "outline_visible": ui.get_outline_visible(),
         "minimap": ui.global::<crate::EditorBridge>().get_minimap_width() > 0.0,

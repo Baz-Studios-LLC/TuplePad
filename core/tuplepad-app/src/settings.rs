@@ -56,6 +56,14 @@ pub struct Settings {
     pub mcp_port: u16,
     /// What each MCP client may do, by the name it gives: "edit", "read" or "none".
     pub mcp_clients: std::collections::BTreeMap<String, String>,
+    /// Look for a new version once a day.
+    pub check_updates: bool,
+    /// The version Skip This Version passed over.
+    pub skipped_update: String,
+    /// When TuplePad last looked for a new version (seconds since 1970; 0 for never).
+    pub last_update_check: i64,
+    /// The version that last ran, to say so after an update.
+    pub last_version: String,
 }
 
 impl Default for Settings {
@@ -97,6 +105,10 @@ impl Default for Settings {
             mcp_http: true,
             mcp_port: 8875,
             mcp_clients: Default::default(),
+            check_updates: true,
+            skipped_update: String::new(),
+            last_update_check: 0,
+            last_version: String::new(),
         }
     }
 }

@@ -67,9 +67,14 @@ export component Sheet inherits Rectangle {
     in property <string> accept-title: "OK";
     in property <length> card-width: 400px;
     in property <bool> show-cancel: true;
+    in property <string> cancel-title: "Cancel";
+    in property <bool> show-accept: true;
     in property <bool> accept-enabled: true;
+    // A third button, on the left (like Skip This Version).
+    in property <string> secondary-title;
     callback accept();
     callback cancel();
+    callback secondary();
 
     background: Theme.scrim;
 
@@ -84,7 +89,7 @@ export component Sheet inherits Rectangle {
                 return EventResult.accept;
             }
             if event.text == Key.Return {
-                root.accept();
+                if root.show-accept && root.accept-enabled { root.accept(); }
                 return EventResult.accept;
             }
             return EventResult.reject;
@@ -117,14 +122,18 @@ export component Sheet inherits Rectangle {
             }
             @children
             HorizontalLayout {
-                alignment: end;
                 spacing: 8px;
                 padding-top: 6px;
+                if root.secondary-title != "": PillButton {
+                    text: root.secondary-title;
+                    clicked => { root.secondary(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
                 if root.show-cancel: PillButton {
-                    text: "Cancel";
+                    text: root.cancel-title;
                     clicked => { root.cancel(); }
                 }
-                PillButton {
+                if root.show-accept: PillButton {
                     text: root.accept-title;
                     primary: true;
                     opacity: root.accept-enabled ? 1 : 0.45;

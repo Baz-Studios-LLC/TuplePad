@@ -104,8 +104,10 @@ fn bundled_command() -> PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
     let folder = exe.parent().map(Path::to_path_buf).unwrap_or_default();
     let helpers = folder.parent().map(|contents| contents.join("Helpers").join(command_name()));
+    let bin = folder.join("bin").join(command_name());
     match helpers {
         Some(path) if cfg!(target_os = "macos") && path.exists() => path,
+        _ if cfg!(windows) && bin.exists() => bin,
         _ => folder.join(command_name()),
     }
 }

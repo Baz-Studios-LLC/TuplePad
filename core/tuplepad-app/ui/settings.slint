@@ -87,6 +87,7 @@ export struct SettingsValues {
     appearance: int,
     theme: int,
     mcp: bool,
+    check-updates: bool,
     mcp-http: bool,
 }
 
@@ -207,7 +208,7 @@ component ThemeCard inherits Rectangle {
 export component SettingsWindow inherits Window {
     title: "Settings";
     preferred-width: 640px;
-    preferred-height: 720px;
+    preferred-height: 800px;
     min-width: 560px;
     min-height: 560px;
     background: Theme.sidebar-background;
@@ -217,6 +218,9 @@ export component SettingsWindow inherits Window {
     in-out property <int> tab: 0;
     in property <SettingsValues> values;
     in property <string> version;
+    // The Updates row: when TuplePad last checked, or what it found.
+    in property <string> update-status;
+    callback check-updates();
     // The Snippets tab: the list, and the fields of the one chosen.
     in property <[SnippetRow]> snippets;
     in-out property <int> snippet-index: -1;
@@ -300,165 +304,191 @@ export component SettingsWindow inherits Window {
             background: Theme.header-background;
             vertical-stretch: 1;
 
-            if root.tab == 0: VerticalLayout {
-                padding: 24px;
-                spacing: 20px;
-                alignment: start;
-                Section {
-                    title: "NEW DOCUMENTS";
-                    SettingRow {
-                        label: "Encoding";
-                        Dropdown { accessible-label: "Encoding";
-                            options: root.values.encodings;
-                            selected: root.values.encoding-index;
-                            chosen(index) => { root.set-int("encoding", index); }
+            // Scrolls when the window is shorter than the page.
+            if root.tab == 0: general-scroll := Flickable {
+                content-height: general.preferred-height;
+                general := VerticalLayout {
+                    width: general-scroll.width;
+                    padding: 24px;
+                    spacing: 20px;
+                    alignment: start;
+                    Section {
+                        title: "NEW DOCUMENTS";
+                        SettingRow {
+                            label: "Encoding";
+                            Dropdown { accessible-label: "Encoding";
+                                options: root.values.encodings;
+                                selected: root.values.encoding-index;
+                                chosen(index) => { root.set-int("encoding", index); }
+                            }
+                        }
+                        SettingRow {
+                            label: "Byte order mark";
+                            detail: "Only for Unicode encodings";
+                            Toggle { accessible-label: "Byte order mark"; on: root.values.bom; toggled(on) => { root.set-bool("bom", on); } }
+                        }
+                        SettingRow {
+                            label: "Line endings";
+                            Segmented { accessible-label: "Line endings";
+                                options: ["LF", "CRLF", "CR"];
+                                selected: root.values.line-ending;
+                                chosen(index) => { root.set-int("line-ending", index); }
+                            }
                         }
                     }
-                    SettingRow {
-                        label: "Byte order mark";
-                        detail: "Only for Unicode encodings";
-                        Toggle { accessible-label: "Byte order mark"; on: root.values.bom; toggled(on) => { root.set-bool("bom", on); } }
-                    }
-                    SettingRow {
-                        label: "Line endings";
-                        Segmented { accessible-label: "Line endings";
-                            options: ["LF", "CRLF", "CR"];
-                            selected: root.values.line-ending;
-                            chosen(index) => { root.set-int("line-ending", index); }
+                    Section {
+                        title: "INDENTATION";
+                        SettingRow {
+                            label: "Indent with";
+                            Segmented { accessible-label: "Indent with";
+                                options: ["Spaces", "Tabs"];
+                                selected: root.values.use-tabs ? 1 : 0;
+                                chosen(index) => { root.set-bool("use-tabs", index == 1); }
+                            }
+                        }
+                        SettingRow {
+                            label: "Tab width";
+                            Stepper { accessible-label: "Tab width";
+                                value: root.values.tab-width;
+                                minimum: 1;
+                                maximum: 16;
+                                suffix: root.values.tab-width == 1 ? " space" : " spaces";
+                                changed(value) => { root.set-int("tab-width", value); }
+                            }
+                        }
+                        SettingRow {
+                            label: "Detect indentation";
+                            detail: "Use whatever each file already uses";
+                            Toggle { accessible-label: "Detect indentation"; on: root.values.detect-indentation; toggled(on) => { root.set-bool("detect-indentation", on); } }
                         }
                     }
-                }
-                Section {
-                    title: "INDENTATION";
-                    SettingRow {
-                        label: "Indent with";
-                        Segmented { accessible-label: "Indent with";
-                            options: ["Spaces", "Tabs"];
-                            selected: root.values.use-tabs ? 1 : 0;
-                            chosen(index) => { root.set-bool("use-tabs", index == 1); }
+                    Section {
+                        title: "TYPING";
+                        SettingRow {
+                            label: "Close brackets and quotes";
+                            Toggle { accessible-label: "Close brackets and quotes"; on: root.values.auto-close; toggled(on) => { root.set-bool("auto-close", on); } }
+                        }
+                        SettingRow {
+                            label: "Highlight other occurrences";
+                            detail: "Of the selected text, or the word at the caret";
+                            Toggle { accessible-label: "Highlight other occurrences"; on: root.values.smart-highlight; toggled(on) => { root.set-bool("smart-highlight", on); } }
+                        }
+                        SettingRow {
+                            label: "Suggest words";
+                            detail: "Finish words from the open documents (Tab or Return)";
+                            Toggle { accessible-label: "Suggest words"; on: root.values.word-completion; toggled(on) => { root.set-bool("word-completion", on); } }
                         }
                     }
-                    SettingRow {
-                        label: "Tab width";
-                        Stepper { accessible-label: "Tab width";
-                            value: root.values.tab-width;
-                            minimum: 1;
-                            maximum: 16;
-                            suffix: root.values.tab-width == 1 ? " space" : " spaces";
-                            changed(value) => { root.set-int("tab-width", value); }
+                    Section {
+                        title: "UPDATES";
+                        SettingRow {
+                            label: "Check for updates automatically";
+                            detail: "Once a day, from GitHub. Nothing about you or your files is sent.";
+                            Toggle { accessible-label: "Check for updates automatically"; on: root.values.check-updates; toggled(on) => { root.set-bool("check-updates", on); } }
                         }
-                    }
-                    SettingRow {
-                        label: "Detect indentation";
-                        detail: "Use whatever each file already uses";
-                        Toggle { accessible-label: "Detect indentation"; on: root.values.detect-indentation; toggled(on) => { root.set-bool("detect-indentation", on); } }
-                    }
-                }
-                Section {
-                    title: "TYPING";
-                    SettingRow {
-                        label: "Close brackets and quotes";
-                        Toggle { accessible-label: "Close brackets and quotes"; on: root.values.auto-close; toggled(on) => { root.set-bool("auto-close", on); } }
-                    }
-                    SettingRow {
-                        label: "Highlight other occurrences";
-                        detail: "Of the selected text, or the word at the caret";
-                        Toggle { accessible-label: "Highlight other occurrences"; on: root.values.smart-highlight; toggled(on) => { root.set-bool("smart-highlight", on); } }
-                    }
-                    SettingRow {
-                        label: "Suggest words";
-                        detail: "Finish words from the open documents (Tab or Return)";
-                        Toggle { accessible-label: "Suggest words"; on: root.values.word-completion; toggled(on) => { root.set-bool("word-completion", on); } }
+                        SettingRow {
+                            label: "TuplePad " + root.version;
+                            detail: root.update-status;
+                            PillButton {
+                                text: "Check Now";
+                                clicked => { root.check-updates(); }
+                            }
+                        }
                     }
                 }
             }
 
-            if root.tab == 1: VerticalLayout {
-                padding: 24px;
-                spacing: 20px;
-                alignment: start;
-                Section {
-                    title: "FONT";
-                    SettingRow {
-                        label: "Font";
-                        Dropdown { accessible-label: "Font";
-                            width: 220px;
-                            options: root.values.font-names;
-                            selected: root.values.font-index;
-                            list-height: 320px;
-                            chosen(index) => { root.set-int("font", index); }
+            // Scrolls when the window is shorter than the page.
+            if root.tab == 1: editor-page-scroll := Flickable {
+                content-height: editor-page.preferred-height;
+                editor-page := VerticalLayout {
+                    width: editor-page-scroll.width;
+                    padding: 24px;
+                    spacing: 20px;
+                    alignment: start;
+                    Section {
+                        title: "FONT";
+                        SettingRow {
+                            label: "Font";
+                            Dropdown { accessible-label: "Font";
+                                width: 220px;
+                                options: root.values.font-names;
+                                selected: root.values.font-index;
+                                list-height: 320px;
+                                chosen(index) => { root.set-int("font", index); }
+                            }
+                        }
+                        SettingRow {
+                            label: "Size";
+                            Stepper { accessible-label: "Size";
+                                value: root.values.font-size;
+                                minimum: 8;
+                                maximum: 48;
+                                suffix: " pt";
+                                changed(value) => { root.set-int("font-size", value); }
+                            }
+                        }
+                        SettingRow {
+                            label: "Line height";
+                            Segmented { accessible-label: "Line height";
+                                options: ["Compact", "Normal", "Relaxed"];
+                                selected: root.values.line-height;
+                                chosen(index) => { root.set-int("line-height", index); }
+                            }
                         }
                     }
-                    SettingRow {
-                        label: "Size";
-                        Stepper { accessible-label: "Size";
-                            value: root.values.font-size;
-                            minimum: 8;
-                            maximum: 48;
-                            suffix: " pt";
-                            changed(value) => { root.set-int("font-size", value); }
+                    Rectangle {
+                        height: 92px;
+                        border-radius: 10px;
+                        background: Theme.editor-background;
+                        border-width: 1px;
+                        border-color: Theme.separator;
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 0px;
+                            HorizontalLayout {
+                                alignment: start;
+                                Text { text: "fn "; color: Theme.syntax[1]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                                Text { text: "greet"; color: Theme.syntax[7]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                                Text { text: "(name: "; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                                Text { text: "&str"; color: Theme.syntax[8]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                                Text { text: ") {"; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                Text { text: "    println!("; color: Theme.syntax[7]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                                Text { text: "\"Hello, {name}! 👋\""; color: Theme.syntax[2]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                                Text { text: ");"; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                Text { text: "}"; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                                Text { text: "  // 0O 1lI {[()]}"; color: Theme.syntax[4]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                            }
                         }
                     }
-                    SettingRow {
-                        label: "Line height";
-                        Segmented { accessible-label: "Line height";
-                            options: ["Compact", "Normal", "Relaxed"];
-                            selected: root.values.line-height;
-                            chosen(index) => { root.set-int("line-height", index); }
+                    Section {
+                        title: "DISPLAY";
+                        SettingRow {
+                            label: "Wrap lines in new documents";
+                            Toggle { accessible-label: "Wrap lines in new documents"; on: root.values.wrap; toggled(on) => { root.set-bool("wrap", on); } }
                         }
-                    }
-                }
-                Rectangle {
-                    height: 92px;
-                    border-radius: 10px;
-                    background: Theme.editor-background;
-                    border-width: 1px;
-                    border-color: Theme.separator;
-                    VerticalLayout {
-                        padding: 14px;
-                        spacing: 0px;
-                        HorizontalLayout {
-                            alignment: start;
-                            Text { text: "fn "; color: Theme.syntax[1]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
-                            Text { text: "greet"; color: Theme.syntax[7]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
-                            Text { text: "(name: "; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
-                            Text { text: "&str"; color: Theme.syntax[8]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
-                            Text { text: ") {"; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                        SettingRow {
+                            label: "Show invisibles";
+                            Toggle { accessible-label: "Show invisibles"; on: root.values.invisibles; toggled(on) => { root.set-bool("invisibles", on); } }
                         }
-                        HorizontalLayout {
-                            alignment: start;
-                            Text { text: "    println!("; color: Theme.syntax[7]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
-                            Text { text: "\"Hello, {name}! 👋\""; color: Theme.syntax[2]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
-                            Text { text: ");"; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                        SettingRow {
+                            label: "Show indent guides";
+                            Toggle { accessible-label: "Show indent guides"; on: root.values.indent-guides; toggled(on) => { root.set-bool("indent-guides", on); } }
                         }
-                        HorizontalLayout {
-                            alignment: start;
-                            Text { text: "}"; color: Theme.text; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
-                            Text { text: "  // 0O 1lI {[()]}"; color: Theme.syntax[4]; font-family: Theme.mono-family; font-size: root.values.font-size * 1px; }
+                        SettingRow {
+                            label: "Highlight the current line";
+                            Toggle { accessible-label: "Highlight the current line"; on: root.values.current-line; toggled(on) => { root.set-bool("current-line", on); } }
                         }
-                    }
-                }
-                Section {
-                    title: "DISPLAY";
-                    SettingRow {
-                        label: "Wrap lines in new documents";
-                        Toggle { accessible-label: "Wrap lines in new documents"; on: root.values.wrap; toggled(on) => { root.set-bool("wrap", on); } }
-                    }
-                    SettingRow {
-                        label: "Show invisibles";
-                        Toggle { accessible-label: "Show invisibles"; on: root.values.invisibles; toggled(on) => { root.set-bool("invisibles", on); } }
-                    }
-                    SettingRow {
-                        label: "Show indent guides";
-                        Toggle { accessible-label: "Show indent guides"; on: root.values.indent-guides; toggled(on) => { root.set-bool("indent-guides", on); } }
-                    }
-                    SettingRow {
-                        label: "Highlight the current line";
-                        Toggle { accessible-label: "Highlight the current line"; on: root.values.current-line; toggled(on) => { root.set-bool("current-line", on); } }
-                    }
-                    SettingRow {
-                        label: "Show minimap";
-                        Toggle { accessible-label: "Show minimap"; on: root.values.minimap; toggled(on) => { root.set-bool("minimap", on); } }
+                        SettingRow {
+                            label: "Show minimap";
+                            Toggle { accessible-label: "Show minimap"; on: root.values.minimap; toggled(on) => { root.set-bool("minimap", on); } }
+                        }
                     }
                 }
             }
@@ -620,8 +650,7 @@ export component SettingsWindow inherits Window {
 
             if root.tab == 4: VerticalLayout {
                 padding: 24px;
-                // Room for the version at the bottom.
-                padding-bottom: 44px;
+                padding-bottom: 24px;
                 spacing: 20px;
                 Section {
                     title: "MCP SERVER";
@@ -755,47 +784,52 @@ export component SettingsWindow inherits Window {
                 }
             }
 
-            if root.tab == 2: VerticalLayout {
-                padding: 24px;
-                spacing: 20px;
-                alignment: start;
-                Section {
-                    SettingRow {
-                        label: "Appearance";
-                        Segmented { accessible-label: "Appearance";
-                            options: ["System", "Light", "Dark"];
-                            selected: root.values.appearance;
-                            chosen(index) => { root.set-int("appearance", index); }
-                        }
-                    }
-                }
-                VerticalLayout {
-                    spacing: 6px;
-                    Text {
-                        text: "THEME";
-                        font-size: 11px;
-                        font-weight: 650;
-                        letter-spacing: 0.4px;
-                        color: Theme.secondary-text;
-                    }
-                    GridLayout {
-                        spacing: 12px;
-                        Row {
-                            for i in [0, 1, 2]: ThemeCard {
-                                colors: Theme.dark ? Themes.darks[i] : Themes.lights[i];
-                                name: Themes.names[i];
-                                summary: Themes.summaries[i];
-                                selected: root.values.theme == i;
-                                clicked => { root.set-int("theme", i); }
+            // Scrolls when the window is shorter than the page.
+            if root.tab == 2: appearance-page-scroll := Flickable {
+                content-height: appearance-page.preferred-height;
+                appearance-page := VerticalLayout {
+                    width: appearance-page-scroll.width;
+                    padding: 24px;
+                    spacing: 20px;
+                    alignment: start;
+                    Section {
+                        SettingRow {
+                            label: "Appearance";
+                            Segmented { accessible-label: "Appearance";
+                                options: ["System", "Light", "Dark"];
+                                selected: root.values.appearance;
+                                chosen(index) => { root.set-int("appearance", index); }
                             }
                         }
-                        Row {
-                            for i in [3, 4]: ThemeCard {
-                                colors: Theme.dark ? Themes.darks[i] : Themes.lights[i];
-                                name: Themes.names[i];
-                                summary: Themes.summaries[i];
-                                selected: root.values.theme == i;
-                                clicked => { root.set-int("theme", i); }
+                    }
+                    VerticalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: "THEME";
+                            font-size: 11px;
+                            font-weight: 650;
+                            letter-spacing: 0.4px;
+                            color: Theme.secondary-text;
+                        }
+                        GridLayout {
+                            spacing: 12px;
+                            Row {
+                                for i in [0, 1, 2]: ThemeCard {
+                                    colors: Theme.dark ? Themes.darks[i] : Themes.lights[i];
+                                    name: Themes.names[i];
+                                    summary: Themes.summaries[i];
+                                    selected: root.values.theme == i;
+                                    clicked => { root.set-int("theme", i); }
+                                }
+                            }
+                            Row {
+                                for i in [3, 4]: ThemeCard {
+                                    colors: Theme.dark ? Themes.darks[i] : Themes.lights[i];
+                                    name: Themes.names[i];
+                                    summary: Themes.summaries[i];
+                                    selected: root.values.theme == i;
+                                    clicked => { root.set-int("theme", i); }
+                                }
                             }
                         }
                     }
@@ -804,12 +838,4 @@ export component SettingsWindow inherits Window {
         }
     }
 
-    // Which TuplePad this is.
-    Text {
-        x: 24px;
-        y: root.height - 30px;
-        text: "TuplePad " + root.version;
-        font-size: 11px;
-        color: Theme.tertiary-text;
-    }
 }

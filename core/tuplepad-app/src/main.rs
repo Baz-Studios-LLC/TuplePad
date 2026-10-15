@@ -5,6 +5,8 @@
 
 // The scripted runs' state dump is one large `json!`.
 #![recursion_limit = "256"]
+// Release builds on Windows open no console window beside the app.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 /// This version's name (v001, v002, …), from VERSION at the repository's root.
 pub const VERSION: &str = include_str!("../../../VERSION");
@@ -37,6 +39,7 @@ mod shortcuts;
 mod settings;
 mod settings_window;
 mod tools;
+mod update;
 mod toolviews;
 
 use std::path::PathBuf;
@@ -188,6 +191,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         app.open_folder(std::path::Path::new(&folder));
     }
     connect(&ui, &app);
+    connect_update(&ui, &app);
+    app.start_update_checks();
     app.refresh();
 
     // Caret blinking, scrollbar fading and smart highlighting.
@@ -218,6 +223,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.run()?;
     app.shut_down();
     Ok(())
+}
+
+/// The update sheet's and the status bar pill's buttons.
+fn connect_update(ui: &AppWindow, app: &Rc<App>) {
+    let bridge = ui.global::<UpdateBridge>();
+    let a = app.clone();
+    bridge.on_install(move || a.install_update());
+    let a = app.clone();
+    bridge.on_close(move || a.close_update_sheet());
+    let a = app.clone();
+    bridge.on_skip(move || a.skip_update());
+    let a = app.clone();
+    bridge.on_cancel(move || a.cancel_update());
+    let a = app.clone();
+    bridge.on_download(move || a.open_release_page());
+    let a = app.clone();
+    bridge.on_show(move || a.show_update_sheet());
 }
 
 /// Wires the window's callbacks to the app.

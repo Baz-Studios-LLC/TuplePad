@@ -13,8 +13,9 @@ import { ToolBridge, HashRow, XPathRow, HashesSheet, XPathSheet, CsvSortSheet, S
 import { ToolViewBridge, HexLine, CompareLine, HexView, CompareView } from "toolviews.slint";
 import { PreviewBridge, PreviewBlock, CodeLine, CodePart, MarkdownPreview } from "preview.slint";
 import { ShortcutsBridge, ShortcutSection, ShortcutRow, ShortcutsSheet } from "shortcuts.slint";
+import { UpdateBridge, UpdateSheet } from "update.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, ContextItem, DocItem, FolderRow, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow, ToolViewBridge, HexLine, CompareLine, PreviewBridge, PreviewBlock, CodeLine, CodePart, ShortcutsBridge, ShortcutSection, ShortcutRow }
+export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, ContextItem, DocItem, FolderRow, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow, ToolViewBridge, HexLine, CompareLine, PreviewBridge, PreviewBlock, CodeLine, CodePart, ShortcutsBridge, ShortcutSection, ShortcutRow, UpdateBridge }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
@@ -750,6 +751,36 @@ export component AppWindow inherits Window {
                                 clicked => { root.command("settings.ai"); }
                             }
                         }
+                        // An update to install, or one under way.
+                        if UpdateBridge.pill != "": Rectangle {
+                            y: 4px;
+                            height: parent.height - 8px;
+                            width: update-label.preferred-width + 24px;
+                            border-radius: self.height / 2;
+                            background: Theme.accent.with-alpha(update-touch.has-hover ? (Theme.dark ? 0.32 : 0.17) : (Theme.dark ? 0.22 : 0.10));
+                            Rectangle {
+                                x: 8px;
+                                width: 6px;
+                                height: 6px;
+                                border-radius: 3px;
+                                background: Theme.dark ? Theme.accent.mix(#FFFFFF, 0.55) : Theme.accent;
+                            }
+                            update-label := Text {
+                                x: 19px;
+                                text: UpdateBridge.pill;
+                                font-size: 11px;
+                                font-weight: 600;
+                                color: Theme.dark ? Theme.accent.mix(#FFFFFF, 0.35) : Theme.accent;
+                                vertical-alignment: center;
+                            }
+                            update-touch := TouchArea {
+                                accessible-role: button;
+                                accessible-label: UpdateBridge.pill;
+                                accessible-action-default => { UpdateBridge.show(); }
+                                mouse-cursor: pointer;
+                                clicked => { UpdateBridge.show(); }
+                            }
+                        }
                     }
                     HorizontalLayout {
                         spacing: 2px;
@@ -870,6 +901,7 @@ export component AppWindow inherits Window {
     if ToolBridge.sheet == 3: CsvSortSheet { }
     if ToolBridge.sheet == 4: ShellSheet { }
     if ShortcutsBridge.open: ShortcutsSheet { }
+    if UpdateBridge.open: UpdateSheet { }
 
     if root.palette-open: CommandPalette {
         items: root.palette-items;

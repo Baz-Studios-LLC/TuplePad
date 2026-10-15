@@ -22,6 +22,8 @@ pub struct App {
     pub me: RefCell<std::rc::Weak<App>>,
     /// The built-in MCP server (off unless turned on in Settings).
     pub mcp: RefCell<crate::mcp::McpState>,
+    /// Checking for, downloading and installing new versions.
+    pub update: RefCell<crate::update::UpdateState>,
     pub ui: slint::Weak<AppWindow>,
     pub settings_window: RefCell<Option<crate::SettingsWindow>>,
     /// The find bar's matches and status.
@@ -157,6 +159,7 @@ impl App {
         let app = Rc::new(App {
             me: RefCell::new(std::rc::Weak::new()),
             mcp: RefCell::new(Default::default()),
+            update: RefCell::new(Default::default()),
             ui: ui.as_weak(),
             settings_window: RefCell::new(None),
             font_choices: RefCell::new(Vec::new()),
@@ -532,6 +535,7 @@ impl App {
         self.refresh_outline();
         self.refresh_preview();
         self.mcp_tick();
+        self.update_tick();
     }
 
     pub(crate) fn language_name(&self, doc: &Document) -> String {
@@ -714,6 +718,7 @@ impl App {
                 self.refresh();
             }
             "help.shortcuts" => self.show_shortcuts(),
+            "help.updates" => self.check_for_updates(true),
             "tools.markdown-preview" => self.toggle_preview(),
             "compare.saved" => self.compare(crate::toolviews::CompareWith::Saved),
             "compare.clipboard" => self.compare(crate::toolviews::CompareWith::Clipboard),
@@ -1130,7 +1135,7 @@ impl App {
             return;
         };
         if cfg!(windows) {
-            self.alert("The tuplepad command is ready.", &format!("It's at {}. Add that folder to your PATH to use it from any terminal.", tool.display()));
+            self.alert_info("The tuplepad command is ready.", &format!("It's at {}. The installer adds that folder to your PATH; open a new terminal to use it.", tool.display()));
             return;
         }
         let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
@@ -1546,7 +1551,9 @@ fn bundled_tool() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
     let folder = exe.parent()?;
     let name = if cfg!(windows) { "tuplepad.exe" } else { "tuplepad" };
-    [folder.join("../Helpers").join(name), folder.join(name)].into_iter().find(|p| p.exists()).and_then(|p| p.canonicalize().ok())
+    // Contents/Helpers in a Mac bundle, bin beside TuplePad.exe on Windows (where TuplePad.exe
+    // and tuplepad.exe can't share a folder), else beside the app.
+    [folder.join("../Helpers").join(name), folder.join("bin").join(name), folder.join(name)].into_iter().find(|p| p.exists()).and_then(|p| p.canonicalize().ok())
 }
 
 fn symlink(target: &Path, link: &Path) -> std::io::Result<()> {

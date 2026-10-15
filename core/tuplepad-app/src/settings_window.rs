@@ -55,6 +55,7 @@ pub fn values(settings: &Settings, fonts: &[(String, String)]) -> SettingsValues
         theme: THEME_IDS.iter().position(|t| *t == settings.theme).unwrap_or(0) as i32,
         mcp: settings.mcp_enabled,
         mcp_http: settings.mcp_http,
+        check_updates: settings.check_updates,
     }
 }
 
@@ -74,6 +75,7 @@ fn set_bool(settings: &mut Settings, key: &str, value: bool) {
         "word-completion" => settings.word_completion = value,
         "mcp" => settings.mcp_enabled = value,
         "mcp-http" => settings.mcp_http = value,
+        "check-updates" => settings.check_updates = value,
         _ => eprintln!("unknown setting {key}"),
     }
 }
@@ -108,6 +110,10 @@ impl App {
         if self.settings_window.borrow().is_none() {
             let Ok(window) = SettingsWindow::new() else { return };
             window.set_version(crate::VERSION.trim().into());
+            {
+                let app = app.clone();
+                window.on_check_updates(move || app.check_for_updates(true));
+            }
             if cfg!(target_os = "macos") {
                 window.set_titlebar_height(28.0);
             }

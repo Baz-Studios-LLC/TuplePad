@@ -1,0 +1,98 @@
+import { Theme } from "theme.slint";
+import { Sheet } from "controls.slint";
+
+// Updates: what a check found (Help ▸ Check for Updates…), and an update as it downloads and
+// installs. The status bar shows a pill while there's one to install.
+export global UpdateBridge {
+    in property <bool> open;
+    // 0 checking, 1 up to date, 2 available, 3 downloading, 4 installing, 5 failed.
+    in property <int> kind;
+    in property <string> title;
+    in property <string> detail;
+    // What's new in the update, as plain text.
+    in property <string> notes;
+    // This copy can replace itself (else the main button opens the release page).
+    in property <bool> installable;
+    in property <float> progress;
+    // The status bar's pill ("Update to v002"), empty when there's nothing to show.
+    in property <string> pill;
+    callback install();
+    callback close();
+    callback skip();
+    callback cancel();
+    callback download();
+    callback show();
+}
+
+export component UpdateSheet inherits Sheet {
+    title: UpdateBridge.title;
+    card-width: 480px;
+    show-cancel: UpdateBridge.kind != 4;
+    cancel-title: UpdateBridge.kind == 2 ? "Later" : (UpdateBridge.kind == 0 || UpdateBridge.kind == 3) ? "Cancel" : "Close";
+    show-accept: UpdateBridge.kind == 1 || UpdateBridge.kind == 2 || UpdateBridge.kind == 5;
+    accept-title: UpdateBridge.kind == 1 ? "OK" : UpdateBridge.kind == 5 ? "Open Releases Page" : UpdateBridge.installable ? "Install and Relaunch" : "Download";
+    secondary-title: UpdateBridge.kind == 2 ? "Skip This Version" : "";
+    accept => {
+        if UpdateBridge.kind == 2 {
+            UpdateBridge.install();
+        } else if UpdateBridge.kind == 5 {
+            UpdateBridge.download();
+        } else {
+            UpdateBridge.close();
+        }
+    }
+    cancel => {
+        if UpdateBridge.kind == 3 {
+            UpdateBridge.cancel();
+        } else if UpdateBridge.kind != 4 {
+            UpdateBridge.close();
+        }
+    }
+    secondary => { UpdateBridge.skip(); }
+
+    Text {
+        text: UpdateBridge.detail;
+        font-size: 12.5px;
+        color: Theme.secondary-text;
+        wrap: word-wrap;
+    }
+
+    // What's new.
+    if UpdateBridge.kind == 2 && UpdateBridge.notes != "": Rectangle {
+        height: min(notes.preferred-height + 24px, 260px);
+        border-radius: 8px;
+        background: Theme.dark ? #FFFFFF0A : #00000008;
+        border-width: 1px;
+        border-color: Theme.separator;
+        clip: true;
+        Flickable {
+            content-height: notes.preferred-height + 24px;
+            notes := Text {
+                x: 12px;
+                y: 12px;
+                width: parent.width - 24px;
+                text: UpdateBridge.notes;
+                font-size: 12.5px;
+                color: Theme.primary-text;
+                wrap: word-wrap;
+            }
+        }
+    }
+
+    // How far the download has got.
+    if UpdateBridge.kind == 3 || UpdateBridge.kind == 4: Rectangle {
+        accessible-role: progress-indicator;
+        accessible-label: "Download progress";
+        accessible-value: Math.round(UpdateBridge.progress * 100) + "%";
+        height: 6px;
+        border-radius: 3px;
+        background: Theme.dark ? #FFFFFF14 : #0000000F;
+        Rectangle {
+            x: 0;
+            width: parent.width * clamp(UpdateBridge.progress, 0, 1);
+            border-radius: 3px;
+            background: Theme.accent;
+            animate width { duration: 150ms; }
+        }
+    }
+}

@@ -257,6 +257,7 @@ pub static COMMANDS: &[Command] = &[
     toggle("view.appearance-dark", "Dark Appearance", Menu::View, &[]),
     command("view.toggle-theme", "Switch Light and Dark", Menu::None, &[]),
     Command { other_keys: Some(&["F1"]), ..command("help.shortcuts", "Keyboard Shortcuts", Menu::Help, &["Control", "Alt", "/"]) },
+    command("help.updates", "Check for Updates…", Menu::Help, &[]),
 ];
 
 const MAC: bool = cfg!(target_os = "macos");
