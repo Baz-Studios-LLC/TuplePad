@@ -33,8 +33,12 @@ sleep 8
 TUPLEPAD_DATA_DIR="$WORK/data" "$APP" "$WORK/notes.md" > "$WORK/app.txt" 2>&1 &
 APP_PID=$!
 sleep 8
-WINDOW="$(xdotool search --pid "$APP_PID" | tail -1)"
-xdotool windowfocus --sync "$WINDOW" || true
+# The visible window (winit also makes unmapped helper windows, which can't take the focus).
+WINDOW="$(timeout 30 xdotool search --sync --onlyvisible --pid "$APP_PID" | tail -1)"
+for _ in 1 2 3 4 5; do
+  xdotool windowfocus --sync "$WINDOW" && break
+  sleep 2
+done
 sleep 3
 xdotool key --window "$WINDOW" Down
 sleep 2
