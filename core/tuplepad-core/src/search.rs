@@ -128,7 +128,8 @@ pub(crate) fn find_cancellable(
 /// Whether `text` has a match, checking `cancelled` between chunks of a large text (nil if cancelled).
 /// Chunks overlap, so a match up to the overlap's length is never split.
 pub(crate) fn has_match(text: &str, regex: &Regex, cancelled: &dyn Fn() -> bool) -> Option<bool> {
-    const CHUNK: usize = 8 * 1024 * 1024;
+    // Small enough that Stop is quick even with a slow pattern on a slow machine.
+    const CHUNK: usize = 2 * 1024 * 1024;
     const OVERLAP: usize = 64 * 1024;
     if text.len() <= CHUNK {
         return Some(regex.is_match(text));
