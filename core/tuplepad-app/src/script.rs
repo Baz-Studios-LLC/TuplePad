@@ -604,10 +604,12 @@ fn run_next(app: Rc<App>, runner: Shared) {
             // A solid caret, not one caught mid-blink.
             app.editor.borrow_mut().touch();
             app.refresh();
-            let signal = PathBuf::from(arg.as_str().unwrap_or("shot"));
+            // A path, or {"path", "timeout"} in seconds for a signal that takes longer than 10.
+            let signal = PathBuf::from(arg.as_str().or_else(|| arg.get("path").and_then(Value::as_str)).unwrap_or("shot"));
+            let limit = Duration::from_secs(arg.get("timeout").and_then(Value::as_u64).unwrap_or(10));
             let _ = std::fs::write(&signal, "");
             let done = signal.with_extension("done");
-            return wait_for(app, runner, done, Instant::now());
+            return wait_for(app, runner, done, Instant::now(), limit);
         }
         "benchScroll" => return bench_scroll(app, runner, arg),
         "benchJump" => return bench_jump(app, runner, arg),
@@ -636,11 +638,11 @@ fn wait_until(app: Rc<App>, runner: Shared, done: fn(&App) -> bool, since: Insta
     slint::Timer::single_shot(Duration::from_millis(40), move || wait_until(app, runner, done, since));
 }
 
-fn wait_for(app: Rc<App>, runner: Shared, path: PathBuf, since: Instant) {
-    if path.exists() || since.elapsed() > Duration::from_secs(10) {
+fn wait_for(app: Rc<App>, runner: Shared, path: PathBuf, since: Instant, limit: Duration) {
+    if path.exists() || since.elapsed() > limit {
         return later(app, runner, 0);
     }
-    slint::Timer::single_shot(Duration::from_millis(100), move || wait_for(app, runner, path, since));
+    slint::Timer::single_shot(Duration::from_millis(100), move || wait_for(app, runner, path, since, limit));
 }
 
 fn dump(app: &App, ui: &AppWindow) -> Value {
@@ -726,6 +728,7 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "sidebar_rows": sidebar_rows,
         "context_items": context_items,
         "misspelled": misspelled,
+        "mcp": app.mcp_dump(),
         "sidebar_mode": ui.get_sidebar_mode(),
         "outline_visible": ui.get_outline_visible(),
         "minimap": ui.global::<crate::EditorBridge>().get_minimap_width() > 0.0,

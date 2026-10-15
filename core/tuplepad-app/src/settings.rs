@@ -49,6 +49,13 @@ pub struct Settings {
     pub check_spelling: bool,
     /// Words taught to the spell checker.
     pub spelling_words: Vec<String>,
+    /// Let AI tools use TuplePad through its built-in MCP server.
+    pub mcp_enabled: bool,
+    /// Also serve MCP over HTTP, on localhost at `mcp_port`.
+    pub mcp_http: bool,
+    pub mcp_port: u16,
+    /// What each MCP client may do, by the name it gives: "edit", "read" or "none".
+    pub mcp_clients: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -86,6 +93,10 @@ impl Default for Settings {
             folder: None,
             check_spelling: true,
             spelling_words: Vec::new(),
+            mcp_enabled: false,
+            mcp_http: true,
+            mcp_port: 8875,
+            mcp_clients: Default::default(),
         }
     }
 }

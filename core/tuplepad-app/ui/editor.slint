@@ -80,6 +80,10 @@ export global EditorBridge {
     in property <[Band]> current-matches-2;
     in property <[Band]> marks;
     in property <[Band]> marks-2;
+    // What an AI tool just changed (over MCP), and whether it's showing (it fades when this goes false).
+    in property <[Band]> flashes;
+    in property <[Band]> flashes-2;
+    in property <bool> flash-on;
     in property <[Band]> brackets;
     in property <[Band]> brackets-2;
     in property <[Band]> preedit-underlines;
@@ -218,6 +222,7 @@ export component EditorView inherits Rectangle {
     property <[Band]> current-matches: root.pane == 0 ? EditorBridge.current-matches : EditorBridge.current-matches-2;
     property <[Band]> misspelled: root.pane == 0 ? EditorBridge.misspelled : EditorBridge.misspelled-2;
     property <[Band]> marks: root.pane == 0 ? EditorBridge.marks : EditorBridge.marks-2;
+    property <[Band]> flashes: root.pane == 0 ? EditorBridge.flashes : EditorBridge.flashes-2;
     property <[Band]> brackets: root.pane == 0 ? EditorBridge.brackets : EditorBridge.brackets-2;
     property <[Band]> preedit-underlines: root.pane == 0 ? EditorBridge.preedit-underlines : EditorBridge.preedit-underlines-2;
     property <[int]> active-rows: root.pane == 0 ? EditorBridge.active-rows : EditorBridge.active-rows-2;
@@ -262,6 +267,22 @@ export component EditorView inherits Rectangle {
         input.focus();
     }
 
+    // An AI tool's edit lights up quickly, then fades.
+    states [
+        flashing when EditorBridge.flash-on: {
+            flash-layer.opacity: 1;
+            in {
+                animate flash-layer.opacity { duration: 120ms; }
+            }
+        }
+        settled when !EditorBridge.flash-on: {
+            flash-layer.opacity: 0;
+            in {
+                animate flash-layer.opacity { duration: 1600ms; easing: ease-in; }
+            }
+        }
+    ]
+
     function row-y(row: int) -> length {
         return (row - root.top-row) * root.lh - root.scroll-offset;
     }
@@ -296,6 +317,18 @@ export component EditorView inherits Rectangle {
             height: root.lh - 2px;
             border-radius: 3px;
             background: Theme.mark;
+        }
+
+        flash-layer := Rectangle {
+            opacity: 0;
+            for band in root.flashes: Rectangle {
+                x: band.x - root.scroll-x - 1px;
+                width: band.width + 2px;
+                y: root.row-y(band.row);
+                height: root.lh;
+                border-radius: 3px;
+                background: Theme.accent.with-alpha(Theme.dark ? 0.4 : 0.2);
+            }
         }
 
         for band in root.find-matches: Rectangle {

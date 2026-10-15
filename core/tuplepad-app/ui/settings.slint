@@ -10,6 +10,56 @@ export struct SnippetRow {
     detail: string,
 }
 
+// An AI tool that has asked to use TuplePad (MCP). `access`: 0 read and edit, 1 read only, 2 not allowed.
+export struct McpClientRow {
+    name: string,
+    access: int,
+    connected: bool,
+}
+
+// A line of the MCP activity log.
+export struct McpLogRow {
+    time: string,
+    client: string,
+    tool: string,
+    summary: string,
+    failed: bool,
+}
+
+// A way to connect an AI tool, with a button that copies it.
+component ConnectRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> code;
+    in property <bool> copied;
+    callback copy();
+    min-height: 50px;
+    spacing: 16px;
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+        spacing: 2px;
+        Text {
+            text: root.label;
+            font-size: 13px;
+            color: Theme.primary-text;
+        }
+        Text {
+            text: root.code;
+            font-family: Theme.mono-family;
+            font-size: 11px;
+            color: Theme.secondary-text;
+            overflow: elide;
+        }
+    }
+    VerticalLayout {
+        alignment: center;
+        PillButton {
+            text: root.copied ? "Copied" : "Copy";
+            clicked => { root.copy(); }
+        }
+    }
+}
+
 // Everything the Settings window shows, set from Rust.
 export struct SettingsValues {
     font-names: [string],
@@ -36,6 +86,8 @@ export struct SettingsValues {
     // 0 system, 1 light, 2 dark.
     appearance: int,
     theme: int,
+    mcp: bool,
+    mcp-http: bool,
 }
 
 component TabButton inherits Rectangle {
@@ -162,6 +214,19 @@ export component SettingsWindow inherits Window {
     in-out property <int> snippet-language;
     in property <[string]> snippet-languages;
     in-out property <string> snippet-body;
+    // The AI tab: whether the MCP server runs and how to connect, the AI tools that asked, and what they did.
+    in property <string> mcp-status;
+    in property <string> mcp-http-detail;
+    in property <string> mcp-command;
+    in property <string> mcp-json;
+    in property <string> mcp-url;
+    in property <[McpClientRow]> mcp-clients;
+    in property <[McpLogRow]> mcp-log;
+    // Which copy button was just used ("command", "json" or "url").
+    in property <string> copied;
+    callback mcp-client-access(name: string, access: int);
+    callback mcp-client-forget(name: string);
+    callback copy-text(what: string);
     callback snippet-select(index: int);
     callback snippet-edited();
     callback snippet-add();
@@ -205,6 +270,12 @@ export component SettingsWindow inherits Window {
                     label: "Snippets";
                     selected: root.tab == 3;
                     clicked => { root.tab = 3; }
+                }
+                TabButton {
+                    icon: "M11 3.5l1.9 5.1 5.1 1.9-5.1 1.9L11 17.5l-1.9-5.1L4 10.5l5.1-1.9z M18 15l.8 2.2 2.2.8-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z";
+                    label: "AI";
+                    selected: root.tab == 4;
+                    clicked => { root.tab = 4; }
                 }
             }
             Rectangle {
@@ -525,6 +596,143 @@ export component SettingsWindow inherits Window {
                             font-size: 11px;
                             color: Theme.secondary-text;
                             wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+
+            if root.tab == 4: VerticalLayout {
+                padding: 24px;
+                // Room for the version at the bottom.
+                padding-bottom: 44px;
+                spacing: 20px;
+                Section {
+                    title: "MCP SERVER";
+                    SettingRow {
+                        label: "Let AI tools use TuplePad";
+                        detail: root.mcp-status;
+                        Toggle { on: root.values.mcp; toggled(on) => { root.set-bool("mcp", on); } }
+                    }
+                    SettingRow {
+                        label: "Also over HTTP";
+                        detail: root.mcp-http-detail;
+                        Toggle { on: root.values.mcp-http; toggled(on) => { root.set-bool("mcp-http", on); } }
+                    }
+                }
+                if root.values.mcp: Section {
+                    title: "CONNECT AN AI TOOL";
+                    ConnectRow {
+                        label: "Claude Code";
+                        code: root.mcp-command;
+                        copied: root.copied == "command";
+                        copy => { root.copy-text("command"); }
+                    }
+                    ConnectRow {
+                        label: "Claude Desktop and other apps";
+                        code: root.mcp-json;
+                        copied: root.copied == "json";
+                        copy => { root.copy-text("json"); }
+                    }
+                    if root.mcp-url != "": ConnectRow {
+                        label: "Over HTTP";
+                        code: root.mcp-url;
+                        copied: root.copied == "url";
+                        copy => { root.copy-text("url"); }
+                    }
+                }
+                Section {
+                    title: "AI TOOLS";
+                    if root.mcp-clients.length == 0: Text {
+                        height: 42px;
+                        text: "None yet. TuplePad asks you the first time an AI tool wants your documents.";
+                        font-size: 12px;
+                        color: Theme.secondary-text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    for client in root.mcp-clients: SettingRow {
+                        label: client.name;
+                        detail: client.connected ? "Connected now" : "";
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Dropdown {
+                                options: ["Read and edit", "Read only", "Not allowed"];
+                                selected: client.access;
+                                list-height: 120px;
+                                chosen(index) => { root.mcp-client-access(client.name, index); }
+                            }
+                            PillButton {
+                                text: "Forget";
+                                clicked => { root.mcp-client-forget(client.name); }
+                            }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 6px;
+                    vertical-stretch: 1;
+                    Text {
+                        text: "ACTIVITY";
+                        font-size: 11px;
+                        font-weight: 650;
+                        letter-spacing: 0.4px;
+                        color: Theme.secondary-text;
+                    }
+                    Rectangle {
+                        vertical-stretch: 1;
+                        min-height: 90px;
+                        border-radius: 10px;
+                        background: Theme.dark ? #FFFFFF08 : #00000005;
+                        border-width: 1px;
+                        border-color: Theme.separator;
+                        clip: true;
+                        if root.mcp-log.length == 0: Text {
+                            text: "What AI tools read and change shows up here.";
+                            font-size: 12px;
+                            color: Theme.tertiary-text;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        ListView {
+                            for entry in root.mcp-log: HorizontalLayout {
+                                height: 26px;
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                spacing: 10px;
+                                Text {
+                                    width: 58px;
+                                    text: entry.time;
+                                    font-family: Theme.mono-family;
+                                    font-size: 11px;
+                                    color: Theme.tertiary-text;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    width: 100px;
+                                    text: entry.client;
+                                    font-size: 12px;
+                                    color: Theme.secondary-text;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    width: 118px;
+                                    text: entry.tool;
+                                    font-family: Theme.mono-family;
+                                    font-size: 11px;
+                                    color: Theme.primary-text;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: entry.summary;
+                                    font-size: 12px;
+                                    color: entry.failed ? Theme.syntax[23] : Theme.secondary-text;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
                         }
                     }
                 }

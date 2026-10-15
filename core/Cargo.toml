@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["tuplepad-core", "tuplepad-cli", "tuplepad-app", "uniffi-bindgen"]
+members = ["tuplepad-core", "tuplepad-cli", "tuplepad-app", "tuplepad-mcp", "uniffi-bindgen"]
 
 [workspace.package]
 version = "0.1.0"

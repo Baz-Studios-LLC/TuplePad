@@ -11,6 +11,7 @@ pub mod input;
 pub mod layout;
 pub mod rows;
 
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -153,6 +154,9 @@ pub struct Editor {
     pub spelling_words: std::sync::Arc<std::collections::HashSet<String>>,
     pub spelling_generation: u64,
     mark_model: Rc<VecModel<Band>>,
+    /// What AI tools just changed (over MCP), by document id, highlighted while it fades.
+    pub flashes: HashMap<String, Vec<TextSelection>>,
+    flash_model: Rc<VecModel<Band>>,
     /// What smart highlighting shows, and the caret state it was found for.
     smart: Option<SearchQuery>,
     smart_for: Option<(u64, Vec<TextSelection>)>,
@@ -188,6 +192,8 @@ impl Editor {
         bridge.set_find_matches(ModelRc::from(find_model.clone()));
         bridge.set_current_matches(ModelRc::from(current_match_model.clone()));
         bridge.set_marks(ModelRc::from(mark_model.clone()));
+        let flash_model = Rc::new(VecModel::default());
+        bridge.set_flashes(ModelRc::from(flash_model.clone()));
         bridge.set_rows(ModelRc::from(row_model.clone()));
         bridge.set_carets(ModelRc::from(caret_model.clone()));
         bridge.set_selections(ModelRc::from(selection_model.clone()));
@@ -251,6 +257,8 @@ impl Editor {
             spelling_words: Default::default(),
             spelling_generation: 0,
             mark_model,
+            flashes: HashMap::new(),
+            flash_model,
             smart: None,
             smart_for: None,
             private_clipboard: None,
@@ -1018,6 +1026,16 @@ impl Editor {
         };
         replace_if_changed(&self.misspelled_model, misspelled);
         replace_if_changed(&self.mark_model, marked);
+        let mut flashed = Vec::new();
+        for range in self.flashes.get(&self.doc().id).into_iter().flatten() {
+            for line in range.start().line..=range.end().line {
+                let Some(i) = position_of(line) else { continue };
+                let from = if line == range.start().line { range.start().column as usize } else { 0 };
+                let to = if line == range.end().line { range.end().column as usize } else { usize::MAX };
+                flashed.extend(geometries[i].bands(first_rows[i], from, to, line < range.end().line, space * 0.6));
+            }
+        }
+        replace_if_changed(&self.flash_model, flashed);
         replace_if_changed(&self.bracket_model, brackets);
         replace_if_changed(&self.underline_model, underlines);
         replace_if_changed(&self.active_model, active_rows);

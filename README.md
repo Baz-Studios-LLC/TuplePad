@@ -42,6 +42,7 @@ TuplePad is in early development (the current version is **v001**). It's being r
 - **Hex View** of a file's bytes, quick even for huge files.
 - **Spell check** (Edit ▸ Check Spelling) of comments and strings in code, of Markdown and of plain text, with an English dictionary built in. Right-click a misspelled word for suggestions, Learn Spelling or Ignore.
 - **Snippets:** type a trigger word and press Tab (or Insert Snippet…, ⌥⌘J), then Tab through the placeholders. Edit them in Settings.
+- **AI tools can work in TuplePad** (Settings ▸ AI): Claude Code, Claude Desktop and other MCP clients can read your open documents and edit them while you watch. See [Using TuplePad with AI tools](#using-tuplepad-with-ai-tools-mcp) below.
 - **Paste from History** (⇧⌘V) of what you've copied, **Run Shell Command** (⌃⌘R; Ctrl+Alt+R on Windows and Linux) on the selection or document, with its output replacing the text, after it, or in a new document, and **Copy with Syntax Colors** (⌥⇧⌘C) for pasting colored code into documents and email.
 
 The Mac app in `TuplePad/` does much more, and those features are coming to the new app milestone by milestone (see the roadmap below):
@@ -81,6 +82,42 @@ The Mac app in `TuplePad/` does much more, and those features are coming to the 
 
 </details>
 
+## Using TuplePad with AI tools (MCP)
+
+TuplePad has a built-in [MCP](https://modelcontextprotocol.io) server, so AI tools can read and edit the documents you have open, including changes you haven't saved. It's off until you turn on **Let AI tools use TuplePad** in Settings ▸ AI, which also shows the exact commands below for your copy of TuplePad, with Copy buttons.
+
+**Claude Code.** Install the `tuplepad` command (File ▸ Install Command Line Tool…), then:
+
+```bash
+claude mcp add tuplepad -- tuplepad mcp
+```
+
+**Claude Desktop** and other apps that start MCP servers themselves: add this to their MCP settings, with the path the Copy button in Settings ▸ AI gives (for Claude Desktop, Settings ▸ Developer ▸ Edit Config, then restart it):
+
+```json
+{
+  "mcpServers": {
+    "tuplepad": { "command": "/usr/local/bin/tuplepad", "args": ["mcp"] }
+  }
+}
+```
+
+`tuplepad mcp` connects to the TuplePad that's running, and starts it in the background if it isn't.
+
+**Over HTTP.** TuplePad also serves Streamable HTTP at `http://127.0.0.1:8875/mcp` (turn off Also over HTTP in Settings ▸ AI if you don't want it):
+
+```bash
+claude mcp add --transport http tuplepad http://127.0.0.1:8875/mcp
+```
+
+What AI tools can do: list the open documents, read them (or part of a long one), see your selection, open files and create documents, make edits, find in a document or across a folder, run TuplePad's text tools (format JSON or XML, sort lines, change case, encode and decode, and the rest), and save.
+
+What keeps you in charge:
+- The first time an AI tool asks, TuplePad asks you: **Allow Editing**, **Read Only** or **Don't Allow**. Change your answer later in Settings ▸ AI.
+- Edits appear live and are highlighted as they land. Each one is a single step you can undo, and your carets stay where you were typing. Nothing is saved unless the AI tool saves on purpose, and it can't save over a file that changed on disk.
+- The status bar shows which AI tool is connected, and Settings ▸ AI keeps a log of everything it read and changed.
+- The server listens only on this computer (a local socket and 127.0.0.1), and refuses requests from web pages.
+
 ## Running it
 
 Double-click **`Launch TuplePad.command`**. It builds TuplePad (into `build/TuplePad.app`) and opens it.
@@ -96,6 +133,7 @@ The Mac app opens from `TuplePad.xcodeproj` in Xcode (macOS 26 or later, Xcode 2
 | Text engine: buffer (a rope), editing, undo, encodings, saving, syntax trees, search, session | Rust | `core/tuplepad-core` |
 | Built-in tools: compare, JSON, XML, CSV, encodings, hashes, hex, Markdown, snippets, spelling | Rust | `core/tuplepad-core` |
 | The app: window, editor, sidebar, menus, find bar, search panel, tool views | Slint and Rust | `core/tuplepad-app` (`ui/` and `src/`) |
+| MCP server (rmcp: tools, local socket, Streamable HTTP) | Rust | `core/tuplepad-mcp` |
 | `tuplepad` terminal command | Rust | `core/tuplepad-cli` |
 | The first Mac app (reference) | Swift / SwiftUI | `TuplePad/` |
 | App icon | Icon Composer | `TuplePad/AppIcon.icon` (artwork source in `design/`) |
@@ -104,7 +142,7 @@ The editor draws only the lines on screen, so a document's size doesn't affect s
 
 ## Roadmap
 
-See [docs/GOAL.md](docs/GOAL.md) for the plan. Next is a built-in MCP server, so AI tools can read and edit your open documents while you watch; then accessibility, performance, and builds for Windows and Linux.
+See [docs/GOAL.md](docs/GOAL.md) for the plan. Next: accessibility, performance, and builds for Windows and Linux.
 
 Versions are named v001, v002, v003 and so on.
 

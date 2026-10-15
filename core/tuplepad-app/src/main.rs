@@ -21,6 +21,7 @@ mod editor;
 mod find;
 mod folder;
 mod fonts;
+mod mcp;
 mod outline;
 mod palette;
 mod platform;

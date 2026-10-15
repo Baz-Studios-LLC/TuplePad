@@ -49,6 +49,9 @@ export component AppWindow inherits Window {
     in property <string> doc-title;
     in property <string> doc-subtitle;
     in property <string> status-left;
+    // The AI tools connected over MCP (empty when none), and whether one is working right now.
+    in property <string> mcp-indicator;
+    in property <bool> mcp-busy;
     in property <string> status-right;
     in property <[StatusItem]> status-items;
     in-out property <bool> sidebar-visible: true;
@@ -685,11 +688,42 @@ export component AppWindow inherits Window {
                     padding-left: 18px;
                     padding-right: 18px;
                     alignment: space-between;
-                    Text {
-                        text: root.status-left;
-                        font-size: 11.5px;
-                        color: Theme.secondary-text;
-                        vertical-alignment: center;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Text {
+                            text: root.status-left;
+                            font-size: 11.5px;
+                            color: Theme.secondary-text;
+                            vertical-alignment: center;
+                        }
+                        if root.mcp-indicator != "": Rectangle {
+                            y: 4px;
+                            height: parent.height - 8px;
+                            width: mcp-label.preferred-width + 24px;
+                            border-radius: self.height / 2;
+                            background: mcp-touch.has-hover ? Theme.control-hover : Theme.accent.with-alpha(Theme.dark ? 0.16 : 0.08);
+                            // A dot that glows while the AI tool is working.
+                            mcp-dot := Rectangle {
+                                x: 8px;
+                                width: 6px;
+                                height: 6px;
+                                border-radius: 3px;
+                                background: Theme.dark ? Theme.accent.mix(#FFFFFF, 0.55) : Theme.accent;
+                                opacity: root.mcp-busy ? 1 : 0.55;
+                                animate opacity { duration: 300ms; }
+                            }
+                            mcp-label := Text {
+                                x: 19px;
+                                text: root.mcp-indicator;
+                                font-size: 11px;
+                                color: Theme.secondary-text;
+                                vertical-alignment: center;
+                            }
+                            mcp-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.command("settings.ai"); }
+                            }
+                        }
                     }
                     HorizontalLayout {
                         spacing: 2px;

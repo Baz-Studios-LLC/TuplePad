@@ -16,7 +16,7 @@ use crate::types::{EditKind, FileInfo, LineEnding, TextPos, TextSelection};
 
 #[path = "buffer_tools.rs"]
 mod tools;
-pub use tools::BracketMatch;
+pub use tools::{BracketMatch, OutsideEdit};
 
 #[path = "buffer_column.rs"]
 mod column;

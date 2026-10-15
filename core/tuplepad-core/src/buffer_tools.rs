@@ -14,6 +14,15 @@ pub struct BracketMatch {
     pub close: TextPos,
 }
 
+/// The result of edits made from outside the editor (an AI tool over MCP).
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct OutsideEdit {
+    /// The person's carets afterward, moved along with their text.
+    pub cursors: Vec<TextSelection>,
+    /// Where each edit's new text is now, in the order the edits were given.
+    pub inserted: Vec<TextSelection>,
+}
+
 /// Replaces the chars `start..end`, measured in the text before the batch is applied.
 pub(super) struct CharEdit {
     pub(super) start: usize,
@@ -164,6 +173,47 @@ impl State {
 
 #[uniffi::export]
 impl TextBuffer {
+    /// Applies edits made from outside the editor as one undo step. Unlike typing, the person's
+    /// carets stay with their text rather than jumping to the edits. The ranges must not overlap.
+    pub fn edit_from_outside(&self, ranges: Vec<TextSelection>, texts: Vec<String>, cursors: Vec<TextSelection>) -> CoreResult<OutsideEdit> {
+        let mut st = self.write();
+        let mut edits: Vec<(usize, CharEdit)> = ranges
+            .iter()
+            .zip(texts)
+            .enumerate()
+            .map(|(order, (range, text))| (order, CharEdit { start: st.pos_to_char(range.start()), end: st.pos_to_char(range.end()), text }))
+            .collect();
+        edits.sort_by_key(|(_, e)| (e.start, e.end));
+        if edits.windows(2).any(|pair| pair[1].1.start < pair[0].1.end) {
+            return Err(CoreError::invalid("Two of the edits overlap."));
+        }
+        // Where each edit's text lands, in chars: its start moved by the edits before it.
+        let mut landed = vec![(0usize, 0usize); edits.len()];
+        let mut delta: isize = 0;
+        for (order, edit) in &edits {
+            let start = (edit.start as isize + delta) as usize;
+            let length = edit.text.chars().count();
+            landed[*order] = (start, start + length);
+            delta += length as isize - (edit.end - edit.start) as isize;
+        }
+        let old = st.cursor_chars(&cursors);
+        let cursors = st.apply_edits(edits.into_iter().map(|(_, e)| e).collect(), cursors, EditKind::Other, |state, map| state.mapped(&old, map));
+        let inserted = landed.iter().map(|&(start, end)| TextSelection { anchor: st.char_to_pos(start), head: st.char_to_pos(end) }).collect();
+        Ok(OutsideEdit { cursors, inserted })
+    }
+
+    /// The position of a 1-based line and character column (as people and AI tools count them),
+    /// or nil if it's past the line's end or the document's.
+    pub fn position_for_character(&self, line: u64, column: u64) -> Option<TextPos> {
+        let st = self.read();
+        if line == 0 || column == 0 || line as usize > st.rope.len_lines() {
+            return None;
+        }
+        let content = st.line_content(line as usize - 1);
+        let chars = column as usize - 1;
+        (chars <= content.len_chars()).then(|| TextPos::new(line - 1, content.char_to_utf16_cu(chars) as u64))
+    }
+
     /// Sorts, removes, joins or cleans up the selected lines, or the whole document if nothing is selected.
     pub fn transform_lines(&self, operation: LineOperation, cursors: Vec<TextSelection>, tab_width: u32) -> Vec<TextSelection> {
         self.edit_lines(cursors, operation.keeps_lines(), |lines| transform::apply_to_lines(operation, lines, tab_width as usize))

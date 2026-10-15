@@ -990,3 +990,34 @@ fn previews_skip_decoration() {
     let buffer = TextBuffer::with_text("/* Notes */\n# Title\nlet a = [1, 2]\n".into());
     assert_eq!(buffer.preview(80), "Notes Title let a = [1, 2]");
 }
+
+// MARK: Edits from outside (MCP)
+
+#[test]
+fn outside_edits_keep_the_persons_carets() {
+    let buffer = TextBuffer::with_text("one two three\nfour five\nsix\n".into());
+    // The person's caret is in "five"; an AI replaces "two" and inserts a line before "six".
+    let caret = TextSelection::caret(TextPos::new(1, 6));
+    let ranges = vec![
+        TextSelection { anchor: TextPos::new(2, 0), head: TextPos::new(2, 0) },
+        TextSelection { anchor: TextPos::new(0, 4), head: TextPos::new(0, 7) },
+    ];
+    let result = buffer.edit_from_outside(ranges, vec!["new line\n".into(), "TWO 2".into()], vec![caret]).unwrap();
+    assert_eq!(buffer.text(), "one TWO 2 three\nfour five\nnew line\nsix\n");
+    assert_eq!(result.cursors, vec![caret], "the caret stays in “five”");
+    // The inserted text, in the order the edits were given.
+    assert_eq!(result.inserted[0], TextSelection { anchor: TextPos::new(2, 0), head: TextPos::new(3, 0) });
+    assert_eq!(result.inserted[1], TextSelection { anchor: TextPos::new(0, 4), head: TextPos::new(0, 9) });
+    // One undo step, which puts the caret back where it was.
+    assert_eq!(buffer.undo(), Some(vec![caret]));
+    assert_eq!(buffer.text(), "one two three\nfour five\nsix\n");
+    // Overlapping edits are refused.
+    let overlap = vec![TextSelection { anchor: TextPos::new(0, 0), head: TextPos::new(0, 5) }, TextSelection { anchor: TextPos::new(0, 3), head: TextPos::new(0, 7) }];
+    assert!(buffer.edit_from_outside(overlap, vec!["a".into(), "b".into()], vec![]).is_err());
+    // Lines and columns counted in characters, 1-based.
+    let emoji = TextBuffer::with_text("a😀b\n".into());
+    assert_eq!(emoji.position_for_character(1, 3), Some(TextPos::new(0, 3)));
+    assert_eq!(emoji.position_for_character(1, 4), Some(TextPos::new(0, 4)));
+    assert_eq!(emoji.position_for_character(1, 5), None);
+    assert_eq!(emoji.position_for_character(3, 1), None);
+}

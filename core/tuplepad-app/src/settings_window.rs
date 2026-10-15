@@ -53,6 +53,8 @@ pub fn values(settings: &Settings, fonts: &[(String, String)]) -> SettingsValues
         line_ending: LINE_ENDINGS.iter().position(|e| *e == settings.new_document_line_ending).unwrap_or(0) as i32,
         appearance: APPEARANCES.iter().position(|a| *a == settings.appearance).unwrap_or(0) as i32,
         theme: THEME_IDS.iter().position(|t| *t == settings.theme).unwrap_or(0) as i32,
+        mcp: settings.mcp_enabled,
+        mcp_http: settings.mcp_http,
     }
 }
 
@@ -70,6 +72,8 @@ fn set_bool(settings: &mut Settings, key: &str, value: bool) {
         "current-line" => settings.highlight_current_line = value,
         "minimap" => settings.show_minimap = value,
         "word-completion" => settings.word_completion = value,
+        "mcp" => settings.mcp_enabled = value,
+        "mcp-http" => settings.mcp_http = value,
         _ => eprintln!("unknown setting {key}"),
     }
 }
@@ -140,6 +144,21 @@ impl App {
             {
                 let app = app.clone();
                 window.on_snippet_select(move |index| app.select_snippet(index));
+            }
+            {
+                let app = app.clone();
+                window.on_mcp_client_access(move |name, access| {
+                    let decision = ["edit", "read", "none"].get(access.max(0) as usize).copied().unwrap_or("none");
+                    app.set_mcp_client(&name, Some(decision));
+                });
+            }
+            {
+                let app = app.clone();
+                window.on_mcp_client_forget(move |name| app.set_mcp_client(&name, None));
+            }
+            {
+                let app = app.clone();
+                window.on_copy_text(move |what| app.copy_mcp_setup(&what));
             }
             {
                 let app = app.clone();
@@ -291,6 +310,7 @@ impl App {
             theme.set_theme(main.get_theme());
             theme.set_mono_family(main.get_mono_family());
         }
+        self.show_mcp_settings(&window);
     }
 }
 

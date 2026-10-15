@@ -20,6 +20,8 @@ use crate::{StatusItem, AppWindow, DocItem, MenuEntry, Palette, Theme, fonts, se
 pub struct App {
     /// The app itself, for callbacks created later.
     pub me: RefCell<std::rc::Weak<App>>,
+    /// The built-in MCP server (off unless turned on in Settings).
+    pub mcp: RefCell<crate::mcp::McpState>,
     pub ui: slint::Weak<AppWindow>,
     pub settings_window: RefCell<Option<crate::SettingsWindow>>,
     /// The find bar's matches and status.
@@ -151,6 +153,7 @@ impl App {
         }
         let app = Rc::new(App {
             me: RefCell::new(std::rc::Weak::new()),
+            mcp: RefCell::new(Default::default()),
             ui: ui.as_weak(),
             settings_window: RefCell::new(None),
             font_choices: RefCell::new(Vec::new()),
@@ -250,6 +253,7 @@ impl App {
                 }
             }
         }
+        self.update_mcp();
         self.refresh_settings_window();
         if save && let Some(path) = &self.settings_path {
             settings.save(path);
@@ -521,9 +525,10 @@ impl App {
         self.prime_word_index();
         self.refresh_outline();
         self.refresh_preview();
+        self.mcp_tick();
     }
 
-    fn language_name(&self, doc: &Document) -> String {
+    pub(crate) fn language_name(&self, doc: &Document) -> String {
         doc.buffer.language().and_then(|id| self.language_names.get(&id).cloned()).unwrap_or_else(|| "Plain Text".into())
     }
 
@@ -682,6 +687,7 @@ impl App {
             "file.close" if self.settings_focused() => self.hide_settings(),
             "file.close" => self.close_document(None),
             "app.settings" => self.show_settings(None),
+            "settings.ai" => self.show_settings(Some(4)),
             "view.palette" => self.open_palette(),
             "text.goto" => self.open_palette_with(":"),
             "tools.snippet" => self.open_snippet_list(),
@@ -1418,7 +1424,7 @@ impl App {
 
     // MARK: Dialogs
 
-    fn next_answer(&self) -> Option<String> {
+    pub(crate) fn next_answer(&self) -> Option<String> {
         self.scripted_answers.as_ref()?.borrow_mut().pop_front()
     }
 
@@ -1476,6 +1482,7 @@ impl App {
             return;
         }
         crate::platform::stop_listening();
+        self.stop_mcp();
         self.save_session();
         self.save_settings();
     }

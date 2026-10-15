@@ -14,6 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 tuplepad-core = { path = "../tuplepad-core" }
+tuplepad-mcp = { path = "../tuplepad-mcp" }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 slint = { version = "1.18", features = ["unstable-fontique-011", "unstable-winit-030", "renderer-skia"] }
 parley = "0.11"
 unicode-segmentation = "1"

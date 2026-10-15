@@ -11,7 +11,7 @@ use crate::app::App;
 /// How long a toast stays up.
 const TOAST: Duration = Duration::from_millis(2200);
 
-fn codec(name: &str) -> Option<Codec> {
+pub(crate) fn codec(name: &str) -> Option<Codec> {
     Some(match name {
         "base64" => Codec::Base64,
         "url" => Codec::Url,
