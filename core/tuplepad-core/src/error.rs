@@ -1,5 +1,5 @@
-/// Errors that cross the FFI boundary into Swift.
-#[derive(Debug, thiserror::Error, uniffi::Error)]
+/// What can go wrong in the core, each with a message fit to show people.
+#[derive(Debug, thiserror::Error)]
 pub enum CoreError {
     #[error("{message}")]
     Io { message: String },

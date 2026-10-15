@@ -1,17 +1,12 @@
 [workspace]
 resolver = "3"
 members = ["tuplepad-core", "tuplepad-cli", "tuplepad-app", "tuplepad-mcp"]
-# Local tooling for the first Mac app, not part of the repository.
-exclude = ["uniffi-bindgen"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
 publish = false
-
-[workspace.dependencies]
-uniffi = "0.32"
 
 [profile.release]
 lto = true
@@ -21,18 +16,6 @@ codegen-units = 1
 # Xcode 27 toolchain leaves them in a form macOS 27's dyld refuses to load
 # ("mis-aligned LINKEDIT string pool"). Build-time code doesn't need stripping.
 [profile.release.build-override]
-strip = false
-
-# What `Launch TuplePad.command` builds: fully optimized code, but without whole-program
-# (LTO) optimization and with incremental compiling, so rebuilding after a change takes
-# seconds rather than minutes. `release` stays the one to ship.
-[profile.launch]
-inherits = "release"
-lto = false
-codegen-units = 16
-incremental = true
-
-[profile.launch.build-override]
 strip = false
 
 # Debug builds still need to open huge files quickly: optimize dependencies

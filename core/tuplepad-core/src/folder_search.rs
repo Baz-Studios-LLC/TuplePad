@@ -16,7 +16,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::search::{self, LineMatches, ReplacementPreview, SearchQuery};
 
 /// What and where to search.
-#[derive(uniffi::Record, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct FolderSearchOptions {
     pub folder: String,
     pub query: SearchQuery,
@@ -29,7 +29,7 @@ pub struct FolderSearchOptions {
 }
 
 /// The matches in one file.
-#[derive(uniffi::Record, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct FileMatches {
     pub path: String,
     pub lines: Vec<LineMatches>,
@@ -39,7 +39,7 @@ pub struct FileMatches {
 }
 
 /// How far a folder search has got.
-#[derive(uniffi::Record, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct FolderSearchProgress {
     pub files_searched: u64,
     pub files_matched: u64,
@@ -73,15 +73,12 @@ struct Shared {
 }
 
 /// A search running in the background. Poll `progress` and `take_results` until it's finished.
-#[derive(uniffi::Object)]
 pub struct FolderSearch {
     shared: Arc<Shared>,
 }
 
-#[uniffi::export]
 impl FolderSearch {
     /// Starts searching. Fails right away for an empty or invalid pattern, a bad glob or a missing folder.
-    #[uniffi::constructor]
     pub fn start(options: FolderSearchOptions) -> CoreResult<Arc<Self>> {
         let regex = search::compile(&options.query)?
             .ok_or_else(|| CoreError::InvalidPattern { message: "Type something to search for.".into() })?;
@@ -229,7 +226,6 @@ fn read_text_bytes(path: &std::path::Path) -> std::io::Result<Option<Vec<u8>>> {
 
 /// Replaces every match in a file, keeping its encoding and line endings. The original file is
 /// copied to `backup` first, so the change can be undone. Returns how many matches were replaced.
-#[uniffi::export]
 pub fn replace_in_file(path: String, query: SearchQuery, replacement: String, backup: String) -> CoreResult<u64> {
     let buffer = TextBuffer::open_without_syntax(path.clone())?;
     if buffer.file_info().had_decode_errors {
@@ -244,14 +240,12 @@ pub fn replace_in_file(path: String, query: SearchQuery, replacement: String, ba
 }
 
 /// What replacing every match in a file would change (at most `max_groups` stretches of lines).
-#[uniffi::export]
 pub fn preview_file_replacements(path: String, query: SearchQuery, replacement: String, max_groups: u64) -> CoreResult<Vec<ReplacementPreview>> {
     TextBuffer::open_without_syntax(path)?.replacement_preview(query, replacement, max_groups)
 }
 
 /// Files in a folder for Go to File: paths relative to the folder, sorted, at most `limit`.
 /// Skips what `.gitignore` excludes, hidden files and `.git`.
-#[uniffi::export]
 pub fn list_files(folder: String, limit: u32) -> CoreResult<Vec<String>> {
     let root = std::path::Path::new(&folder);
     if !root.is_dir() {

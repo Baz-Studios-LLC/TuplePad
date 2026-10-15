@@ -64,7 +64,6 @@ fn rewrite<W: std::io::Write>(text: &str, writer: &mut Writer<W>) -> CoreResult<
 }
 
 /// Pretty-prints XML, indented by `indent` spaces (0 means tabs).
-#[uniffi::export]
 pub fn xml_format(text: String, indent: u32) -> CoreResult<String> {
     let (unit, size) = if indent == 0 { (b'\t', 1) } else { (b' ', indent as usize) };
     let mut writer = Writer::new_with_indent(Vec::new(), unit, size);
@@ -75,7 +74,6 @@ pub fn xml_format(text: String, indent: u32) -> CoreResult<String> {
 }
 
 /// XML on one line, without the whitespace between tags.
-#[uniffi::export]
 pub fn xml_linearize(text: String) -> CoreResult<String> {
     let mut writer = Writer::new(Vec::new());
     rewrite(&text, &mut writer)?;
@@ -83,14 +81,13 @@ pub fn xml_linearize(text: String) -> CoreResult<String> {
 }
 
 /// Checks the XML is well-formed; returns nothing when it is.
-#[uniffi::export]
 pub fn xml_validate(text: String) -> Option<CoreError> {
     let mut writer = Writer::new(std::io::sink());
     rewrite(&text, &mut writer).err()
 }
 
 /// One XPath result.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct XPathItem {
     /// "element", "attribute", "text", "comment", "number", "string" or "boolean".
     pub kind: String,
@@ -100,7 +97,6 @@ pub struct XPathItem {
 }
 
 /// Runs an XPath 1.0 expression over the document.
-#[uniffi::export]
 pub fn xml_xpath(text: String, expression: String) -> CoreResult<Vec<XPathItem>> {
     use sxd_xpath::nodeset::Node;
     use sxd_xpath::{Context, Factory, Value};

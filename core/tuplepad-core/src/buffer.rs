@@ -38,14 +38,13 @@ mod files;
 pub use files::{AppendResult, DiskStatus};
 
 /// The result of a search: matches in document order (anchor = start, head = end).
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SearchResults {
     pub matches: Vec<TextSelection>,
     /// The search stopped at the limit; there are more matches.
     pub truncated: bool,
 }
 
-#[derive(uniffi::Object)]
 pub struct TextBuffer {
     state: RwLock<State>,
 }
@@ -75,17 +74,14 @@ struct State {
     csv: Option<char>,
 }
 
-#[uniffi::export]
 impl TextBuffer {
     /// An empty, untitled document.
-    #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
         Self::with_text(String::new())
     }
 
     /// An empty document that will be saved in a chosen encoding and line ending
     /// (the defaults from Settings). Starts unmodified.
-    #[uniffi::constructor]
     pub fn untitled(encoding: TextEncoding, line_ending: LineEnding) -> Arc<Self> {
         let mut state = State::new("", encoding);
         state.line_ending = line_ending;
@@ -93,14 +89,12 @@ impl TextBuffer {
     }
 
     /// An untitled document with initial contents.
-    #[uniffi::constructor]
     pub fn with_text(text: String) -> Arc<Self> {
         Arc::new(TextBuffer { state: RwLock::new(State::new(&text, TextEncoding::utf8())) })
     }
 
     /// Brings back a document from a snapshot written by `write_snapshot`, with the
     /// file, format and modified state it had. Undo history starts fresh.
-    #[uniffi::constructor]
     pub fn restore(
         snapshot_path: String,
         file_path: Option<String>,
@@ -122,7 +116,6 @@ impl TextBuffer {
     }
 
     /// Reads a file from disk, detecting its encoding and line endings.
-    #[uniffi::constructor]
     pub fn open(path: String) -> CoreResult<Arc<Self>> {
         let buffer = Self::open_without_syntax(path)?;
         buffer.write().detect_language();

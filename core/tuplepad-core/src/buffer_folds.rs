@@ -4,7 +4,7 @@ use super::*;
 use super::marks::LineEdit;
 
 /// A foldable (or folded) region: `start` stays visible, `start + 1 ..= end` hide.
-#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FoldRange {
     pub start: u64,
     pub end: u64,
@@ -15,7 +15,6 @@ const MAX_FOLDING_LINES: usize = 400_000;
 /// Indentation folds look this far ahead for the end of a block.
 const MAX_INDENT_SCAN: usize = 20_000;
 
-#[uniffi::export]
 impl TextBuffer {
     /// Regions that start on lines `start_line ..< start_line + count` and can fold.
     pub fn fold_ranges(&self, start_line: u64, count: u64, tab_width: u32) -> Vec<FoldRange> {

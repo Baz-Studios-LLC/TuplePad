@@ -1,11 +1,10 @@
 #!/bin/bash
 # Builds TuplePad (the Slint app) and wraps it in a Mac app bundle: build/TuplePad.app.
 #
-#   scripts/bundle-mac.sh [release|launch|debug] [universal]
+#   scripts/bundle-mac.sh [release|debug] [universal]
 #
 # `universal` builds for Apple silicon and Intel and joins them (needs
 # `rustup target add x86_64-apple-darwin aarch64-apple-darwin`).
-# `launch` (what the launcher uses) is optimized like `release` but rebuilds much faster.
 # Cargo's progress shows on stderr; the bundle's path is the only thing on stdout.
 #
 # The icon is compiled from packaging/mac/AppIcon.icon with actool (as Xcode would), and the

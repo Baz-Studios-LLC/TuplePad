@@ -6,7 +6,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::wrap;
 
 /// Operations on whole lines: the selected lines, or the whole document when nothing is selected.
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LineOperation {
     SortAscending,
     SortDescending,
@@ -39,7 +39,7 @@ impl LineOperation {
     }
 }
 
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaseChange {
     Upper,
     Lower,

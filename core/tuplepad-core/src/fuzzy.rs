@@ -2,7 +2,7 @@
 //! in order in the candidate, and matches at word starts and in runs score higher.
 
 /// One candidate that matched, with where.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuzzyHit {
     /// Index into the candidates passed in.
     pub index: u32,
@@ -23,7 +23,6 @@ const SCATTERED: i32 = 18;
 
 /// Ranks candidates against a query, best first, keeping at most `limit`. Hits far weaker
 /// than the best one are dropped as noise. An empty query matches everything in the original order.
-#[uniffi::export]
 pub fn fuzzy_rank(query: String, candidates: Vec<String>, limit: u32) -> Vec<FuzzyHit> {
     let limit = limit as usize;
     let query: Vec<char> = query.chars().filter(|c| !c.is_whitespace()).collect();

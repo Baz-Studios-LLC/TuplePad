@@ -6,7 +6,7 @@ use super::*;
 use crate::search::{LineMatches, ReplacementPreview};
 
 /// Search results grouped by line, for a results list.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LineResults {
     pub lines: Vec<LineMatches>,
     /// Every match, including any on lines past the limit.
@@ -26,7 +26,6 @@ pub(super) struct LineEdit {
     pub(super) before_line_text: bool,
 }
 
-#[uniffi::export]
 impl TextBuffer {
     /// How many matches there are in the whole document.
     pub fn count_matches(&self, query: SearchQuery) -> CoreResult<u64> {

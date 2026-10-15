@@ -2,7 +2,7 @@
 
 /// Where a tab stop's text is, relative to where the snippet is inserted: a line of the inserted
 /// text, and UTF-16 columns within it (line 0's columns count from the insertion point).
-#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SnippetRange {
     pub line: u32,
     pub start: u32,
@@ -10,12 +10,12 @@ pub struct SnippetRange {
 }
 
 /// A tab stop: every place it appears (typing goes into all of them).
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SnippetStop {
     pub ranges: Vec<SnippetRange>,
 }
 
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SnippetExpansion {
     pub text: String,
     /// In the order Tab visits them: $1, $2, … and $0 last (or the end of the snippet).
@@ -24,7 +24,6 @@ pub struct SnippetExpansion {
 
 /// Expands a snippet body. Lines after the first get `indent` in front, and tabs at the start of
 /// a body line become `indent_unit`.
-#[uniffi::export]
 pub fn expand_snippet(body: String, indent: String, indent_unit: String) -> SnippetExpansion {
     let mut text = String::new();
     // (stop number, start offset, end offset) in UTF-16 units of `text`.

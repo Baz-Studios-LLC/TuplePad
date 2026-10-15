@@ -16,8 +16,8 @@ pub(crate) const MAX_PARSE_BYTES: usize = 8 * 1024 * 1024;
 /// At most this much text is highlighted per request (protects against enormous single lines).
 const MAX_HIGHLIGHT_BYTES: usize = 512 * 1024;
 
-/// The kinds of text the editor colors. Theme colors are chosen on the Swift side.
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// The kinds of text the editor colors. Each theme picks their colors (its `syntax` list).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum HighlightStyle {
     Keyword,
     String,
@@ -45,7 +45,7 @@ pub enum HighlightStyle {
 }
 
 /// A colored run of text within one line. Columns are UTF-16 code units.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HighlightSpan {
     pub line: u64,
     pub start: u64,
@@ -53,7 +53,7 @@ pub struct HighlightSpan {
     pub style: HighlightStyle,
 }
 
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LanguageInfo {
     pub id: String,
     pub name: String,
@@ -192,7 +192,6 @@ static LANGUAGES: &[LanguageDef] = &[
 ];
 
 /// Every language TuplePad can highlight, sorted by name.
-#[uniffi::export]
 pub fn languages() -> Vec<LanguageInfo> {
     let mut list: Vec<_> = LANGUAGES
         .iter()
@@ -204,7 +203,6 @@ pub fn languages() -> Vec<LanguageInfo> {
 }
 
 /// Guesses a language from a file name, then from a `#!` line.
-#[uniffi::export]
 pub fn detect_language(file_name: String, first_line: String) -> Option<String> {
     detect(&file_name, &first_line).map(|l| l.id.to_string())
 }

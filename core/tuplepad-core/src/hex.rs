@@ -4,7 +4,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 use crate::error::{CoreError, CoreResult};
 
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HexRow {
     pub offset: u64,
     /// "48 65 6c 6c 6f  2c 20 77 …" with a gap after eight bytes.
@@ -16,7 +16,6 @@ pub struct HexRow {
 pub const BYTES_PER_ROW: u64 = 16;
 
 /// `count` rows of a file starting at row `first_row`.
-#[uniffi::export]
 pub fn hex_rows(path: String, first_row: u64, count: u64) -> CoreResult<Vec<HexRow>> {
     let mut file = std::fs::File::open(&path).map_err(CoreError::from)?;
     let start = first_row * BYTES_PER_ROW;
@@ -44,7 +43,6 @@ pub fn hex_rows(path: String, first_row: u64, count: u64) -> CoreResult<Vec<HexR
 }
 
 /// A file's size in bytes.
-#[uniffi::export]
 pub fn file_size(path: String) -> CoreResult<u64> {
     Ok(std::fs::metadata(&path).map_err(CoreError::from)?.len())
 }

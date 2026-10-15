@@ -4,7 +4,7 @@ use similar::{Algorithm, DiffOp};
 
 use crate::search::MatchSpan;
 
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiffKind {
     Same,
     /// A line on both sides that differs; its spans mark what changed.
@@ -16,7 +16,7 @@ pub enum DiffKind {
 }
 
 /// One row of the side-by-side view. A side is nil where the other side has a line it lacks.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiffRow {
     pub kind: DiffKind,
     /// 0-based line numbers.
@@ -29,7 +29,7 @@ pub struct DiffRow {
     pub right_spans: Vec<MatchSpan>,
 }
 
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiffResult {
     pub rows: Vec<DiffRow>,
     /// The row where each run of changes starts, for jumping between them.
@@ -39,7 +39,7 @@ pub struct DiffResult {
     pub changed: u64,
 }
 
-#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DiffOptions {
     pub ignore_whitespace: bool,
     pub ignore_case: bool,
@@ -57,7 +57,6 @@ fn split_lines(text: &str) -> Vec<&str> {
 }
 
 /// Compares two texts line by line.
-#[uniffi::export]
 pub fn diff_texts(left: String, right: String, options: DiffOptions) -> DiffResult {
     let old = split_lines(&left);
     let new = split_lines(&right);

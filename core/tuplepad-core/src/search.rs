@@ -6,7 +6,7 @@ use ropey::Rope;
 use crate::error::{CoreError, CoreResult};
 
 /// What to look for.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SearchQuery {
     pub pattern: String,
     pub case_sensitive: bool,
@@ -215,14 +215,14 @@ fn visit_until(
 }
 
 /// Where a match sits in its line, in UTF-16 columns.
-#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MatchSpan {
     pub start: u32,
     pub end: u32,
 }
 
 /// The matches on one line, with a short excerpt of the line to show in search results.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LineMatches {
     /// 0-based.
     pub line: u64,
@@ -293,7 +293,7 @@ fn preview(content: ropey::RopeSlice<'_>, first_match: usize) -> (String, u32) {
 }
 
 /// One changed stretch of lines, before and after a replacement.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReplacementPreview {
     /// 0-based first line of the stretch.
     pub line: u64,

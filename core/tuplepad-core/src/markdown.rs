@@ -7,7 +7,6 @@ use crate::syntax;
 
 /// Markdown (with GitHub-style tables, task lists, strikethrough and footnotes) as HTML. Each
 /// block is preceded by `<span class="tp-line" data-line="N"></span>` (0-based source line).
-#[uniffi::export]
 pub fn markdown_html(text: String) -> String {
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
@@ -77,7 +76,7 @@ fn marker(line: usize) -> Event<'static> {
 }
 
 /// What a block of the native Markdown preview is.
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MarkdownBlockKind {
     Heading,
     Paragraph,
@@ -93,7 +92,7 @@ pub enum MarkdownBlockKind {
 
 /// One block of the preview. `text` is inline Markdown (emphasis, strong, code, links and
 /// strikethrough only), ready for a styled-text renderer.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MarkdownBlock {
     pub kind: MarkdownBlockKind,
     /// The heading level (1–6), or how deeply a list item is nested (0 for the outermost).
@@ -130,7 +129,6 @@ fn escape_inline(text: &str) -> String {
 
 /// The document as blocks for a native preview (headings, paragraphs, lists, quotes, code,
 /// tables, rules and images), each with the source line it starts on, for synced scrolling.
-#[uniffi::export]
 pub fn markdown_blocks(text: String) -> Vec<MarkdownBlock> {
     let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_FOOTNOTES;
     let line_starts: Vec<usize> = std::iter::once(0).chain(text.match_indices('\n').map(|(i, _)| i + 1)).collect();
@@ -320,7 +318,6 @@ pub fn markdown_blocks(text: String) -> Vec<MarkdownBlock> {
 }
 
 /// Syntax colors for a snippet of code in a named language ("rust", "js", …), for code blocks.
-#[uniffi::export]
 pub fn highlight_code(language: String, code: String) -> Vec<crate::HighlightSpan> {
     syntax::highlight_spans(&language, &code).unwrap_or_default()
 }

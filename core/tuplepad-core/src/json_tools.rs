@@ -39,7 +39,6 @@ fn sorted(value: Value) -> Value {
 
 /// Pretty-prints JSON, indented by `indent` spaces (0 means tabs), keeping key order and
 /// number precision unless `sort_keys`.
-#[uniffi::export]
 pub fn json_format(text: String, indent: u32, sort_keys: bool) -> CoreResult<String> {
     let mut value = parse(&text)?;
     if sort_keys {
@@ -56,18 +55,16 @@ pub fn json_format(text: String, indent: u32, sort_keys: bool) -> CoreResult<Str
 }
 
 /// JSON on one line, with no extra spaces.
-#[uniffi::export]
 pub fn json_minify(text: String) -> CoreResult<String> {
     serde_json::to_string(&parse(&text)?).map_err(|e| CoreError::invalid(e.to_string()))
 }
 
 /// Checks the JSON; returns nothing when it's valid.
-#[uniffi::export]
 pub fn json_validate(text: String) -> Option<CoreError> {
     parse(&text).err()
 }
 
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JsonKind {
     Object,
     Array,
@@ -78,7 +75,7 @@ pub enum JsonKind {
 }
 
 /// One node of the JSON tree view.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct JsonTreeItem {
     pub id: u32,
     pub parent: Option<u32>,
@@ -100,7 +97,6 @@ fn json_tree_sitter(text: &str) -> Option<tree_sitter::Tree> {
 
 /// The document as a tree (at most `limit` nodes), from its syntax tree, so it works on JSON
 /// with mistakes too.
-#[uniffi::export]
 pub fn json_tree(text: String, limit: u32) -> Vec<JsonTreeItem> {
     let Some(tree) = json_tree_sitter(&text) else { return Vec::new() };
     let mut items = Vec::new();
@@ -174,7 +170,6 @@ fn unquote(key: &str) -> String {
 }
 
 /// The path to the value at a byte offset, like `$.store.books[2].title`.
-#[uniffi::export]
 pub fn json_path_at(text: String, line: u64, utf16_column: u64) -> Option<String> {
     let tree = json_tree_sitter(&text)?;
     // Line and UTF-16 column to a byte offset.

@@ -95,6 +95,9 @@ def main():
     os.symlink("/Applications", os.path.join(stage, "Applications"))
     run("hdiutil", "create", "-volname", "TuplePad", "-srcfolder", stage, "-ov", "-format", "UDZO", "-fs", "HFS+", os.path.join(DIST, f"TuplePad-{version}-mac.dmg"))
     shutil.rmtree(stage)
+    # The app is in the zip and the disk image now; a copy left in build/ would show up in
+    # Spotlight beside the installed TuplePad.
+    shutil.rmtree(app)
 
     # What the updater installs, signed for each system.
     updater = {"mac": f"TuplePad-{version}-mac.zip", "windows-x64": f"TuplePad-{version}-windows-x64-setup.exe", "linux-x64": f"TuplePad-{version}-linux-x64.AppImage"}

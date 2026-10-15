@@ -8,14 +8,14 @@ use crate::transform::{self, CaseChange, LineOperation};
 use crate::wrap::{self, WrappedLine};
 
 /// A bracket at the caret and its partner.
-#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BracketMatch {
     pub open: TextPos,
     pub close: TextPos,
 }
 
 /// The result of edits made from outside the editor (an AI tool over MCP).
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OutsideEdit {
     /// The person's carets afterward, moved along with their text.
     pub cursors: Vec<TextSelection>,
@@ -171,7 +171,6 @@ impl State {
     }
 }
 
-#[uniffi::export]
 impl TextBuffer {
     /// Applies edits made from outside the editor as one undo step. Unlike typing, the person's
     /// carets stay with their text rather than jumping to the edits. The ranges must not overlap.

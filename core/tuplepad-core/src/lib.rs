@@ -1,6 +1,4 @@
-//! TuplePad's text engine. Swift talks to it through UniFFI-generated bindings.
-
-uniffi::setup_scaffolding!();
+//! TuplePad's text engine: buffers, editing, undo, encodings, syntax, search and the built-in tools.
 
 mod buffer;
 mod codec;

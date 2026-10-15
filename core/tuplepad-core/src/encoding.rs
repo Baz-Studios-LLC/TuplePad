@@ -6,7 +6,7 @@ use std::io::Write;
 use crate::error::{CoreError, CoreResult};
 
 /// How a document's bytes map to text, as shown in the status bar.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextEncoding {
     /// The WHATWG name, e.g. "UTF-8", "UTF-16LE", "windows-1252", "Shift_JIS".
     pub name: String,
@@ -163,7 +163,6 @@ pub(crate) fn write_encoded<'a>(
 }
 
 /// Every encoding TuplePad offers in its menus, in display order.
-#[uniffi::export]
 pub fn supported_encodings() -> Vec<String> {
     [
         "UTF-8",

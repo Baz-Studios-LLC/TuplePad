@@ -21,7 +21,7 @@ impl DiskStamp {
 }
 
 /// How the file on disk compares to the last time the document matched it.
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiskStatus {
     /// The document has never been saved to a file.
     NoFile,
@@ -33,7 +33,7 @@ pub enum DiskStatus {
 }
 
 /// The result of pulling new lines from a growing file.
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppendResult {
     /// This many lines were added at the end.
     Appended { lines: u64 },
@@ -84,7 +84,6 @@ fn decode_as(bytes: &[u8], encoding: &TextEncoding) -> CoreResult<(String, TextE
     Ok((text.into_owned(), TextEncoding { name: resolved.name().to_string(), has_bom: bom }, had_errors))
 }
 
-#[uniffi::export]
 impl TextBuffer {
     /// Compares the file on disk with the last time the document matched it.
     pub fn disk_status(&self) -> DiskStatus {

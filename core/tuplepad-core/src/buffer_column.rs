@@ -4,7 +4,7 @@ use super::*;
 use super::tools::CharEdit;
 use unicode_width::UnicodeWidthChar;
 
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NumberBase {
     Decimal,
     Hex,
@@ -13,7 +13,7 @@ pub enum NumberBase {
     Binary,
 }
 
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NumberPadding {
     None,
     /// Leading zeros, to the width of the longest number.
@@ -23,7 +23,7 @@ pub enum NumberPadding {
 }
 
 /// What the column editor inserts on each line.
-#[derive(uniffi::Enum, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ColumnInsert {
     Text { text: String },
     /// `start`, `start + step`, … with each number repeated `repeat` times.
@@ -31,7 +31,6 @@ pub enum ColumnInsert {
 }
 
 /// The first `count` values the column editor would insert, for a preview.
-#[uniffi::export]
 pub fn column_values(insert: ColumnInsert, count: u32) -> Vec<String> {
     values(&insert, count as usize)
 }
@@ -72,7 +71,6 @@ fn format_digits(value: u64, base: NumberBase) -> String {
     }
 }
 
-#[uniffi::export]
 impl TextBuffer {
     /// Inserts text or numbers down a column, as one undo step. With several carets, at each
     /// one (replacing any selection). With one selection over several lines, at its start column

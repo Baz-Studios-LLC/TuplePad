@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use ropey::Rope;
 use tree_sitter::{Query, QueryCursor, StreamingIterator, Tree};
 
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SymbolKind {
     Function,
     /// A function inside a type.
@@ -20,7 +20,7 @@ pub enum SymbolKind {
 }
 
 /// One entry in the outline.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OutlineItem {
     pub name: String,
     pub kind: SymbolKind,

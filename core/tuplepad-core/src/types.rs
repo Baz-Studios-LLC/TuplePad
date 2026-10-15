@@ -1,8 +1,8 @@
 use crate::encoding::TextEncoding;
 
 /// A position in a document. `column` counts UTF-16 code units from the start
-/// of the line, which is what AppKit and Core Text index text by.
-#[derive(uniffi::Record, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// of the line, so positions match what text layout and the MCP tools count.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TextPos {
     pub line: u64,
     pub column: u64,
@@ -15,7 +15,7 @@ impl TextPos {
 }
 
 /// A selection or caret. `head` is where the caret is; `anchor` is where the selection started.
-#[derive(uniffi::Record, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct TextSelection {
     pub anchor: TextPos,
     pub head: TextPos,
@@ -36,7 +36,7 @@ impl TextSelection {
 }
 
 /// What kind of change an edit is, so consecutive keystrokes undo together.
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditKind {
     /// Typing characters; a run of typing undoes as one step.
     Typing,
@@ -48,7 +48,7 @@ pub enum EditKind {
     Other,
 }
 
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LineEnding {
     Lf,
     CrLf,
@@ -65,13 +65,12 @@ impl LineEnding {
     }
 }
 
-#[uniffi::export]
 pub fn line_ending_text(ending: LineEnding) -> String {
     ending.as_str().to_string()
 }
 
 /// Facts about a document shown in the status bar.
-#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FileInfo {
     pub path: Option<String>,
     pub encoding: TextEncoding,

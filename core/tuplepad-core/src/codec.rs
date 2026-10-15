@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256, Sha512};
 
 use crate::error::{CoreError, CoreResult};
 
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Codec {
     Base64,
     Url,
@@ -19,7 +19,6 @@ pub enum Codec {
 }
 
 /// Encodes text (as UTF-8 bytes where the codec works on bytes).
-#[uniffi::export]
 pub fn encode_text(codec: Codec, text: String) -> String {
     match codec {
         Codec::Base64 => base64::engine::general_purpose::STANDARD.encode(text.as_bytes()),
@@ -31,7 +30,6 @@ pub fn encode_text(codec: Codec, text: String) -> String {
 }
 
 /// Decodes text. Fails when the input isn't valid for the codec or doesn't decode to text.
-#[uniffi::export]
 pub fn decode_text(codec: Codec, text: String) -> CoreResult<String> {
     let bytes = match codec {
         Codec::Base64 => {
@@ -153,7 +151,7 @@ fn quoted_printable_decode(text: &str) -> CoreResult<Vec<u8>> {
     Ok(out)
 }
 
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HashAlgorithm {
     Md5,
     Sha1,
@@ -183,13 +181,11 @@ fn hash_reader(algorithm: HashAlgorithm, reader: &mut dyn Read) -> std::io::Resu
 }
 
 /// The hash of text's UTF-8 bytes, as lowercase hex.
-#[uniffi::export]
 pub fn hash_text(algorithm: HashAlgorithm, text: String) -> String {
     hash_reader(algorithm, &mut text.as_bytes()).unwrap_or_default()
 }
 
 /// The hash of a file's bytes, read in chunks.
-#[uniffi::export]
 pub fn hash_file(algorithm: HashAlgorithm, path: String) -> CoreResult<String> {
     let mut file = std::fs::File::open(&path).map_err(CoreError::from)?;
     Ok(hash_reader(algorithm, &mut file)?)

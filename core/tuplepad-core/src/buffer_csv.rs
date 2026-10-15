@@ -106,7 +106,6 @@ impl State {
     }
 }
 
-#[uniffi::export]
 impl TextBuffer {
     /// The CSV delimiter in use, or nil if the document isn't CSV.
     pub fn csv_delimiter(&self) -> Option<String> {

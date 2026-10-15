@@ -7,7 +7,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 /// Where a long line wraps.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WrappedLine {
     /// UTF-16 columns where each continuation row starts. Empty if the line fits on one row.
     pub breaks: Vec<u32>,
