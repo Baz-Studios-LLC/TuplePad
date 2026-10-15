@@ -38,6 +38,10 @@ sleep 2
 xdotool key --window "$WINDOW" End
 sleep 2
 
+# Where Orca is right now (if it's waiting on something, this shows what).
+sudo env "PATH=$PATH" py-spy dump --pid "$ORCA" > "$WORK/orca-stack.txt" 2>&1 || true
+echo "--- Orca's stack"; grep -v "^$" "$WORK/orca-stack.txt" | head -60
+
 # What AT-SPI says about the editor (its states decide whether Orca follows it).
 /usr/bin/python3 - <<'PY'
 import pyatspi
