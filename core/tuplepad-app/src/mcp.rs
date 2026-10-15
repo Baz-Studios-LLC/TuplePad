@@ -89,22 +89,41 @@ pub fn socket_path() -> PathBuf {
     crate::settings::data_folder().join("Slint").join(format!("{name}.sock"))
 }
 
-/// The `tuplepad` command that bridges a client's stdio to the app: the one inside the app
-/// (Contents/Helpers on a Mac), or beside the app's binary.
+/// The `tuplepad` command that bridges a client's stdio to the app: the installed one (File ▸
+/// Install Command Line Tool) if there is one, else the one inside the app (Contents/Helpers on a
+/// Mac) or beside its binary.
 pub fn bridge_path() -> PathBuf {
-    let name = if cfg!(windows) { "tuplepad.exe" } else { "tuplepad" };
+    installed_command().unwrap_or_else(bundled_command)
+}
+
+fn command_name() -> &'static str {
+    if cfg!(windows) { "tuplepad.exe" } else { "tuplepad" }
+}
+
+fn bundled_command() -> PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
     let folder = exe.parent().map(Path::to_path_buf).unwrap_or_default();
-    let helpers = folder.parent().map(|contents| contents.join("Helpers").join(name));
+    let helpers = folder.parent().map(|contents| contents.join("Helpers").join(command_name()));
     match helpers {
         Some(path) if cfg!(target_os = "macos") && path.exists() => path,
-        _ => folder.join(name),
+        _ => folder.join(command_name()),
     }
+}
+
+/// `tuplepad` on the PATH, or where Install Command Line Tool puts it (apps opened from Finder
+/// get a short PATH, so those folders are checked too).
+fn installed_command() -> Option<PathBuf> {
+    let path = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default();
+    let known = if cfg!(unix) { vec![PathBuf::from("/usr/local/bin"), PathBuf::from("/opt/homebrew/bin")] } else { Vec::new() };
+    path.into_iter().chain(known).map(|folder| folder.join(command_name())).find(|p| p.is_file())
 }
 
 /// What adds TuplePad to Claude Code.
 fn claude_code_command() -> String {
-    let path = bridge_path().to_string_lossy().into_owned();
+    if installed_command().is_some() {
+        return "claude mcp add tuplepad -- tuplepad mcp".into();
+    }
+    let path = bundled_command().to_string_lossy().into_owned();
     let quoted = if path.contains([' ', '\'', '"', '(', ')']) { format!("'{}'", path.replace('\'', "'\\''")) } else { path };
     format!("claude mcp add tuplepad -- {quoted} mcp")
 }

@@ -595,11 +595,17 @@ fn run_next(app: Rc<App>, runner: Shared) {
             }
         }
         "shot" | "signal" => {
-            // In front, so the system draws it (macOS stops redrawing windows behind others).
+            // The Settings window when it's open, else the main one; in front, so the system draws it
+            // (macOS stops redrawing windows behind others).
+            let settings = app.settings_window.borrow().as_ref().filter(|w| w.window().is_visible()).map(|w| w.clone_strong());
+            let target = match &settings {
+                Some(settings) => settings.window(),
+                None => ui.window(),
+            };
             if kind == "shot" {
                 use slint::winit_030::WinitWindowAccessor;
-                ui.window().with_winit_window(|window| window.focus_window());
-                ui.window().request_redraw();
+                target.with_winit_window(|window| window.focus_window());
+                target.request_redraw();
             }
             // A solid caret, not one caught mid-blink.
             app.editor.borrow_mut().touch();
@@ -607,7 +613,10 @@ fn run_next(app: Rc<App>, runner: Shared) {
             // A path, or {"path", "timeout"} in seconds for a signal that takes longer than 10.
             let signal = PathBuf::from(arg.as_str().or_else(|| arg.get("path").and_then(Value::as_str)).unwrap_or("shot"));
             let limit = Duration::from_secs(arg.get("timeout").and_then(Value::as_u64).unwrap_or(10));
-            let _ = std::fs::write(&signal, "");
+            // A shot's signal says which window to capture (`screencapture -l <number>`): the
+            // Settings window if it's in front, else the main one.
+            let window = window_number(target);
+            let _ = std::fs::write(&signal, window.map(|n| n.to_string()).unwrap_or_default());
             let done = signal.with_extension("done");
             return wait_for(app, runner, done, Instant::now(), limit);
         }
@@ -681,6 +690,26 @@ fn wait_for(app: Rc<App>, runner: Shared, path: PathBuf, since: Instant, limit: 
         return later(app, runner, 0);
     }
     slint::Timer::single_shot(Duration::from_millis(100), move || wait_for(app, runner, path, since, limit));
+}
+
+/// The system's number for a window, which `screencapture -l` takes.
+#[cfg(target_os = "macos")]
+fn window_number(window: &slint::Window) -> Option<isize> {
+    use slint::winit_030::WinitWindowAccessor;
+    use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    window
+        .with_winit_window(|w| {
+            let RawWindowHandle::AppKit(handle) = w.window_handle().ok()?.as_raw() else { return None };
+            // SAFETY: winit's handle points at the window's live content view.
+            let view: &objc2_app_kit::NSView = unsafe { handle.ns_view.cast().as_ref() };
+            view.window().map(|window| window.windowNumber())
+        })
+        .flatten()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn window_number(_window: &slint::Window) -> Option<isize> {
+    None
 }
 
 /// Every visible element with an accessible role, as a screen reader would get it.

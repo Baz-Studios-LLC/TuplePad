@@ -237,13 +237,15 @@ export component CompareView inherits Rectangle {
             return;
         }
         list.content-y = -max(0px, ToolViewBridge.change-row * root.row-height - list.visible-height / 3);
-        // Sideways: from the left edge if the change fits there, else with it a third of the way in.
+        // Sideways: from the left edge if the change fits there; otherwise only as far as it takes
+        // to show the change's end (or its start, if it's wider than the view).
         let start = ToolViewBridge.change-column * root.char-width;
         let end = ToolViewBridge.change-end * root.char-width;
+        let margin = 2 * root.char-width;
         if end <= root.text-width {
             root.scroll-x = 0;
         } else if start < root.scroll-x || end > root.scroll-x + root.text-width {
-            root.scroll-x = clamp(start - root.text-width / 3, 0px, root.max-scroll-x);
+            root.scroll-x = clamp(end - start > root.text-width - margin ? start - margin : end - root.text-width + margin, 0px, root.max-scroll-x);
         }
     }
     changed max-scroll-x => { root.scroll-x = min(root.scroll-x, root.max-scroll-x); }
