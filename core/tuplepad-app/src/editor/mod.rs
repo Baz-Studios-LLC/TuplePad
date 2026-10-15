@@ -28,8 +28,13 @@ use layout::Layouter;
 use rows::RowMap;
 
 const BLINK: Duration = Duration::from_millis(530);
-/// How much of the caret's line, on each side of it, the hidden text input holds.
+/// How much of each line, around the caret, the hidden text input holds.
 const MIRROR_COLUMNS: u64 = 500;
+/// How many lines above and below the caret it holds. Its window moves only when the caret
+/// comes within `MIRROR_MARGIN` lines of its edge, so moving up and down mostly moves the input's
+/// own caret through text it already has, which is what makes screen readers read the new line.
+const MIRROR_LINES: u64 = 10;
+const MIRROR_MARGIN: u64 = 2;
 const SCROLLBAR_LINGER: Duration = Duration::from_millis(900);
 /// How long the caret rests before other occurrences of its word light up.
 const SMART_HIGHLIGHT_DELAY: Duration = Duration::from_millis(350);
@@ -128,6 +133,8 @@ pub struct Editor {
     /// caret's byte offset in it, so screen readers read the text and input methods see context.
     mirror: (String, i32),
     mirror_sync: i32,
+    /// Which lines it holds (the document, first and last line).
+    mirror_window: (String, u64, u64),
     drag: Option<Drag>,
     /// A column selection in progress: the line and x where it started.
     column_drag: Option<(u64, f32)>,
@@ -248,6 +255,7 @@ impl Editor {
             composed: false,
             mirror: (String::new(), -1),
             mirror_sync: 0,
+            mirror_window: (String::new(), 0, 0),
             drag: None,
             column_drag: None,
             text_drag: None,
@@ -1065,19 +1073,52 @@ impl Editor {
             let label = format!("Editor, {}", self.doc().name());
             let line: String = buffer.line_slice(head.line, 0, 2_000);
             let column = buffer.line_slice(head.line, 0, head.column).chars().count() + 1;
-            let position = format!("Line {} of {}, column {}", head.line + 1, buffer.line_count(), column);
+            // The line, not the column: screen readers speak every change to it, and the caret
+            // moving along a line already says which character it's on.
+            let _ = column;
+            let position = format!("Line {} of {}", head.line + 1, buffer.line_count());
             put!(bridge, self.pane, set_a11y_label, set_a11y_label_2, label.into());
             put!(bridge, self.pane, set_a11y_line, set_a11y_line_2, line.into());
             put!(bridge, self.pane, set_a11y_position, set_a11y_position_2, position.into());
-            // The hidden text input holds the caret's line, so screen readers read it (and announce
-            // the caret moving through it) and input methods see the text around the caret. On a
-            // huge line, only the part around the caret.
-            let from = head.column.saturating_sub(MIRROR_COLUMNS);
-            let text = buffer.line_slice(head.line, from, head.column + MIRROR_COLUMNS);
-            let cursor = buffer.line_slice(head.line, from, head.column).len() as i32;
+            // The hidden text input holds the lines around the caret, with its own caret at the
+            // editor's: screen readers read the text and the line the caret moves to, and input
+            // methods see the text around the caret. Huge lines are cut to the part around the caret.
+            let line_count = buffer.line_count().max(1);
+            let doc_id = self.doc().id.clone();
+            let (id, first, last) = &self.mirror_window;
+            // Kept while the caret is inside it and not near an edge that isn't the document's.
+            let keep = *id == doc_id
+                && *last < line_count
+                && head.line >= *first
+                && head.line <= *last
+                && (*first == 0 || head.line >= first + MIRROR_MARGIN)
+                && (*last == line_count - 1 || head.line + MIRROR_MARGIN <= *last);
+            let (first, last) = if keep {
+                (*first, *last)
+            } else {
+                (head.line.saturating_sub(MIRROR_LINES), (head.line + MIRROR_LINES).min(line_count - 1))
+            };
+            self.mirror_window = (doc_id, first, last);
+            let mut text = String::new();
+            let mut cursor = 0;
+            for line in first..=last {
+                if line > first {
+                    text.push('\n');
+                }
+                if line == head.line {
+                    let from = head.column.saturating_sub(MIRROR_COLUMNS);
+                    cursor = text.len() + buffer.line_slice(line, from, head.column).len();
+                    text.push_str(&buffer.line_slice(line, from, head.column + MIRROR_COLUMNS));
+                } else {
+                    text.push_str(&buffer.line_slice(line, 0, MIRROR_COLUMNS * 2));
+                }
+            }
+            let cursor = cursor as i32;
             if self.mirror.0 != text || self.mirror.1 != cursor {
                 put!(bridge, self.pane, set_input_text, set_input_text_2, text.as_str().into());
                 put!(bridge, self.pane, set_input_cursor, set_input_cursor_2, cursor);
+                put!(bridge, self.pane, set_input_line, set_input_line_2, (head.line - first) as i32);
+                put!(bridge, self.pane, set_input_lines, set_input_lines_2, (last - first + 1) as i32);
                 self.mirror_sync += 1;
                 put!(bridge, self.pane, set_input_sync, set_input_sync_2, self.mirror_sync);
                 self.mirror = (text, cursor);

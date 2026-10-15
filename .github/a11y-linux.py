@@ -79,8 +79,8 @@ if unnamed:
     problems.append(f"controls without a name: {unnamed}")
 if not editor:
     problems.append("no editor named 'Editor, notes.md'")
-elif editor["text"] != "# Notes":
-    problems.append(f"the editor exposes {editor['text']!r}, not its line '# Notes'")
+elif not (editor["text"] or "").startswith("# Notes"):
+    problems.append(f"the editor exposes {editor['text']!r}, not its text starting '# Notes'")
 if problems:
     sys.exit("\n".join(problems))
 print(f"Orca gets {len(tree)} elements; every control is named, and the editor reads its line.")

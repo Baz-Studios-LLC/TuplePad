@@ -78,6 +78,7 @@ pane_view! {
     composed: bool = false,
     mirror: (String, i32) = (String::new(), -1),
     mirror_sync: i32 = 0,
+    mirror_window: (String, u64, u64) = (String::new(), 0, 0),
     drag: Option<super::Drag> = None,
     column_drag: Option<(u64, f32)> = None,
     text_drag: Option<super::TextDrag> = None,

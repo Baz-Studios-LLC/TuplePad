@@ -161,6 +161,11 @@ export global EditorBridge {
     // Bumped whenever Rust sets them, so the input puts its caret there.
     in property <int> input-sync;
     in property <int> input-sync-2;
+    // Which of its lines the caret is on, and how many it holds (to place it so its caret is the editor's).
+    in property <int> input-line;
+    in property <int> input-line-2;
+    in property <int> input-lines: 1;
+    in property <int> input-lines-2: 1;
     callback preedit(pane: int, text: string);
     callback pointer-down(pane: int, x: length, y: length, modifiers: KeyboardModifiers);
     callback pointer-drag(pane: int, x: length, y: length);
@@ -237,6 +242,8 @@ export component EditorView inherits Rectangle {
     in-out property <string> input-text;
     property <int> input-cursor: root.pane == 0 ? EditorBridge.input-cursor : EditorBridge.input-cursor-2;
     property <int> input-sync: root.pane == 0 ? EditorBridge.input-sync : EditorBridge.input-sync-2;
+    property <int> input-line: root.pane == 0 ? EditorBridge.input-line : EditorBridge.input-line-2;
+    property <int> input-lines: root.pane == 0 ? EditorBridge.input-lines : EditorBridge.input-lines-2;
     changed input-sync => { input.set-selection-offsets(root.input-cursor, root.input-cursor); }
     property <[Row]> rows: root.pane == 0 ? EditorBridge.rows : EditorBridge.rows-2;
     property <[Caret]> carets: root.pane == 0 ? EditorBridge.carets : EditorBridge.carets-2;
@@ -505,17 +512,20 @@ export component EditorView inherits Rectangle {
             accessible-description: root.pane == 0 ? EditorBridge.a11y-position : EditorBridge.a11y-position-2;
             text <=> root.input-text;
             x: root.ime-x - root.scroll-x;
-            y: root.row-y(root.ime-row);
+            // Its caret line sits on the editor's caret row, so input methods open there.
+            property <length> line-height: self.preferred-height / max(1, root.input-lines);
+            y: root.row-y(root.ime-row) + (root.lh - self.line-height) / 2 - root.input-line * self.line-height;
             width: 2px;
-            height: root.lh;
+            height: self.preferred-height;
             color: transparent;
             selection-background-color: transparent;
             selection-foreground-color: transparent;
             text-cursor-width: 0px;
             font-family: root.font-family;
             font-size: EditorBridge.font-size;
-            single-line: true;
-            vertical-alignment: center;
+            single-line: false;
+            wrap: no-wrap;
+            vertical-alignment: top;
             changed has-focus => { EditorBridge.focus-changed(root.pane, self.has-focus); }
             key-pressed(event) => {
                 if EditorBridge.key(root.pane, event) {

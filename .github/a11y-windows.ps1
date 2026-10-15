@@ -1,5 +1,5 @@
 # What Narrator gets from TuplePad: its UI Automation tree, read with Windows' own UIA client.
-# Fails if a control has no name, or the editor doesn't expose its document's line.
+# Fails if a control has no name, or the editor doesn't expose the text around its caret.
 #
 #   powershell -File .github/a11y-windows.ps1 core\target\release\tuplepad-app.exe
 param([string]$App)
@@ -46,5 +46,5 @@ $editor = $tree | Where-Object { $_.type -eq "Edit" -and $_.name -eq "Editor, no
 if ($tree.Count -le 10) { throw "Narrator would get almost nothing: $($tree.Count) elements" }
 if ($unnamed.Count -gt 0) { throw "Controls without a name: $($unnamed | Out-String)" }
 if (-not $editor) { throw "No editor named 'Editor, notes.md'" }
-if ($editor.value -ne "# Notes") { throw "The editor exposes '$($editor.value)', not its line '# Notes'" }
+if (-not "$($editor.value)".StartsWith("# Notes")) { throw "The editor exposes '$($editor.value)', not its text starting '# Notes'" }
 "Narrator gets $($tree.Count) elements; every control is named, and the editor reads its line."
