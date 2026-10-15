@@ -619,6 +619,36 @@ fn run_next(app: Rc<App>, runner: Shared) {
             }
             None => app.close_shortcuts(),
         },
+        // {"a11y": path}: what screen readers see, every element with an accessible role
+        // (debug builds only: they carry the element info).
+        "a11y" => {
+            let mut elements = accessibility_tree(&ui);
+            if let Some(settings) = app.settings_window.borrow().as_ref() {
+                if settings.window().is_visible() {
+                    elements.extend(accessibility_tree(settings).into_iter().map(|mut e| {
+                        e["window"] = json!("settings");
+                        e
+                    }));
+                }
+            }
+            if let Some(path) = arg.as_str() {
+                let _ = std::fs::write(path, serde_json::to_string_pretty(&elements).unwrap_or_default());
+            }
+        }
+        // {"a11yPress": "label"}: what a screen reader's "press" does to the element with that label.
+        "a11yPress" => {
+            let label = arg.as_str().unwrap_or_default();
+            let mut found = i_slint_backend_testing::ElementHandle::find_by_accessible_label(&ui, label).collect::<Vec<_>>();
+            if found.is_empty()
+                && let Some(settings) = app.settings_window.borrow().as_ref()
+            {
+                found = i_slint_backend_testing::ElementHandle::find_by_accessible_label(settings, label).collect();
+            }
+            match found.first() {
+                Some(element) => element.invoke_accessible_default_action(),
+                None => eprintln!("a11yPress: nothing is labeled “{label}”"),
+            }
+        }
         "benchScroll" => return bench_scroll(app, runner, arg),
         "benchJump" => return bench_jump(app, runner, arg),
         "benchType" => return bench_type(app, runner, arg),
@@ -651,6 +681,38 @@ fn wait_for(app: Rc<App>, runner: Shared, path: PathBuf, since: Instant, limit: 
         return later(app, runner, 0);
     }
     slint::Timer::single_shot(Duration::from_millis(100), move || wait_for(app, runner, path, since, limit));
+}
+
+/// Every visible element with an accessible role, as a screen reader would get it.
+fn accessibility_tree(root: &impl i_slint_backend_testing::ElementRoot) -> Vec<Value> {
+    use i_slint_backend_testing::{AccessibleRole, ElementQuery};
+    ElementQuery::from_root(root)
+        .match_descendants()
+        .find_all()
+        .into_iter()
+        .filter(|e| e.accessible_role().is_some_and(|r| r != AccessibleRole::None))
+        .filter(|e| e.computed_opacity() > 0.0 && e.size().width > 0.0 && e.size().height > 0.0)
+        // The search can reach an element more than once.
+        .filter({
+            let mut seen = std::collections::HashSet::new();
+            move |e| {
+                let (p, z) = (e.absolute_position(), e.size());
+                seen.insert(format!("{:?}{:?}{}{}{}{}", e.accessible_role(), e.accessible_label(), p.x, p.y, z.width, z.height))
+            }
+        })
+        .map(|e| {
+            json!({
+                "role": format!("{:?}", e.accessible_role().unwrap_or(AccessibleRole::None)),
+                "label": e.accessible_label().map(|l| l.to_string()).unwrap_or_default(),
+                "value": e.accessible_value().map(|v| v.to_string()),
+                "description": e.accessible_description().map(|v| v.to_string()).filter(|d| !d.is_empty()),
+                "checked": e.accessible_checked(),
+                "enabled": e.accessible_enabled(),
+                "type": e.type_name().map(|t| t.to_string()),
+                "id": e.id().map(|t| t.to_string()),
+            })
+        })
+        .collect()
 }
 
 fn dump(app: &App, ui: &AppWindow) -> Value {
@@ -703,6 +765,7 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         json!({
             "open": bridge.get_open(),
             "replace_bar": bridge.get_show_replace(),
+            "case_sensitive": bridge.get_case_sensitive(),
             "query": bridge.get_query().as_str(),
             "status": bridge.get_status().as_str(),
             "error": bridge.get_error(),

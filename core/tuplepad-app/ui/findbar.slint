@@ -29,7 +29,15 @@ export component SmallButton inherits Rectangle {
     in property <bool> on;
     in property <string> tooltip;
     in property <bool> enabled: true;
+    // An option that's on or off (Match Case), rather than an action.
+    in property <bool> checkable;
     callback clicked;
+    accessible-role: button;
+    accessible-label: root.tooltip != "" ? root.tooltip : root.label;
+    accessible-checkable: root.checkable;
+    accessible-checked: root.on;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
     opacity: root.enabled ? 1 : 0.4;
     width: root.label != "" ? 30px : 28px;
     height: 26px;
@@ -49,6 +57,7 @@ export component SmallButton inherits Rectangle {
         stroke-line-join: round;
     }
     if root.label != "": Text {
+        accessible-role: none;
         text: root.label;
         font-size: 12px;
         font-weight: 700;
@@ -96,6 +105,8 @@ export component InputField inherits FieldBox {
         Rectangle {
             horizontal-stretch: 1;
             field := TextInput {
+                accessible-label: root.placeholder;
+                accessible-placeholder-text: root.placeholder;
                 width: parent.width;
                 height: parent.height;
                 text <=> root.text;
@@ -176,6 +187,9 @@ export component FindBar inherits Rectangle {
             SmallButton {
                 y: 2px;
                 icon: FindBridge.show-replace ? "M6 9l6 6 6-6" : "M9 6l6 6-6 6";
+                tooltip: "Show Replace";
+                checkable: true;
+                on: FindBridge.show-replace;
                 clicked => { FindBridge.show-replace = !FindBridge.show-replace; }
             }
             FieldBox {
@@ -188,6 +202,7 @@ export component FindBar inherits Rectangle {
                     Rectangle {
                         horizontal-stretch: 1;
                         query-field := TextInput {
+                            accessible-label: "Find";
                             width: parent.width;
                             height: parent.height;
                             text <=> FindBridge.query;
@@ -226,15 +241,16 @@ export component FindBar inherits Rectangle {
                     }
                 }
             }
-            SmallButton { y: 2px; label: "Aa"; on: FindBridge.case-sensitive; clicked => { FindBridge.case-sensitive = !FindBridge.case-sensitive; FindBridge.changed(); } }
-            SmallButton { y: 2px; label: "W"; on: FindBridge.whole-word; clicked => { FindBridge.whole-word = !FindBridge.whole-word; FindBridge.changed(); } }
-            SmallButton { y: 2px; label: ".*"; on: FindBridge.regex; clicked => { FindBridge.regex = !FindBridge.regex; FindBridge.changed(); } }
+            SmallButton { y: 2px; label: "Aa"; tooltip: "Match Case"; checkable: true; on: FindBridge.case-sensitive; clicked => { FindBridge.case-sensitive = !FindBridge.case-sensitive; FindBridge.changed(); } }
+            SmallButton { y: 2px; label: "W"; tooltip: "Whole Words"; checkable: true; on: FindBridge.whole-word; clicked => { FindBridge.whole-word = !FindBridge.whole-word; FindBridge.changed(); } }
+            SmallButton { y: 2px; label: ".*"; tooltip: "Regular Expression"; checkable: true; on: FindBridge.regex; clicked => { FindBridge.regex = !FindBridge.regex; FindBridge.changed(); } }
             Rectangle { width: 4px; }
-            SmallButton { y: 2px; icon: "M6 15l6-6 6 6"; clicked => { FindBridge.previous(); } }
-            SmallButton { y: 2px; icon: "M6 9l6 6 6-6"; clicked => { FindBridge.next(); } }
+            SmallButton { y: 2px; icon: "M6 15l6-6 6 6"; tooltip: "Previous Match"; clicked => { FindBridge.previous(); } }
+            SmallButton { y: 2px; icon: "M6 9l6 6 6-6"; tooltip: "Next Match"; clicked => { FindBridge.next(); } }
             more := SmallButton {
                 y: 2px;
                 icon: "M5 12h.01 M12 12h.01 M19 12h.01";
+                tooltip: "More Find Actions";
                 clicked => { menu.show(); }
             }
             PillButton {
@@ -255,6 +271,7 @@ export component FindBar inherits Rectangle {
                     padding-right: 10px;
                     Rectangle {
                         replace-field := TextInput {
+                            accessible-label: "Replace with";
                             width: parent.width;
                             height: parent.height;
                             text <=> FindBridge.replacement;

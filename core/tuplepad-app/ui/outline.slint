@@ -92,6 +92,12 @@ export component OutlinePanel inherits Rectangle {
             }
             list := ListView {
                 for item[index] in OutlineBridge.items: Rectangle {
+                    accessible-role: list-item;
+                    accessible-label: item.name;
+                    accessible-description: item.detail;
+                    accessible-item-index: index;
+                    accessible-item-count: OutlineBridge.items.length;
+                    accessible-action-default => { OutlineBridge.activate(index); }
                     height: 28px;
                     Rectangle {
                         x: 8px;

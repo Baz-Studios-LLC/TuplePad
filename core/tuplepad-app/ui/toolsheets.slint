@@ -100,6 +100,9 @@ export component HashesSheet inherits Sheet {
             }
             Rectangle { horizontal-stretch: 1; }
             copy-touch := TouchArea {
+                accessible-role: button;
+                accessible-label: "Copy " + row.name;
+                accessible-action-default => { ToolBridge.copy(row.value); }
                 width: copy-label.preferred-width + 8px;
                 height: 18px;
                 clicked => { ToolBridge.copy(row.value); }
@@ -211,6 +214,9 @@ export component XPathSheet inherits Sheet {
                     }
                 }
                 touch := TouchArea {
+                    accessible-role: button;
+                    accessible-label: "Copy " + row.name + ": " + row.value;
+                    accessible-action-default => { ToolBridge.copy(row.value); }
                     clicked => { ToolBridge.copy(row.value); }
                 }
             }

@@ -481,6 +481,7 @@ impl App {
             count: format!("{}{}", group(result.match_count), if result.truncated { "+" } else { "" }).into(),
             parts: ModelRc::default(),
             collapsed: result.collapsed,
+            label: format!("{}, {} matches, in {}", result.title, group(result.match_count), result.location).into(),
         }
     }
 
@@ -492,6 +493,7 @@ impl App {
             count: group(line.line + 1).into(),
             parts: ModelRc::from(Rc::new(VecModel::from(marked_parts(line)))),
             collapsed: false,
+            label: format!("Line {}: {}", group(line.line + 1), line.preview).into(),
         }
     }
 

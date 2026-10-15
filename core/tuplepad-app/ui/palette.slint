@@ -7,6 +7,8 @@ export struct TitlePart {
 }
 
 export struct PaletteItem {
+    // The title as one string, for screen readers (`parts` splits it for highlighting).
+    label: string,
     parts: [TitlePart],
     detail: string,
     // A keyboard shortcut, or what kind of thing it is ("Document", "Recent").
@@ -70,6 +72,8 @@ export component CommandPalette inherits Rectangle {
                 Rectangle {
                     horizontal-stretch: 1;
                     field := TextInput {
+                        accessible-label: root.placeholder;
+                        accessible-placeholder-text: root.placeholder;
                         width: parent.width;
                         height: parent.height;
                         font-size: 17px;
@@ -123,6 +127,14 @@ export component CommandPalette inherits Rectangle {
             VerticalLayout {
                 padding: root.items.length > 0 ? 6px : 0px;
                 for item[index] in root.items: Rectangle {
+                    accessible-role: list-item;
+                    accessible-label: item.label;
+                    accessible-description: item.trailing != "" ? item.detail + ", " + item.trailing : item.detail;
+                    accessible-item-selectable: true;
+                    accessible-item-selected: index == root.selected;
+                    accessible-item-index: index;
+                    accessible-item-count: root.items.length;
+                    accessible-action-default => { root.run(index); }
                     height: 38px;
                     border-radius: 8px;
                     background: index == root.selected ? Theme.accent : row-touch.has-hover ? Theme.control-hover : transparent;

@@ -498,6 +498,7 @@ export component AppWindow inherits Window {
                         alignment: center;
                         IconButton {
                             icon: Icons.sidebar;
+                            label: "Show or Hide Sidebar";
                             clicked => { root.command("view.sidebar"); }
                         }
                     }
@@ -527,6 +528,7 @@ export component AppWindow inherits Window {
                             spacing: 2px;
                             IconButton {
                                 icon: Icons.wrap;
+                                label: "Word Wrap";
                                 on: root.wraps;
                                 clicked => {
                                     root.command("view.wrap");
@@ -535,6 +537,7 @@ export component AppWindow inherits Window {
                             }
                             IconButton {
                                 icon: Icons.plus;
+                                label: "New Document";
                                 clicked => {
                                     root.command("file.new");
                                     root.focus-editor();
@@ -740,6 +743,9 @@ export component AppWindow inherits Window {
                                 vertical-alignment: center;
                             }
                             mcp-touch := TouchArea {
+                                accessible-role: button;
+                                accessible-label: root.mcp-indicator + " is connected (AI tools in Settings)";
+                                accessible-action-default => { root.command("settings.ai"); }
                                 mouse-cursor: pointer;
                                 clicked => { root.command("settings.ai"); }
                             }
@@ -750,6 +756,7 @@ export component AppWindow inherits Window {
                         for item[index] in root.status-items: HorizontalLayout {
                             spacing: 2px;
                             if index > 0: Text {
+                                accessible-role: none;
                                 text: "·";
                                 font-size: 11.5px;
                                 color: Theme.tertiary-text;
@@ -762,12 +769,17 @@ export component AppWindow inherits Window {
                                 border-radius: 5px;
                                 background: item.id != "" && item-touch.has-hover ? Theme.control-hover : transparent;
                                 status-label := Text {
+                                    accessible-role: none;
                                     text: item.text;
                                     font-size: 11.5px;
                                     color: item.id != "" && item-touch.has-hover ? Theme.primary-text : Theme.secondary-text;
                                     vertical-alignment: center;
                                 }
                                 item-touch := TouchArea {
+                                    accessible-role: button;
+                                    accessible-label: item.text;
+                                    accessible-enabled: item.id != "";
+                                    accessible-action-default => { if item.id != "" { root.command(item.id); } }
                                     enabled: item.id != "";
                                     mouse-cursor: item.id != "" ? pointer : default;
                                     clicked => { root.command(item.id); }

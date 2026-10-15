@@ -183,9 +183,10 @@ impl App {
                     Some(column) => format!("Go to line {}, column {column}", crate::editor::group(line)),
                     None => format!("Go to line {}", crate::editor::group(line)),
                 };
-                PaletteItem { parts: ModelRc::new(VecModel::from(title_parts(&title, &[]))), detail: format!("of {}", crate::editor::group(lines)).into(), trailing: SharedString::default() }
+                PaletteItem { label: title.clone().into(), parts: ModelRc::new(VecModel::from(title_parts(&title, &[]))), detail: format!("of {}", crate::editor::group(lines)).into(), trailing: SharedString::default() }
             }
             None => PaletteItem {
+                label: "Type a line number".into(),
                 parts: ModelRc::new(VecModel::from(title_parts("Type a line number", &[]))),
                 detail: format!("1 to {}, and :column if you like", crate::editor::group(lines)).into(),
                 trailing: SharedString::default(),
@@ -222,6 +223,7 @@ impl App {
             .map(|hit| {
                 let entry = &entries[hit.index as usize];
                 PaletteItem {
+                    label: entry.title.clone().into(),
                     parts: ModelRc::new(VecModel::from(title_parts(&entry.title, &hit.positions))),
                     detail: entry.detail.clone().into(),
                     trailing: entry.trailing.clone().into(),

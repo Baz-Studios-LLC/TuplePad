@@ -95,6 +95,11 @@ component TabButton inherits Rectangle {
     in property <string> label;
     in property <bool> selected;
     callback clicked;
+    accessible-role: tab;
+    accessible-label: root.label;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.clicked(); }
     width: 92px;
     height: 54px;
     border-radius: 9px;
@@ -136,6 +141,12 @@ component ThemeCard inherits Rectangle {
     in property <string> summary;
     in property <bool> selected;
     callback clicked;
+    accessible-role: radio-button;
+    accessible-label: root.name;
+    accessible-description: root.summary;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-action-default => { root.clicked(); }
     height: 128px;
     border-radius: 12px;
     border-width: root.selected ? 2px : 1px;
@@ -297,7 +308,7 @@ export component SettingsWindow inherits Window {
                     title: "NEW DOCUMENTS";
                     SettingRow {
                         label: "Encoding";
-                        Dropdown {
+                        Dropdown { accessible-label: "Encoding";
                             options: root.values.encodings;
                             selected: root.values.encoding-index;
                             chosen(index) => { root.set-int("encoding", index); }
@@ -306,11 +317,11 @@ export component SettingsWindow inherits Window {
                     SettingRow {
                         label: "Byte order mark";
                         detail: "Only for Unicode encodings";
-                        Toggle { on: root.values.bom; toggled(on) => { root.set-bool("bom", on); } }
+                        Toggle { accessible-label: "Byte order mark"; on: root.values.bom; toggled(on) => { root.set-bool("bom", on); } }
                     }
                     SettingRow {
                         label: "Line endings";
-                        Segmented {
+                        Segmented { accessible-label: "Line endings";
                             options: ["LF", "CRLF", "CR"];
                             selected: root.values.line-ending;
                             chosen(index) => { root.set-int("line-ending", index); }
@@ -321,7 +332,7 @@ export component SettingsWindow inherits Window {
                     title: "INDENTATION";
                     SettingRow {
                         label: "Indent with";
-                        Segmented {
+                        Segmented { accessible-label: "Indent with";
                             options: ["Spaces", "Tabs"];
                             selected: root.values.use-tabs ? 1 : 0;
                             chosen(index) => { root.set-bool("use-tabs", index == 1); }
@@ -329,7 +340,7 @@ export component SettingsWindow inherits Window {
                     }
                     SettingRow {
                         label: "Tab width";
-                        Stepper {
+                        Stepper { accessible-label: "Tab width";
                             value: root.values.tab-width;
                             minimum: 1;
                             maximum: 16;
@@ -340,24 +351,24 @@ export component SettingsWindow inherits Window {
                     SettingRow {
                         label: "Detect indentation";
                         detail: "Use whatever each file already uses";
-                        Toggle { on: root.values.detect-indentation; toggled(on) => { root.set-bool("detect-indentation", on); } }
+                        Toggle { accessible-label: "Detect indentation"; on: root.values.detect-indentation; toggled(on) => { root.set-bool("detect-indentation", on); } }
                     }
                 }
                 Section {
                     title: "TYPING";
                     SettingRow {
                         label: "Close brackets and quotes";
-                        Toggle { on: root.values.auto-close; toggled(on) => { root.set-bool("auto-close", on); } }
+                        Toggle { accessible-label: "Close brackets and quotes"; on: root.values.auto-close; toggled(on) => { root.set-bool("auto-close", on); } }
                     }
                     SettingRow {
                         label: "Highlight other occurrences";
                         detail: "Of the selected text, or the word at the caret";
-                        Toggle { on: root.values.smart-highlight; toggled(on) => { root.set-bool("smart-highlight", on); } }
+                        Toggle { accessible-label: "Highlight other occurrences"; on: root.values.smart-highlight; toggled(on) => { root.set-bool("smart-highlight", on); } }
                     }
                     SettingRow {
                         label: "Suggest words";
                         detail: "Finish words from the open documents (Tab or Return)";
-                        Toggle { on: root.values.word-completion; toggled(on) => { root.set-bool("word-completion", on); } }
+                        Toggle { accessible-label: "Suggest words"; on: root.values.word-completion; toggled(on) => { root.set-bool("word-completion", on); } }
                     }
                 }
             }
@@ -370,7 +381,7 @@ export component SettingsWindow inherits Window {
                     title: "FONT";
                     SettingRow {
                         label: "Font";
-                        Dropdown {
+                        Dropdown { accessible-label: "Font";
                             width: 220px;
                             options: root.values.font-names;
                             selected: root.values.font-index;
@@ -380,7 +391,7 @@ export component SettingsWindow inherits Window {
                     }
                     SettingRow {
                         label: "Size";
-                        Stepper {
+                        Stepper { accessible-label: "Size";
                             value: root.values.font-size;
                             minimum: 8;
                             maximum: 48;
@@ -390,7 +401,7 @@ export component SettingsWindow inherits Window {
                     }
                     SettingRow {
                         label: "Line height";
-                        Segmented {
+                        Segmented { accessible-label: "Line height";
                             options: ["Compact", "Normal", "Relaxed"];
                             selected: root.values.line-height;
                             chosen(index) => { root.set-int("line-height", index); }
@@ -431,23 +442,23 @@ export component SettingsWindow inherits Window {
                     title: "DISPLAY";
                     SettingRow {
                         label: "Wrap lines in new documents";
-                        Toggle { on: root.values.wrap; toggled(on) => { root.set-bool("wrap", on); } }
+                        Toggle { accessible-label: "Wrap lines in new documents"; on: root.values.wrap; toggled(on) => { root.set-bool("wrap", on); } }
                     }
                     SettingRow {
                         label: "Show invisibles";
-                        Toggle { on: root.values.invisibles; toggled(on) => { root.set-bool("invisibles", on); } }
+                        Toggle { accessible-label: "Show invisibles"; on: root.values.invisibles; toggled(on) => { root.set-bool("invisibles", on); } }
                     }
                     SettingRow {
                         label: "Show indent guides";
-                        Toggle { on: root.values.indent-guides; toggled(on) => { root.set-bool("indent-guides", on); } }
+                        Toggle { accessible-label: "Show indent guides"; on: root.values.indent-guides; toggled(on) => { root.set-bool("indent-guides", on); } }
                     }
                     SettingRow {
                         label: "Highlight the current line";
-                        Toggle { on: root.values.current-line; toggled(on) => { root.set-bool("current-line", on); } }
+                        Toggle { accessible-label: "Highlight the current line"; on: root.values.current-line; toggled(on) => { root.set-bool("current-line", on); } }
                     }
                     SettingRow {
                         label: "Show minimap";
-                        Toggle { on: root.values.minimap; toggled(on) => { root.set-bool("minimap", on); } }
+                        Toggle { accessible-label: "Show minimap"; on: root.values.minimap; toggled(on) => { root.set-bool("minimap", on); } }
                     }
                 }
             }
@@ -468,6 +479,12 @@ export component SettingsWindow inherits Window {
                         clip: true;
                         ListView {
                             for snippet[index] in root.snippets: Rectangle {
+                                accessible-role: list-item;
+                                accessible-label: snippet.name;
+                                accessible-description: snippet.detail;
+                                accessible-item-selectable: true;
+                                accessible-item-selected: index == root.snippet-index;
+                                accessible-action-default => { root.snippet-select(index); }
                                 height: 46px;
                                 Rectangle {
                                     x: 4px;
@@ -611,12 +628,12 @@ export component SettingsWindow inherits Window {
                     SettingRow {
                         label: "Let AI tools use TuplePad";
                         detail: root.mcp-status;
-                        Toggle { on: root.values.mcp; toggled(on) => { root.set-bool("mcp", on); } }
+                        Toggle { accessible-label: "Let AI tools use TuplePad"; on: root.values.mcp; toggled(on) => { root.set-bool("mcp", on); } }
                     }
                     SettingRow {
                         label: "Also over HTTP";
                         detail: root.mcp-http-detail;
-                        Toggle { on: root.values.mcp-http; toggled(on) => { root.set-bool("mcp-http", on); } }
+                        Toggle { accessible-label: "Also over HTTP"; on: root.values.mcp-http; toggled(on) => { root.set-bool("mcp-http", on); } }
                     }
                 }
                 if root.values.mcp: Section {
@@ -745,7 +762,7 @@ export component SettingsWindow inherits Window {
                 Section {
                     SettingRow {
                         label: "Appearance";
-                        Segmented {
+                        Segmented { accessible-label: "Appearance";
                             options: ["System", "Light", "Dark"];
                             selected: root.values.appearance;
                             chosen(index) => { root.set-int("appearance", index); }

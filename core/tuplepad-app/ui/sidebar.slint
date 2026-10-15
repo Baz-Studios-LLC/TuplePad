@@ -13,7 +13,12 @@ export struct DocItem {
 export component IconButton inherits Rectangle {
     in property <string> icon;
     in property <bool> on;
+    // What it does, for screen readers (the icon says it visually).
+    in property <string> label;
     callback clicked;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
     width: 30px;
     height: 28px;
     border-radius: 7px;
@@ -43,6 +48,9 @@ export component PillButton inherits Rectangle {
     in property <string> text;
     in property <bool> primary;
     callback clicked;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
     height: 26px;
     border-radius: 13px;
     background: root.primary
@@ -55,6 +63,7 @@ export component PillButton inherits Rectangle {
         padding-left: 13px;
         padding-right: 13px;
         Text {
+            accessible-role: none;
             text: root.text;
             font-size: 12px;
             font-weight: 600;
@@ -100,6 +109,12 @@ component DocRow inherits Rectangle {
     callback close;
     // A context menu item, by command id.
     callback action(id: string);
+    accessible-role: list-item;
+    accessible-label: root.item.name + (root.item.modified ? ", unsaved changes" : "");
+    accessible-description: root.item.detail;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.clicked(); }
 
     property <bool> hovered: touch.has-hover || close-touch.has-hover;
     height: 52px;
@@ -171,6 +186,7 @@ component DocRow inherits Rectangle {
                 border-radius: 8px;
                 background: root.selected && Theme.filled-selection ? Theme.selected-badge : root.item.tint.with-alpha(Theme.dark ? 0.22 : 0.13);
                 Text {
+                    accessible-role: none;
                     text: root.item.badge;
                     font-size: 9.5px;
                     font-weight: 750;
@@ -188,6 +204,7 @@ component DocRow inherits Rectangle {
             HorizontalLayout {
                 spacing: 6px;
                 Text {
+                    accessible-role: none;
                     text: root.item.name;
                     font-size: 13px;
                     font-weight: 600;
@@ -207,6 +224,7 @@ component DocRow inherits Rectangle {
                 }
             }
             Text {
+                accessible-role: none;
                 text: root.item.detail;
                 font-size: 11px;
                 color: root.selected ? Theme.selected-row-detail : Theme.secondary-text;
@@ -231,6 +249,14 @@ component FolderRowView inherits Rectangle {
     in property <string> trash-title;
     callback clicked;
     callback action(id: string);
+    accessible-role: list-item;
+    accessible-label: root.item.name;
+    accessible-description: root.item.folder ? "Folder" : "";
+    accessible-expandable: root.item.folder;
+    accessible-expanded: root.item.expanded;
+    accessible-item-selected: root.item.current;
+    accessible-action-default => { root.clicked(); }
+    accessible-action-expand => { root.clicked(); }
     height: 26px;
     border-radius: 6px;
     background: root.item.current ? Theme.selected-row : touch.has-hover ? Theme.sidebar-hover : transparent;
@@ -278,6 +304,7 @@ component FolderRowView inherits Rectangle {
             }
         }
         Text {
+            accessible-role: none;
             text: root.item.name;
             font-size: 12.5px;
             font-weight: root.item.current ? 600 : 400;
@@ -350,6 +377,7 @@ export component Sidebar inherits Rectangle {
         y: max(0px, (root.top-inset - self.height) / 2 + 2px);
         visible: root.top-inset > 0;
         icon: Icons.sidebar;
+        label: "Show or Hide Sidebar";
         clicked => { root.toggle-sidebar(); }
     }
 
@@ -366,6 +394,10 @@ export component Sidebar inherits Rectangle {
             padding-bottom: 6px;
             spacing: 14px;
             for label[index] in root.folder-name == "" ? ["DOCUMENTS"] : ["DOCUMENTS", "FOLDER"]: Text {
+                accessible-role: tab;
+                accessible-label: index == 0 ? "Documents" : "Folder";
+                accessible-item-selected: root.folder-name == "" || root.mode == index;
+                accessible-action-default => { if root.folder-name != "" { root.mode = index; } }
                 text: label;
                 font-size: 10.5px;
                 font-weight: 700;
@@ -380,6 +412,7 @@ export component Sidebar inherits Rectangle {
         }
 
         if root.folder-name == "" || root.mode == 0: ListView {
+            accessible-label: "Open documents";
             vertical-stretch: 1;
             for doc[index] in root.docs: Rectangle {
                 height: 68px;
@@ -415,10 +448,12 @@ export component Sidebar inherits Rectangle {
                 }
                 IconButton {
                     icon: Icons.close;
+                    label: "Close Folder";
                     clicked => { root.folder-close(); }
                 }
             }
             ListView {
+                accessible-label: "Folder files";
                 vertical-stretch: 1;
                 for row[index] in root.folder-rows: FolderRowView {
                     item: row;
@@ -442,6 +477,7 @@ export component Sidebar inherits Rectangle {
             // Settings (appearance included: most people set it once).
             IconButton {
                 icon: Icons.gear;
+                label: "Settings";
                 clicked => { root.open-settings(); }
             }
         }

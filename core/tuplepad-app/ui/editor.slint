@@ -84,6 +84,13 @@ export global EditorBridge {
     in property <[Band]> flashes;
     in property <[Band]> flashes-2;
     in property <bool> flash-on;
+    // For screen readers, per pane: the document's name, the caret's line and where the caret is.
+    in property <string> a11y-label;
+    in property <string> a11y-label-2;
+    in property <string> a11y-line;
+    in property <string> a11y-line-2;
+    in property <string> a11y-position;
+    in property <string> a11y-position-2;
     // Control characters (NUL and the like), drawn as chips.
     in property <[Band]> controls;
     in property <[Band]> controls-2;
@@ -406,7 +413,10 @@ export component EditorView inherits Rectangle {
                 width: 1px;
                 background: Theme.indent-guide;
             }
+            // The text is read through the editor's input (its value is the current line), not
+            // span by span.
             for span in row.spans: Text {
+                accessible-role: none;
                 x: span.x;
                 height: root.lh;
                 text: span.text;
@@ -458,6 +468,7 @@ export component EditorView inherits Rectangle {
             border-width: 1px;
             border-color: Theme.control-border;
             Text {
+                accessible-role: none;
                 text: "⋯";
                 font-size: 12px;
                 color: Theme.secondary-text;
@@ -473,6 +484,11 @@ export component EditorView inherits Rectangle {
         // Keyboard and input-method entry point. It sits at the main caret so the input method's
         // candidate window opens there; it draws nothing, and the editor shows composing text inline.
         input := TextInput {
+            // What screen readers get: the document, the line the caret is on, and where.
+            accessible-role: text-input;
+            accessible-label: root.pane == 0 ? EditorBridge.a11y-label : EditorBridge.a11y-label-2;
+            accessible-value: root.pane == 0 ? EditorBridge.a11y-line : EditorBridge.a11y-line-2;
+            accessible-description: root.pane == 0 ? EditorBridge.a11y-position : EditorBridge.a11y-position-2;
             x: root.ime-x - root.scroll-x;
             y: root.row-y(root.ime-row);
             width: 2px;
@@ -614,6 +630,7 @@ export component EditorView inherits Rectangle {
             stroke-line-join: round;
         }
         for row in root.rows: Text {
+            accessible-role: none;
             x: 0;
             width: root.gutter-width - 24px;
             y: root.row-y(row.row);
@@ -650,6 +667,7 @@ export component EditorView inherits Rectangle {
         x: root.width - root.minimap-width;
         width: root.minimap-width - 14px;
         Image {
+            accessible-role: none;
             x: 0;
             y: 0;
             width: parent.width;
@@ -699,6 +717,12 @@ export component EditorView inherits Rectangle {
         list := VerticalLayout {
             padding: 4px;
             for item[index] in root.completions: Rectangle {
+                accessible-role: list-item;
+                accessible-label: item.head + item.tail;
+                accessible-item-selectable: true;
+                accessible-item-selected: index == root.completion-selected;
+                accessible-item-index: index;
+                accessible-item-count: root.completions.length;
                 height: max(22px, root.lh - 2px);
                 border-radius: 5px;
                 background: index == root.completion-selected ? Theme.accent : transparent;
@@ -706,6 +730,7 @@ export component EditorView inherits Rectangle {
                     padding-left: 6px;
                     padding-right: 12px;
                     Text {
+                        accessible-role: none;
                         text: item.head;
                         font-family: root.font-family;
                         font-size: EditorBridge.font-size;
@@ -714,6 +739,7 @@ export component EditorView inherits Rectangle {
                         vertical-alignment: center;
                     }
                     Text {
+                        accessible-role: none;
                         text: item.tail;
                         font-family: root.font-family;
                         font-size: EditorBridge.font-size;

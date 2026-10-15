@@ -6011,6 +6011,7 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "chrono",
+ "i-slint-backend-testing",
  "notify",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",

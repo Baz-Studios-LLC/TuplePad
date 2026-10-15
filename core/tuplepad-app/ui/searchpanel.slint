@@ -18,6 +18,8 @@ export struct SearchRow {
     // A line's text, with the matches marked.
     parts: [TitlePart],
     collapsed: bool,
+    // The row as one sentence, for screen readers.
+    label: string,
 }
 
 // One row of the Replace in Files preview: a file (with a checkbox), or a stretch of lines.
@@ -112,6 +114,10 @@ component Chevron inherits Path {
 component Checkbox inherits Rectangle {
     in property <bool> checked;
     callback toggled();
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-action-default => { root.toggled(); }
     width: 16px;
     height: 16px;
     border-radius: 4px;
@@ -159,6 +165,13 @@ component ResultRow inherits Rectangle {
     in property <bool> active;
     callback clicked();
     callback double-clicked();
+    accessible-role: list-item;
+    accessible-label: root.item.label;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-expandable: root.item.kind == 0;
+    accessible-expanded: root.item.kind == 0 && !root.item.collapsed;
+    accessible-action-default => { root.double-clicked(); }
     height: 26px;
     clip: true;
     property <color> text-color: root.selected && root.active ? Theme.selected-row-text : Theme.primary-text;
@@ -362,6 +375,16 @@ export component SearchPanel inherits Rectangle {
                         }
                     }
                     if SearchBridge.scope == 1: folder-button := Rectangle {
+                        accessible-role: combobox;
+                        accessible-label: "Folder to search";
+                        accessible-value: SearchBridge.folder != "" ? SearchBridge.folder : "None chosen";
+                        accessible-action-default => {
+                            if SearchBridge.recent-folders.length == 0 {
+                                SearchBridge.choose-folder();
+                            } else {
+                                folder-menu.show();
+                            }
+                        }
                         min-width: 120px;
                         max-width: 360px;
                         horizontal-stretch: 1;
@@ -386,6 +409,7 @@ export component SearchPanel inherits Rectangle {
                                 stroke-line-join: round;
                             }
                             Text {
+                                accessible-role: none;
                                 text: SearchBridge.folder != "" ? SearchBridge.folder : "Choose Folder…";
                                 font-size: 12.5px;
                                 color: SearchBridge.folder != "" ? Theme.primary-text : Theme.secondary-text;
@@ -431,10 +455,17 @@ export component SearchPanel inherits Rectangle {
                                 VerticalLayout {
                                     padding: 6px;
                                     for folder[index] in SearchBridge.recent-folders: Rectangle {
+                                        accessible-role: list-item;
+                                        accessible-label: folder;
+                                        accessible-action-default => {
+                                            SearchBridge.pick-folder(index);
+                                            folder-menu.close();
+                                        }
                                         height: 28px;
                                         border-radius: 6px;
                                         background: recent-touch.has-hover ? Theme.accent : transparent;
                                         Text {
+                                            accessible-role: none;
                                             x: 10px;
                                             width: parent.width - 20px;
                                             text: folder;
@@ -461,7 +492,14 @@ export component SearchPanel inherits Rectangle {
                                         height: 28px;
                                         border-radius: 6px;
                                         background: choose-touch.has-hover ? Theme.accent : transparent;
+                                        accessible-role: list-item;
+                                        accessible-label: "Choose Folder…";
+                                        accessible-action-default => {
+                                            SearchBridge.choose-folder();
+                                            folder-menu.close();
+                                        }
                                         Text {
+                                            accessible-role: none;
                                             x: 10px;
                                             text: "Choose Folder…";
                                             font-size: 13px;
@@ -514,6 +552,7 @@ export component SearchPanel inherits Rectangle {
                     }
                     SmallButton {
                         icon: "M6 6l12 12 M18 6L6 18";
+                        tooltip: "Close Search";
                         clicked => { SearchBridge.close(); }
                     }
                 }
@@ -524,6 +563,9 @@ export component SearchPanel inherits Rectangle {
                     SmallButton {
                         y: 1px;
                         icon: SearchBridge.show-replace ? "M6 9l6 6 6-6" : "M9 6l6 6-6 6";
+                        tooltip: "Show Replace";
+                        checkable: true;
+                        on: SearchBridge.show-replace;
                         clicked => { SearchBridge.show-replace = !SearchBridge.show-replace; }
                     }
                     query-field := InputField {
@@ -534,9 +576,9 @@ export component SearchPanel inherits Rectangle {
                         escaped => { SearchBridge.close(); }
                         arrow-down => { return root.enter-results(); }
                     }
-                    SmallButton { y: 1px; label: "Aa"; on: SearchBridge.case-sensitive; clicked => { SearchBridge.case-sensitive = !SearchBridge.case-sensitive; } }
-                    SmallButton { y: 1px; label: "W"; on: SearchBridge.whole-word; clicked => { SearchBridge.whole-word = !SearchBridge.whole-word; } }
-                    SmallButton { y: 1px; label: ".*"; on: SearchBridge.regex; clicked => { SearchBridge.regex = !SearchBridge.regex; } }
+                    SmallButton { y: 1px; label: "Aa"; tooltip: "Match Case"; checkable: true; on: SearchBridge.case-sensitive; clicked => { SearchBridge.case-sensitive = !SearchBridge.case-sensitive; } }
+                    SmallButton { y: 1px; label: "W"; tooltip: "Whole Words"; checkable: true; on: SearchBridge.whole-word; clicked => { SearchBridge.whole-word = !SearchBridge.whole-word; } }
+                    SmallButton { y: 1px; label: ".*"; tooltip: "Regular Expression"; checkable: true; on: SearchBridge.regex; clicked => { SearchBridge.regex = !SearchBridge.regex; } }
                     Rectangle { width: 2px; }
                     if !SearchBridge.searching: PillButton {
                         y: 1px;
@@ -758,6 +800,7 @@ export component ReplacePlanSheet inherits Rectangle {
                             VerticalLayout {
                                 alignment: center;
                                 Checkbox {
+                                    accessible-label: "Change " + row.title;
                                     checked: row.included;
                                     toggled => { SearchBridge.plan-toggle(index); }
                                 }

@@ -1052,6 +1052,17 @@ impl Editor {
         replace_if_changed(&self.underline_model, underlines);
         replace_if_changed(&self.active_model, active_rows);
 
+        // What screen readers get: the document, the caret's line (cut short if huge) and where.
+        if let Some(head) = primary.map(|c| c.head) {
+            let label = format!("Editor, {}", self.doc().name());
+            let line: String = buffer.line_slice(head.line, 0, 2_000);
+            let column = buffer.line_slice(head.line, 0, head.column).chars().count() + 1;
+            let position = format!("Line {} of {}, column {}", head.line + 1, buffer.line_count(), column);
+            put!(bridge, self.pane, set_a11y_label, set_a11y_label_2, label.into());
+            put!(bridge, self.pane, set_a11y_line, set_a11y_line_2, line.into());
+            put!(bridge, self.pane, set_a11y_position, set_a11y_position_2, position.into());
+        }
+
         // The minimap, and where the view is in it.
         let minimap_width = self.minimap_width();
         put!(bridge, self.pane, set_minimap_width, set_minimap_width_2, minimap_width);

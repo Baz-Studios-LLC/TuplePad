@@ -307,6 +307,7 @@ export component CompareView inherits Rectangle {
                 alignment: center;
                 SmallButton {
                     icon: "M6 15l6-6 6 6";
+                    tooltip: "Previous Change";
                     clicked => { ToolViewBridge.previous-change(); }
                 }
             }
@@ -314,6 +315,7 @@ export component CompareView inherits Rectangle {
                 alignment: center;
                 SmallButton {
                     icon: "M6 9l6 6 6-6";
+                    tooltip: "Next Change";
                     clicked => { ToolViewBridge.next-change(); }
                 }
             }
