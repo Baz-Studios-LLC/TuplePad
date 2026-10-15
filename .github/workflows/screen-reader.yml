@@ -1,4 +1,5 @@
-# A real screen reader (Orca, on Linux) reads TuplePad while it's used with real key presses.
+# Real screen readers read TuplePad while it's used with real key presses: Orca on Linux,
+# VoiceOver on macOS and NVDA on Windows (the last two driven by Guidepup).
 # Ubuntu 24.04's Orca (46): older Orca asks for lines with AT-SPI's deprecated GetTextAtOffset,
 # which AccessKit (Slint's accessibility layer) doesn't answer.
 name: Screen reader
@@ -39,3 +40,29 @@ jobs:
         with:
           name: orca-log
           path: ${{ runner.temp }}/orca-check/*.txt
+
+  voiceover-and-nvda:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+          cache-on-failure: true
+      - name: Build
+        run: cargo build --locked --manifest-path core/Cargo.toml -p tuplepad-app
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Screen reader set up for automation
+        run: npx --yes @guidepup/setup@0.29.1
+      - name: Guidepup
+        run: npm install --no-save --no-package-lock @guidepup/guidepup@0.34.0
+      - name: The screen reader reads TuplePad
+        shell: bash
+        run: node .github/screen-reader.mjs core/target/debug/tuplepad-app${{ runner.os == 'Windows' && '.exe' || '' }}
