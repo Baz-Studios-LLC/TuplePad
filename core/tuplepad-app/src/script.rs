@@ -523,6 +523,22 @@ fn run_next(app: Rc<App>, runner: Shared) {
                 app.remove_snippet();
             }
         }
+        "folder" => {
+            // {"folder": path} opens a folder in the sidebar; {"folder": {"row": n}} clicks a row.
+            match arg.as_str() {
+                Some(path) => app.open_folder(std::path::Path::new(path)),
+                None => {
+                    if let Some(n) = arg.get("row").and_then(Value::as_u64) {
+                        app.activate_folder_row(n as usize);
+                    }
+                }
+            }
+        }
+        "folderState" => {
+            if let Some(path) = arg.as_str() {
+                let _ = std::fs::write(path, serde_json::to_string_pretty(&app.folder_dump()).unwrap_or_default());
+            }
+        }
         "waitSearch" => return wait_until(app, runner, |app| !app.search_busy(), Instant::now()),
         "searchStatus" => {
             let state = app.search_dump();
@@ -660,6 +676,7 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "palette": palette_titles(&ui),
         "palette_selected": ui.get_palette_selected(),
         "sidebar": ui.get_sidebar_visible(),
+        "sidebar_mode": ui.get_sidebar_mode(),
         "outline_visible": ui.get_outline_visible(),
         "minimap": ui.global::<crate::EditorBridge>().get_minimap_width() > 0.0,
         "minimap_view": [ui.global::<crate::EditorBridge>().get_minimap_view_y(), ui.global::<crate::EditorBridge>().get_minimap_view_height()],

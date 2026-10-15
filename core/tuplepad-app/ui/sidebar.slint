@@ -1,3 +1,4 @@
+import { ListView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 
 export struct DocItem {
@@ -67,12 +68,26 @@ export component PillButton inherits Rectangle {
     }
 }
 
+// A file or folder in the sidebar's folder tree.
+export struct FolderRow {
+    name: string,
+    depth: int,
+    folder: bool,
+    expanded: bool,
+    // A file's extension, for its badge.
+    badge: string,
+    // The document showing in the editor.
+    current: bool,
+}
+
 export global Icons {
     out property <string> sidebar: "M4 5.5h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1z M9.5 5.5v13";
     out property <string> plus: "M12 5.5v13 M5.5 12h13";
     out property <string> wrap: "M4 6.5h16 M4 12h13a3 3 0 0 1 0 6h-4.5 M14.5 15.5l-2.5 2.5 2.5 2.5 M4 18h5";
     out property <string> moon: "M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.6 6.6 0 0 0 10.7 10.7z";
     out property <string> alert: "M12 3.5l9 16H3z M12 10v4.5 M12 17.3v.2";
+    out property <string> folder: "M3.5 7a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z";
+    out property <string> close: "M7 7l10 10 M17 7L7 17";
     out property <string> gear: "M12 15a3 3 0 1 0 0-6a3 3 0 1 0 0 6z M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.3-.9-2 3.4 2 1.5a7.6 7.6 0 0 0 0 3l-2 1.5 2 3.4 2.3-.9a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.3.9 2-3.4z";
     out property <string> sun: "M12 17a5 5 0 1 0 0-10a5 5 0 1 0 0 10z M12 1.5v2 M12 20.5v2 M4.6 4.6l1.4 1.4 M18 18l1.4 1.4 M1.5 12h2 M20.5 12h2 M4.6 19.4l1.4-1.4 M18 6l1.4-1.4";
 }
@@ -195,9 +210,80 @@ component DocRow inherits Rectangle {
     }
 }
 
+component FolderRowView inherits Rectangle {
+    in property <FolderRow> item;
+    callback clicked;
+    height: 26px;
+    border-radius: 6px;
+    background: root.item.current ? Theme.selected-row : touch.has-hover ? Theme.sidebar-hover : transparent;
+    HorizontalLayout {
+        padding-left: 8px + root.item.depth * 14px;
+        padding-right: 8px;
+        spacing: 6px;
+        Rectangle {
+            width: 12px;
+            if root.item.folder: Path {
+                width: 9px;
+                height: 9px;
+                y: (parent.height - self.height) / 2;
+                viewbox-width: 10;
+                viewbox-height: 10;
+                commands: root.item.expanded ? "M2 3.5l3 3 3-3" : "M3.5 2l3 3-3 3";
+                fill: transparent;
+                stroke: Theme.secondary-text;
+                stroke-width: 1.5px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+            }
+        }
+        if root.item.folder: Path {
+            width: 15px;
+            height: 15px;
+            y: (parent.height - self.height) / 2;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: Icons.folder;
+            fill: Theme.accent.with-alpha(Theme.dark ? 0.35 : 0.18);
+            stroke: Theme.dark ? Theme.accent.mix(#FFFFFF, 0.4) : Theme.accent;
+            stroke-width: 1.6px;
+            stroke-line-join: round;
+        }
+        if !root.item.folder: Rectangle {
+            width: 15px;
+            Rectangle {
+                width: 11px;
+                height: 14px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 2.5px;
+                border-width: 1.3px;
+                border-color: root.item.current ? Theme.selected-row-text.with-alpha(0.7) : Theme.tertiary-text;
+            }
+        }
+        Text {
+            text: root.item.name;
+            font-size: 12.5px;
+            font-weight: root.item.current ? 600 : 400;
+            color: root.item.current ? Theme.selected-row-text : Theme.primary-text;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+    }
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
 export component Sidebar inherits Rectangle {
     in property <[DocItem]> docs;
     in property <int> current;
+    // The folder (Open Folder…), when there is one, and whether it's showing (1) or the
+    // documents are (0).
+    in property <string> folder-name;
+    in property <[FolderRow]> folder-rows;
+    in-out property <int> mode;
+    callback folder-activate(index: int);
+    callback folder-close();
     in property <length> top-inset;
     callback select(index: int);
     callback close(index: int);
@@ -235,26 +321,69 @@ export component Sidebar inherits Rectangle {
         padding-bottom: 12px;
         spacing: 2px;
 
+        // DOCUMENTS, or DOCUMENTS and FOLDER as tabs when a folder is open.
         HorizontalLayout {
             padding-left: 10px;
             padding-bottom: 6px;
-            Text {
-                text: "DOCUMENTS";
+            spacing: 14px;
+            for label[index] in root.folder-name == "" ? ["DOCUMENTS"] : ["DOCUMENTS", "FOLDER"]: Text {
+                text: label;
                 font-size: 10.5px;
                 font-weight: 700;
                 letter-spacing: 0.8px;
-                color: Theme.tertiary-text;
+                color: root.folder-name == "" || root.mode == index ? Theme.secondary-text : tab-touch.has-hover ? Theme.secondary-text.with-alpha(0.8) : Theme.tertiary-text.with-alpha(0.7);
+                tab-touch := TouchArea {
+                    enabled: root.folder-name != "";
+                    clicked => { root.mode = index; }
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+
+        if root.folder-name == "" || root.mode == 0: ListView {
+            vertical-stretch: 1;
+            for doc[index] in root.docs: Rectangle {
+                height: 68px;
+                DocRow {
+                    y: 0;
+                    height: 66px;
+                    item: doc;
+                    selected: index == root.current;
+                    clicked => { root.select(index); }
+                    close => { root.close(index); }
+                }
             }
         }
 
-        for doc[index] in root.docs: DocRow {
-            item: doc;
-            selected: index == root.current;
-            clicked => { root.select(index); }
-            close => { root.close(index); }
+        if root.folder-name != "" && root.mode == 1: VerticalLayout {
+            vertical-stretch: 1;
+            spacing: 4px;
+            HorizontalLayout {
+                height: 28px;
+                padding-left: 10px;
+                spacing: 6px;
+                Text {
+                    text: root.folder-name;
+                    font-size: 13px;
+                    font-weight: 650;
+                    color: Theme.primary-text;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                IconButton {
+                    icon: Icons.close;
+                    clicked => { root.folder-close(); }
+                }
+            }
+            ListView {
+                vertical-stretch: 1;
+                for row[index] in root.folder-rows: FolderRowView {
+                    item: row;
+                    clicked => { root.folder-activate(index); }
+                }
+            }
         }
-
-        Rectangle { vertical-stretch: 1; }
 
         HorizontalLayout {
             padding-left: 10px;

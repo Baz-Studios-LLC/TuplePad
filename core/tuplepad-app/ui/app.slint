@@ -1,7 +1,7 @@
 import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { EditorView, EditorBridge, Span, Row, Caret, Band, CompletionItem } from "editor.slint";
-import { Sidebar, DocItem, IconButton, Icons, PillButton } from "sidebar.slint";
+import { Sidebar, DocItem, FolderRow, IconButton, Icons, PillButton } from "sidebar.slint";
 import { Sheet, Toggle } from "controls.slint";
 import { SettingsWindow, SettingsValues, SnippetRow } from "settings.slint";
 import { CommandPalette, PaletteItem, TitlePart } from "palette.slint";
@@ -11,7 +11,7 @@ import { ColumnEditorSheet, ColumnBridge } from "columneditor.slint";
 import { OutlinePanel, OutlineBridge, OutlineRow } from "outline.slint";
 import { ToolBridge, HashRow, XPathRow, HashesSheet, XPathSheet, CsvSortSheet, ShellSheet } from "toolsheets.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow }
+export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, FolderRow, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
@@ -51,6 +51,10 @@ export component AppWindow inherits Window {
     in property <[StatusItem]> status-items;
     in-out property <bool> sidebar-visible: true;
     in property <bool> outline-visible;
+    // The folder in the sidebar (Open Folder…).
+    in property <string> folder-name;
+    in property <[FolderRow]> folder-rows;
+    in-out property <int> sidebar-mode;
     // A short message at the bottom of the window.
     in property <string> toast;
     in property <bool> toast-shown;
@@ -434,6 +438,11 @@ export component AppWindow inherits Window {
             current: root.current-doc;
             top-inset: root.titlebar-height;
             close(index) => { root.command("close-doc:" + index); }
+            folder-name: root.folder-name;
+            folder-rows: root.folder-rows;
+            mode <=> root.sidebar-mode;
+            folder-activate(index) => { root.command("folder-row:" + index); }
+            folder-close => { root.command("folder.close"); }
             select(index) => {
                 root.select-doc(index);
                 root.focus-editor();

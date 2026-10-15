@@ -44,6 +44,8 @@ pub struct Settings {
     pub show_minimap: bool,
     pub show_outline: bool,
     pub word_completion: bool,
+    /// The folder open in the sidebar.
+    pub folder: Option<String>,
 }
 
 impl Default for Settings {
@@ -78,6 +80,7 @@ impl Default for Settings {
             show_minimap: true,
             show_outline: false,
             word_completion: true,
+            folder: None,
         }
     }
 }

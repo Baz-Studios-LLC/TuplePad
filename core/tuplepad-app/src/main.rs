@@ -19,6 +19,7 @@ mod completion;
 mod document;
 mod editor;
 mod find;
+mod folder;
 mod fonts;
 mod outline;
 mod palette;
@@ -169,6 +170,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if app.editor.borrow().docs.is_empty() {
         app.new_document();
+    }
+    // The folder that was open in the sidebar comes back too.
+    let folder = app.settings.borrow().folder.clone();
+    if let Some(folder) = folder.filter(|f| std::path::Path::new(f).is_dir()) {
+        app.open_folder(std::path::Path::new(&folder));
     }
     connect(&ui, &app);
     app.refresh();

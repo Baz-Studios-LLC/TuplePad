@@ -34,6 +34,9 @@ pub struct App {
     /// Each open document's words, for word completion.
     pub word_index: RefCell<crate::completion::WordIndex>,
     pub outline: RefCell<crate::outline::OutlineState>,
+    /// The folder in the sidebar, and the document path its tree last marked.
+    pub folder: RefCell<Option<crate::folder::FolderState>>,
+    folder_marked: RefCell<Option<PathBuf>>,
     pub toast_timer: slint::Timer,
     pub snippets: RefCell<crate::snippets::SnippetStore>,
     /// The status bar's right-hand items (the language, indentation, encoding and line endings
@@ -149,6 +152,8 @@ impl App {
             palette_target: RefCell::new(None),
             word_index: RefCell::new(Default::default()),
             outline: RefCell::new(Default::default()),
+            folder: RefCell::new(None),
+            folder_marked: RefCell::new(None),
             toast_timer: slint::Timer::default(),
             snippets: RefCell::new(crate::snippets::SnippetStore::load(
                 settings_path.as_ref().and_then(|p| p.parent()).map(|folder| folder.join("snippets.json")),
@@ -251,6 +256,15 @@ impl App {
             crate::editor::panes::Split::Stacked => 2,
         });
         ui.set_focused_pane(editor.focused_pane() as i32);
+        let showing = editor.doc().path();
+        if *self.folder_marked.borrow() != showing {
+            *self.folder_marked.borrow_mut() = showing;
+            if let Ok(mut folder) = self.folder.try_borrow_mut()
+                && let Some(state) = folder.as_mut()
+            {
+                state.mark(self.folder_marked.borrow().as_deref());
+            }
+        }
 
         let items: Vec<DocItem> = {
             let mut cache = self.doc_items.borrow_mut();
@@ -645,6 +659,9 @@ impl App {
             "view.palette" => self.open_palette(),
             "text.goto" => self.open_palette_with(":"),
             "tools.snippet" => self.open_snippet_list(),
+            "file.open-folder" => self.open_folder_dialog(),
+            "file.quick-open" => self.open_quick_open(),
+            "folder.close" => self.close_folder(),
             "text.language" | "status.language" => self.open_language_list(),
             "status.indentation" => self.open_indentation_list(),
             "status.encoding" => self.open_encoding_list(),
@@ -705,6 +722,14 @@ impl App {
             return;
         }
         match kind {
+            "folder-row" => {
+                if let Ok(index) = value.parse::<usize>() {
+                    self.activate_folder_row(index);
+                }
+            }
+            "open-file" => {
+                self.open_paths(&[PathBuf::from(value)]);
+            }
             "language" => {
                 let mut editor = self.editor.borrow_mut();
                 editor.buffer().set_language((!value.is_empty()).then(|| value.to_string()));
