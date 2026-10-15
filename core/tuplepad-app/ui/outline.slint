@@ -4,9 +4,12 @@ import { Theme } from "theme.slint";
 // One symbol in the outline.
 export struct OutlineRow {
     name: string,
-    // 0 function, 1 method, 2 type, 3 namespace, 4 heading, 5 constant, 6 property.
+    // 0 function, 1 method, 2 type, 3 namespace, 4 heading, 5 constant, 6 property; for JSON
+    // 7 object, 8 array, 9 string, 10 number, 11 true or false, 12 null.
     kind: int,
     depth: int,
+    // A JSON value, or how many items an object or array has.
+    detail: string,
 }
 
 export global OutlineBridge {
@@ -20,13 +23,13 @@ export global OutlineBridge {
 // A letter for each kind of symbol, tinted with the theme's syntax colors.
 component KindBadge inherits Rectangle {
     in property <int> kind;
-    property <color> tint: Theme.syntax[[7, 7, 8, 16, 17, 6, 10][root.kind]];
+    property <color> tint: Theme.syntax[[7, 7, 8, 16, 17, 6, 10, 8, 16, 2, 5, 6, 6][root.kind]];
     width: 18px;
     height: 18px;
     border-radius: 5px;
     background: root.tint.with-alpha(Theme.dark ? 0.2 : 0.12);
     Text {
-        text: ["ƒ", "m", "T", "N", "#", "C", "P"][root.kind];
+        text: ["ƒ", "m", "T", "N", "#", "C", "P", "{}", "[]", "\"", "1", "✓", "∅"][root.kind];
         font-size: 11px;
         font-weight: 700;
         color: root.tint;
@@ -109,6 +112,15 @@ export component OutlinePanel inherits Rectangle {
                             font-size: 12.5px;
                             font-weight: index == OutlineBridge.current ? 600 : 400;
                             color: index == OutlineBridge.current ? Theme.selected-row-text : Theme.primary-text;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: item.detail == "" ? 1 : 0;
+                        }
+                        if item.detail != "": Text {
+                            text: item.detail;
+                            font-size: 12px;
+                            font-family: item.kind >= 9 ? Theme.mono-family : "";
+                            color: index == OutlineBridge.current ? Theme.selected-row-detail : Theme.secondary-text;
                             vertical-alignment: center;
                             overflow: elide;
                             horizontal-stretch: 1;
