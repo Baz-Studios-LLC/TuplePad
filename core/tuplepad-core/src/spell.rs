@@ -107,7 +107,9 @@ impl TextBuffer {
         let language = self.language();
         let lines = self.lines(start_line, count);
         let markdown = language.as_deref() == Some("markdown");
-        // Code checks only its comments and strings; Markdown everything but its code.
+        // Data files' strings are keys, names and versions rather than prose.
+        let data = matches!(language.as_deref(), Some("json" | "yaml" | "toml"));
+        // Code checks only its comments and strings (data files only their comments); Markdown everything but its code.
         let spans = if language.is_some() { self.highlights(start_line, count) } else { Vec::new() };
         let code_lines: HashSet<u64> = if markdown { self.code_block_lines(start_line, count).into_iter().collect() } else { HashSet::new() };
         let mut found = Vec::new();
@@ -138,7 +140,10 @@ impl TextBuffer {
                     }
                     regions
                 }
-                (Some(_), false) => line_spans.filter(|s| matches!(s.style, HighlightStyle::Comment | HighlightStyle::String)).map(|s| (s.start, s.end)).collect(),
+                (Some(_), false) => line_spans
+                    .filter(|s| s.style == HighlightStyle::Comment || (s.style == HighlightStyle::String && !data))
+                    .map(|s| (s.start, s.end))
+                    .collect(),
             };
             for (from, to) in regions {
                 for (start, end, word) in words_in(&piece(from, to), from) {
@@ -167,6 +172,9 @@ mod tests {
         assert_eq!(misspelled("This sentense has a mistake, isn't it?", None), ["sentense"]);
         // Only comments and strings in code.
         assert_eq!(misspelled("let wrongg = \"helo there\"; // a comentt\n", Some("rust")), ["helo", "comentt"]);
+        // Data files: only comments, not their keys and values.
+        assert!(misspelled("{\"nmae\": \"vite buld\"}\n", Some("json")).is_empty());
+        assert_eq!(misspelled("# a comentt\nkey: valeu\n", Some("yaml")), ["comentt"]);
         // Identifiers, acronyms, numbers, paths and links are left alone.
         assert!(misspelled("camelCaseWord snake_case HTTPS v2 see /usr/locl/bin and https://exampel.com or me@exmple.org", None).is_empty());
         // Markdown: the text, not its code.

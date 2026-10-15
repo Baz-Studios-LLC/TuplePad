@@ -112,7 +112,9 @@ impl App {
     fn show_blocks(&self, blocks: &[MarkdownBlock], folder: Option<&Path>) {
         let rows: Vec<PreviewBlock> = blocks
             .iter()
-            .map(|block| {
+            .enumerate()
+            .map(|(index, block)| {
+                let next = blocks.get(index + 1);
                 let mut row = PreviewBlock {
                     kind: match block.kind {
                         MarkdownBlockKind::Heading => 0,
@@ -128,6 +130,7 @@ impl App {
                     marker: block.marker.clone().into(),
                     alt: block.text.clone().into(),
                     header: block.header,
+                    last: next.is_none_or(|n| n.kind != block.kind || n.quote != block.quote),
                     ..Default::default()
                 };
                 match block.kind {

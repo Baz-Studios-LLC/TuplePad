@@ -1,6 +1,6 @@
 //! Compare: a side-by-side line diff with the changed characters inside changed lines.
 
-use similar::{Algorithm, ChangeTag, DiffOp, TextDiff};
+use similar::{Algorithm, DiffOp};
 
 use crate::search::MatchSpan;
 
@@ -130,37 +130,63 @@ pub fn diff_texts(left: String, right: String, options: DiffOptions) -> DiffResu
     result
 }
 
-/// The characters that differ between two versions of a line, as UTF-16 ranges on each side.
-/// Lines that have little in common are marked whole.
+/// The words and symbols that differ between two versions of a line, as UTF-16 ranges on each side.
+/// Whole words are marked (not single letters within them), and lines that have little in common
+/// are marked whole.
 fn inline_changes(old: &str, new: &str) -> (Vec<MatchSpan>, Vec<MatchSpan>) {
     let whole = |text: &str| vec![MatchSpan { start: 0, end: text.encode_utf16().count() as u32 }];
     if old.len() + new.len() > 4_000 {
         return (whole(old), whole(new));
     }
-    let diff = TextDiff::configure().algorithm(Algorithm::Myers).diff_chars(old, new);
-    if diff.ratio() < 0.35 {
+    let (old_tokens, new_tokens) = (tokens(old), tokens(new));
+    let ops = similar::capture_diff_slices(Algorithm::Myers, &old_tokens, &new_tokens);
+    if similar::get_diff_ratio(&ops, old_tokens.len(), new_tokens.len()) < 0.35 {
         return (whole(old), whole(new));
     }
+    // Where each token starts, in UTF-16 units.
+    let offsets = |tokens: &[&str]| {
+        let mut at = 0u32;
+        let mut offsets = vec![0];
+        for token in tokens {
+            at += token.encode_utf16().count() as u32;
+            offsets.push(at);
+        }
+        offsets
+    };
+    let (old_at, new_at) = (offsets(&old_tokens), offsets(&new_tokens));
     let (mut left, mut right) = (Vec::new(), Vec::new());
-    let (mut left_at, mut right_at) = (0u32, 0u32);
-    for change in diff.iter_all_changes() {
-        let units = change.value().encode_utf16().count() as u32;
-        match change.tag() {
-            ChangeTag::Equal => {
-                left_at += units;
-                right_at += units;
-            }
-            ChangeTag::Delete => {
-                push_span(&mut left, left_at, left_at + units);
-                left_at += units;
-            }
-            ChangeTag::Insert => {
-                push_span(&mut right, right_at, right_at + units);
-                right_at += units;
-            }
+    for op in &ops {
+        let (tag, old_range, new_range) = op.as_tag_tuple();
+        if tag == similar::DiffTag::Equal {
+            continue;
+        }
+        if !old_range.is_empty() {
+            push_span(&mut left, old_at[old_range.start], old_at[old_range.end]);
+        }
+        if !new_range.is_empty() {
+            push_span(&mut right, new_at[new_range.start], new_at[new_range.end]);
         }
     }
     (left, right)
+}
+
+/// A line split into words, runs of spaces, and single symbols.
+fn tokens(text: &str) -> Vec<&str> {
+    let mut tokens = Vec::new();
+    let (mut start, mut kind) = (0, 0);
+    for (index, c) in text.char_indices() {
+        let this = if c.is_alphanumeric() || c == '_' { 1 } else if c.is_whitespace() { 2 } else { 3 };
+        if this != kind || this == 3 {
+            if index > start {
+                tokens.push(&text[start..index]);
+            }
+            (start, kind) = (index, this);
+        }
+    }
+    if start < text.len() {
+        tokens.push(&text[start..]);
+    }
+    tokens
 }
 
 fn push_span(spans: &mut Vec<MatchSpan>, start: u32, end: u32) {

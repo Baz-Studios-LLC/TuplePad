@@ -290,8 +290,8 @@ impl App {
                 .docs
                 .iter()
                 .map(|doc| {
-                    // A rename (Save As) or a new language changes the row too.
-                    let stamp = (doc.buffer.version(), doc.buffer.is_modified(), doc.path(), doc.buffer.language());
+                    // Rows show no text, so typing only changes them through the unsaved dot; saving, renaming and a new language do too.
+                    let stamp = (doc.size, doc.buffer.is_modified(), doc.path(), doc.buffer.language());
                     match cache.get(&doc.id) {
                         Some((made_from, item)) if *made_from == stamp => item.clone(),
                         _ => {
@@ -543,7 +543,6 @@ impl App {
             name: name.into(),
             folder: folder.clone().into(),
             detail: format!("{folder}{size}").into(),
-            preview: doc.preview().into(),
             badge: extension.chars().take(4).collect::<String>().into(),
             tint: tint_for(&extension),
             modified: doc.buffer.is_modified(),

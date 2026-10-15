@@ -34,6 +34,12 @@ export global ToolViewBridge {
     in property <string> summary;
     // Which change is current, and the row to scroll to.
     in property <int> change-row: -1;
+    // Where the current change starts and ends in its line, and the widest line, in characters.
+    in property <int> change-column;
+    in property <int> change-end;
+    in property <int> compare-columns;
+    // How far both sides are scrolled sideways.
+    in-out property <length> compare-scroll-x;
     in property <int> scroll-request;
     in-out property <bool> ignore-whitespace;
     in-out property <bool> ignore-case;
@@ -174,38 +180,79 @@ component DiffSide inherits Rectangle {
     in property <[TitlePart]> parts;
     // 0 same, 1 changed, 2 added, 3 removed, 4 nothing on this side.
     in property <int> kind;
+    // How far the text is scrolled sideways (both sides move together).
+    in property <length> scroll-x;
     property <color> tint: root.kind == 2 ? Theme.syntax[22] : root.kind == 3 ? Theme.syntax[23] : Theme.find-match;
     background: root.kind == 0 ? transparent : root.kind == 4 ? (Theme.dark ? #FFFFFF05 : #00000006) : root.tint.with-alpha(Theme.dark ? 0.14 : 0.08);
     clip: true;
-    HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 12px;
-        Text {
-            width: 44px;
-            text: root.number;
-            font-family: Theme.mono-family;
-            font-size: 11px;
-            color: Theme.tertiary-text;
-            horizontal-alignment: right;
-            vertical-alignment: center;
-        }
+    Text {
+        x: 8px;
+        width: 44px;
+        text: root.number;
+        font-family: Theme.mono-family;
+        font-size: 11px;
+        color: Theme.tertiary-text;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+    Rectangle {
+        x: 64px;
+        width: parent.width - 64px - 8px;
+        clip: true;
         DiffText {
+            x: -root.scroll-x;
+            width: self.preferred-width;
             parts: root.parts;
             mark: root.tint.with-alpha(Theme.dark ? 0.42 : 0.28);
         }
-        Rectangle { horizontal-stretch: 1; }
     }
 }
 
 export component CompareView inherits Rectangle {
     background: Theme.editor-background;
     property <length> row-height: 22px;
+    // Sideways scrolling, shared by both sides: the room each side has for text, and how far it can go.
+    // Measured over twenty characters: one alone comes out rounded to whole pixels.
+    property <length> char-width: measure.preferred-width / 20;
+    property <length> text-width: (root.width - 1px) / 2 - 72px;
+    property <length> max-scroll-x: max(0px, ToolViewBridge.compare-columns * root.char-width + 12px - root.text-width);
+    property <length> scroll-x <=> ToolViewBridge.compare-scroll-x;
     property <int> scroll-request: ToolViewBridge.scroll-request;
+    // Shows the current change. It's chosen as the view opens, before `changed` can see it and
+    // before the view has its final size, so it's shown again as the size settles, until the
+    // person scrolls sideways themselves.
+    property <bool> following-change: true;
+    init => { root.show-change(); }
     changed scroll-request => {
-        if ToolViewBridge.change-row >= 0 {
-            list.content-y = -max(0px, ToolViewBridge.change-row * root.row-height - list.visible-height / 3);
+        root.following-change = true;
+        root.show-change();
+    }
+    changed text-width => {
+        if root.following-change {
+            root.show-change();
         }
+    }
+    function show-change() {
+        if ToolViewBridge.change-row < 0 {
+            return;
+        }
+        list.content-y = -max(0px, ToolViewBridge.change-row * root.row-height - list.visible-height / 3);
+        // Sideways: from the left edge if the change fits there, else with it a third of the way in.
+        let start = ToolViewBridge.change-column * root.char-width;
+        let end = ToolViewBridge.change-end * root.char-width;
+        if end <= root.text-width {
+            root.scroll-x = 0;
+        } else if start < root.scroll-x || end > root.scroll-x + root.text-width {
+            root.scroll-x = clamp(start - root.text-width / 3, 0px, root.max-scroll-x);
+        }
+    }
+    changed max-scroll-x => { root.scroll-x = min(root.scroll-x, root.max-scroll-x); }
+
+    measure := Text {
+        visible: false;
+        text: "00000000000000000000";
+        font-family: Theme.mono-family;
+        font-size: 12.5px;
     }
 
     keys := FocusScope {
@@ -300,8 +347,9 @@ export component CompareView inherits Rectangle {
                 background: Theme.separator;
             }
         }
+        Rectangle {
+        vertical-stretch: 1;
         list := ListView {
-            vertical-stretch: 1;
             for line[index] in ToolViewBridge.compare-lines: Rectangle {
                 height: root.row-height;
                 HorizontalLayout {
@@ -310,12 +358,14 @@ export component CompareView inherits Rectangle {
                         number: line.left-number;
                         parts: line.left;
                         kind: line.kind == 2 ? 4 : line.kind;
+                        scroll-x: root.scroll-x;
                     }
                     Rectangle { width: 1px; background: Theme.separator; }
                     DiffSide {
                         number: line.right-number;
                         parts: line.right;
                         kind: line.kind == 3 ? 4 : line.kind;
+                        scroll-x: root.scroll-x;
                     }
                 }
                 // The current change.
@@ -325,6 +375,48 @@ export component CompareView inherits Rectangle {
                     background: Theme.accent;
                 }
             }
+        }
+        // Sideways swipes (or Shift with the wheel) scroll both sides; up and down go on to the list.
+        TouchArea {
+            scroll-event(event) => {
+                let dx = event.modifiers.shift && event.delta-x == 0 ? event.delta-y : event.delta-x;
+                if root.max-scroll-x > 0 && abs(dx) > abs(event.delta-y) / 2 && (event.modifiers.shift || abs(dx) > 0) {
+                    root.following-change = false;
+                    root.scroll-x = clamp(root.scroll-x - dx, 0px, root.max-scroll-x);
+                    return EventResult.accept;
+                }
+                return EventResult.reject;
+            }
+        }
+        // Where the sides are scrolled to, and a handle to drag.
+        if root.max-scroll-x > 0: bar := Rectangle {
+            property <length> track: self.width - 16px;
+            property <length> thumb: max(40px, self.track * root.text-width / (root.text-width + root.max-scroll-x));
+            y: parent.height - self.height - 3px;
+            height: 8px;
+            Rectangle {
+                x: 8px + (parent.track - parent.thumb) * root.scroll-x / root.max-scroll-x;
+                y: (parent.height - self.height) / 2;
+                width: parent.thumb;
+                height: drag.has-hover || drag.pressed ? 8px : 5px;
+                border-radius: self.height / 2;
+                background: Theme.dark ? #FFFFFF : #000000;
+                opacity: drag.has-hover || drag.pressed ? 0.35 : 0.2;
+                animate height, opacity { duration: 120ms; }
+                drag := TouchArea {
+                    property <length> start-scroll;
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.down {
+                            self.start-scroll = root.scroll-x;
+                            root.following-change = false;
+                        }
+                    }
+                    moved => {
+                        root.scroll-x = clamp(self.start-scroll + (self.mouse-x - self.pressed-x) * root.max-scroll-x / max(1px, bar.track - bar.thumb), 0px, root.max-scroll-x);
+                    }
+                }
+            }
+        }
         }
     }
 }

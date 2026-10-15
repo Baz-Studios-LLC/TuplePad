@@ -72,11 +72,6 @@ impl Document {
     }
 
     /// The first line with text in it, for the sidebar.
-    pub fn preview(&self) -> String {
-        let preview = self.buffer.preview(160);
-        preview.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").to_string()
-    }
-
     pub fn is_untitled(&self) -> bool {
         self.buffer.path().is_none()
     }

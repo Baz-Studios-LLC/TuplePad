@@ -780,9 +780,13 @@ fn diff_aligns_changed_added_and_removed_lines() {
     assert_eq!(result.changes, vec![1, 3]);
     let changed = &result.rows[1];
     assert_eq!((changed.left_text.as_str(), changed.right_text.as_str()), ("two", "Two!"));
-    // "t"→"T" and the added "!" are marked, not the whole line.
-    assert_eq!(changed.left_spans, vec![MatchSpan { start: 0, end: 1 }]);
-    assert_eq!(changed.right_spans, vec![MatchSpan { start: 0, end: 1 }, MatchSpan { start: 3, end: 4 }]);
+    // Nothing in common: the whole line is marked.
+    assert_eq!(changed.left_spans, vec![MatchSpan { start: 0, end: 3 }]);
+    assert_eq!(changed.right_spans, vec![MatchSpan { start: 0, end: 4 }]);
+    // Otherwise whole words are marked, not single letters within them.
+    let words = diff_texts("let total = count(a, b);\n".into(), "let sum = count(a, b, c);\n".into(), DiffOptions { ignore_whitespace: false, ignore_case: false });
+    assert_eq!(words.rows[0].left_spans, vec![MatchSpan { start: 4, end: 9 }]);
+    assert_eq!(words.rows[0].right_spans, vec![MatchSpan { start: 4, end: 7 }, MatchSpan { start: 20, end: 23 }]);
     // Options: whitespace and case can be ignored.
     let same = diff_texts("a  b\nC\n".into(), "a b\nc\n".into(), DiffOptions { ignore_whitespace: true, ignore_case: true });
     assert!(same.rows.iter().all(|r| r.kind == DiffKind::Same));

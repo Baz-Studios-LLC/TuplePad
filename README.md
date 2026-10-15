@@ -2,19 +2,19 @@
 
 A fast, beautiful text editor for Mac, Windows and Linux. Free and open source (MIT).
 
-TuplePad is in early development. It's being rebuilt on [Slint](https://slint.dev), a cross-platform UI toolkit, so one app runs on all three systems. The first version, a native Mac app in SwiftUI, stays in the repository as a reference until the new one matches it.
+TuplePad is in early development (the current version is **v001**). It's being rebuilt on [Slint](https://slint.dev), a cross-platform UI toolkit, so one app runs on all three systems. The first version, a native Mac app in SwiftUI, stays in the repository as a reference until the new one matches it.
 
 ## What works today
 
 - **Large files.** A 500 MB, 3.8-million-line log opens in about a quarter of a second and scrolls at your display's full frame rate. Typing shows on screen within about 8 ms. Minified files with multi-megabyte lines draw only the part on screen.
 - **Nothing is lost when you quit.** Open documents, unsaved changes and untitled notes come back on the next launch, with the caret, scroll position and word wrap where you left them.
-- **Syntax highlighting** for 25 languages, using the tree-sitter parser. Markdown shows emphasis, bold, code, links and headings, with fenced code blocks colored in their own language.
+- **Syntax highlighting** for 25 languages, using the tree-sitter parser. Markdown shows emphasis, bold, code, links and headings, with fenced code blocks colored in their own language. Pick a document's language from the **Language** menu, or click the status bar to change its language, indentation, encoding or line endings.
 - **Multiple carets:** ⌃⇧↑ / ⌃⇧↓ add one above or below (Ctrl+Alt+↑/↓ on Windows and Linux), ⌘-click (Ctrl-click) adds one anywhere, ⌥-drag (Alt-drag) selects a column, and ⌘D (Ctrl+D) selects the next occurrence.
 - **Code-editor basics:** brackets and quotes close automatically, Return keeps the indentation (one level deeper after an opening bracket, with the closer moved to its own line), Tab and Shift-Tab indent, Backspace steps back through indentation, smart Home, and Copy with nothing selected copies the whole line. Pasting as many lines as there are carets gives each caret one.
 - **Helpful highlighting:** other occurrences of the word at the caret, the matching bracket pair, optional invisibles (spaces, tabs, line breaks) and indent guides.
 - **Word wrap** (⌥Z) per document. Wrapped lines keep their indentation, and carets, selection and ↑/↓ work on the wrapped rows.
 - **Input methods** for Japanese, Chinese and other languages, with the text you're composing shown in place.
-- **A Mail-style sidebar** of open documents, showing each one's location, a preview line and a dot for unsaved changes. Drag its edge to resize it, or hide it (⌃⌘S).
+- **A Mail-style sidebar** of open documents, showing each one's type, location and size, with a dot for unsaved changes. Hover over one for its close button, or middle-click it. Right-click for Save, Save As, Rename or Move, Show in Finder, Copy Path, Close, Close Others and Move to Trash. Drag the sidebar's edge to resize it, or hide it (⌃⌘S).
 - **Themes:** TuplePad (neutral, with midnight blue), Midnight (ivory and navy), Graphite, Sepia and High Contrast, each in light and dark, following the system or pinned. Zoom with ⌘+ / ⌘− / ⌘0.
 - **Settings** (⌘,): font, size and line height with a live preview; indentation; typing helpers; display options; the encoding and line endings for new documents; appearance and theme. Changes apply as you make them.
 - **Command palette** (⇧⌘P): fuzzy search over every command, open document, theme and recent file, with keyboard shortcuts shown. Type a few letters (`wwr` finds Word Wrap) and press Return.
@@ -22,7 +22,7 @@ TuplePad is in early development. It's being rebuilt on [Slint](https://slint.de
 - **Keeps up with your files.** When another app changes a file, TuplePad reloads it (Undo brings your text back), or shows a quiet banner offering Reload or Keep Mine if you have unsaved changes. Moved and deleted files get a banner too. **Follow End of File** (View menu) tails a growing log.
 - **Encodings and line endings:** detected and kept. Reopen with another encoding, convert to one (with or without a BOM; TuplePad warns about characters it can't hold), and switch line endings, from the File menu.
 - **The `tuplepad` terminal command** (File ▸ Install Command Line Tool…): `tuplepad notes.txt`, `tuplepad +42 main.rs` or `main.rs:42:7`, and `git log | tuplepad -`. Files that don't exist yet open as new documents. TuplePad opens from Finder and Open With.
-- **Print** (⌘P) with syntax colors and line numbers (each optional), through the Mac's print panel (with its preview and Save as PDF).
+- **Print** (File menu) with syntax colors and line numbers (each optional), through the Mac's print panel (with its preview and Save as PDF).
 - **Find and replace** (⌘F, ⌥⌘F; Ctrl+F, Ctrl+H on Windows and Linux): finds as you type, even in huge files, and highlights every match, the current one strongest. Match Case, Whole Words and Regular Expression options; Replace and Replace All (with `$1`-style groups) are each one undo step. ⌘G / ⇧⌘G (F3 / Shift+F3) step through matches, wrapping around, and ⌘E searches for the selection. **Count Matches**, **Mark All** (⌃⌘M) to keep every match highlighted until you clear it, and **Bookmark Matching Lines**.
 - **Bookmarks:** click a line number (or ⌘F2) to bookmark a line, F2 and ⇧F2 to jump between bookmarks, and copy or delete every bookmarked line at once. Bookmarks move with your edits and come back with the session.
 - **Find in Files** (⇧⌘F) and **Find in Open Documents:** a panel under the editor with results grouped by file and each match highlighted. Use ↑ and ↓ to look through them in the editor, Return to jump there. Folder searches respect `.gitignore`, skip binary and very large files (unless you include ignored files), take include and exclude patterns (`*.rs, *.py`, `build`), and show their progress with a Stop button. Searching all of TuplePad's source for `e` (50,000 matches) takes about a quarter of a second.
@@ -34,6 +34,15 @@ TuplePad is in early development. It's being rebuilt on [Slint](https://slint.de
 - **Outline** (⌃⌘O): functions, types and headings from the syntax tree, with the one around the caret highlighted. Click one to go there.
 - **Minimap:** the document in miniature beside the scrollbar; click or drag to scroll. It's drawn once and redrawn only when what it shows changes, so it doesn't slow big files.
 - **Split view** (⌘\ side by side, ⌃⌘\ top and bottom): the same document twice, each with its own carets, or two different ones. Drag the divider to resize.
+- **Folders** (Open Folder, ⇧⌘O): the sidebar switches between your open documents and a folder's files, shown as a tree that keeps up with changes on disk. Right-click a file or folder to open it, search in it, show it in Finder, copy its path or move it to the Trash. **Go to File** (⌘P) finds any file in the folder from a few letters of its name.
+- **Compare** (Tools ▸ Compare): a document with its saved version, the clipboard, or another open document, side by side. Lines line up, changed words are marked, spaces and case can be ignored, and ⌥↓ / ⌥↑ step through the changes. Long lines scroll sideways on both sides together.
+- **JSON:** format, minify, sort keys, validate (pointing at the error), a tree of the document in the outline panel, and Copy Path for the value at the caret. **XML:** format, linearize, validate, and XPath queries. **CSV:** each column in its own color, Align Columns and Shrink Columns, Sort by Column, and the delimiter detected or chosen.
+- **Encode and decode** the selection as Base64, URL, HTML entities, hex or quoted-printable. **Hashes:** MD5, SHA-1, SHA-256 and SHA-512 of the selection, the document or a file.
+- **Markdown Preview** (⇧⌘M): the document drawn beside the editor as you type, scrolling along with it. Headings, lists, quotes, tables, images, links, and code in its own syntax colors.
+- **Hex View** of a file's bytes, quick even for huge files.
+- **Spell check** (Edit ▸ Check Spelling) of comments and strings in code, of Markdown and of plain text, with an English dictionary built in. Right-click a misspelled word for suggestions, Learn Spelling or Ignore.
+- **Snippets:** type a trigger word and press Tab (or Insert Snippet…, ⌥⌘J), then Tab through the placeholders. Edit them in Settings.
+- **Paste from History** (⇧⌘V) of what you've copied, **Run Shell Command** (⌃⌘R; Ctrl+Alt+R on Windows and Linux) on the selection or document, with its output replacing the text, after it, or in a new document, and **Copy with Syntax Colors** (⌥⇧⌘C) for pasting colored code into documents and email.
 
 The Mac app in `TuplePad/` does much more, and those features are coming to the new app milestone by milestone (see the roadmap below):
 
@@ -85,7 +94,8 @@ The Mac app opens from `TuplePad.xcodeproj` in Xcode (macOS 26 or later, Xcode 2
 | Part | Language | Where |
 |---|---|---|
 | Text engine: buffer (a rope), editing, undo, encodings, saving, syntax trees, search, session | Rust | `core/tuplepad-core` |
-| The app: window, editor, sidebar, menus, find bar, search panel | Slint and Rust | `core/tuplepad-app` (`ui/` and `src/`) |
+| Built-in tools: compare, JSON, XML, CSV, encodings, hashes, hex, Markdown, snippets, spelling | Rust | `core/tuplepad-core` |
+| The app: window, editor, sidebar, menus, find bar, search panel, tool views | Slint and Rust | `core/tuplepad-app` (`ui/` and `src/`) |
 | `tuplepad` terminal command | Rust | `core/tuplepad-cli` |
 | The first Mac app (reference) | Swift / SwiftUI | `TuplePad/` |
 | App icon | Icon Composer | `TuplePad/AppIcon.icon` (artwork source in `design/`) |
@@ -94,4 +104,10 @@ The editor draws only the lines on screen, so a document's size doesn't affect s
 
 ## Roadmap
 
-See [docs/GOAL.md](docs/GOAL.md) for the plan: files, settings and themes, search, power editing and the built-in tools (compare, JSON and XML, hashes, Markdown preview and more) come next. TuplePad will also include a built-in MCP server, so AI tools can read and edit your open documents while you watch.
+See [docs/GOAL.md](docs/GOAL.md) for the plan. Next is a built-in MCP server, so AI tools can read and edit your open documents while you watch; then accessibility, performance, and builds for Windows and Linux.
+
+Versions are named v001, v002, v003 and so on.
+
+## Credits
+
+The English spelling dictionary is from [SCOWL](http://wordlist.aspell.net) (see `core/tuplepad-core/dictionaries/en/LICENSE`).

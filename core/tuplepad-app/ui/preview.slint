@@ -23,6 +23,8 @@ export struct PreviewBlock {
     image: image,
     has-image: bool,
     alt: string,
+    // The last item of a list or the last row of a table, which gets a paragraph's gap after it.
+    last: bool,
 }
 
 export global PreviewBridge {
@@ -114,7 +116,7 @@ export component MarkdownPreview inherits Rectangle {
                 VerticalLayout {
                     padding-left: block.quote * 16px + (block.kind == 3 ? block.level * 22px : 0px);
                     padding-top: block.kind == 0 ? (index == 0 ? 0px : (block.level <= 2 ? 22px : 16px)) : block.kind == 4 ? 14px : 0px;
-                    padding-bottom: block.kind == 3 ? 5px : block.kind == 5 ? 0px : block.kind == 4 ? 14px : 12px;
+                    padding-bottom: block.kind == 3 ? (block.last ? 12px : 5px) : block.kind == 5 ? (block.last ? 12px : 0px) : block.kind == 4 ? 14px : 12px;
 
                     if block.kind == 0: VerticalLayout {
                         spacing: 8px;
@@ -165,12 +167,13 @@ export component MarkdownPreview inherits Rectangle {
                         background: block.header ? (Theme.dark ? #FFFFFF0A : #00000007) : transparent;
                         border-width: 1px;
                         border-color: Theme.separator;
-                        HorizontalLayout {
+                        cells-layout := HorizontalLayout {
                             padding: 8px;
                             padding-left: 12px;
                             spacing: 12px;
+                            // Equal columns, so every row lines up with the header.
                             for cell in block.cells: StyledText {
-                                horizontal-stretch: 1;
+                                width: (cells-layout.width - 20px - 12px * (block.cells.length - 1)) / max(1, block.cells.length);
                                 text: cell;
                                 default-font-size: 13.5px;
                                 default-color: Theme.primary-text;

@@ -5,7 +5,6 @@ export struct DocItem {
     name: string,
     folder: string,
     detail: string,
-    preview: string,
     badge: string,
     tint: color,
     modified: bool,
@@ -103,7 +102,7 @@ component DocRow inherits Rectangle {
     callback action(id: string);
 
     property <bool> hovered: touch.has-hover || close-touch.has-hover;
-    height: 66px;
+    height: 52px;
     border-radius: 10px;
     background: root.selected ? Theme.selected-row : root.hovered ? Theme.sidebar-hover : transparent;
     animate background { duration: 120ms; easing: ease-out; }
@@ -164,10 +163,8 @@ component DocRow inherits Rectangle {
         padding-right: root.hovered ? 36px : 12px;
         spacing: 11px;
 
-        // The badge lines up with the name, or sits in the middle when there's no preview line.
         VerticalLayout {
-            padding-top: root.item.preview != "" ? 10px : 0px;
-            alignment: root.item.preview != "" ? start : center;
+            alignment: center;
             Rectangle {
                 width: 32px;
                 height: 32px;
@@ -213,12 +210,6 @@ component DocRow inherits Rectangle {
                 text: root.item.detail;
                 font-size: 11px;
                 color: root.selected ? Theme.selected-row-detail : Theme.secondary-text;
-                overflow: elide;
-            }
-            if root.item.preview != "": Text {
-                text: root.item.preview;
-                font-size: 11px;
-                color: root.selected ? Theme.selected-row-detail.with-alpha(0.75) : Theme.tertiary-text;
                 overflow: elide;
             }
         }

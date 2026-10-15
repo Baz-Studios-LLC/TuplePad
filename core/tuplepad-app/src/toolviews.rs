@@ -70,7 +70,14 @@ pub struct CompareState {
     left: String,
     right: String,
     changes: Vec<u64>,
+    // Where each change starts and ends within its line, in characters, so a step can scroll it into view.
+    change_columns: Vec<(i32, i32)>,
     current: Option<usize>,
+}
+
+/// How many characters wide a line is drawn (tabs as four spaces).
+fn drawn_width(text: &str) -> usize {
+    text.chars().map(|c| if c == '\t' { 4 } else { 1 }).sum()
 }
 
 /// A line's text split into parts, the changed ones marked.
@@ -148,10 +155,11 @@ impl App {
         let rows = size.div_ceil(16) as usize;
         let model = Rc::new(HexModel { path: text, rows, pages: RefCell::new(HashMap::new()) });
         let modified = self.editor.borrow().buffer().is_modified();
+        // "590 bytes", or "1.2 MB · 1,234,567 bytes".
+        let bytes = plural(size, "byte", "bytes");
         let subtitle = format!(
-            "{} · {}{}",
-            crate::app::format_size(size),
-            plural(size, "byte", "bytes"),
+            "{}{}",
+            if size < 1_000 { bytes } else { format!("{} · {bytes}", crate::app::format_size(size)) },
             if modified { " · the file as saved, without your unsaved changes" } else { "" }
         );
         self.tool_view(|b| {
@@ -191,7 +199,7 @@ impl App {
                 (this_name.clone(), this_text, other_name, other_text)
             }
         };
-        *self.compare_state.borrow_mut() = CompareState { left, right, changes: Vec::new(), current: None };
+        *self.compare_state.borrow_mut() = CompareState { left, right, changes: Vec::new(), change_columns: Vec::new(), current: None };
         self.tool_view(|b| {
             b.set_left_title(left_title.clone().into());
             b.set_right_title(right_title.clone().into());
@@ -227,6 +235,17 @@ impl App {
                 right: ModelRc::new(VecModel::from(diff_parts(&row.right_text, &row.right_spans))),
             })
             .collect();
+        let columns = result.rows.iter().map(|row| drawn_width(&row.left_text).max(drawn_width(&row.right_text))).max().unwrap_or(0);
+        let change_columns = result
+            .changes
+            .iter()
+            .map(|&row| {
+                let row = &result.rows[row as usize];
+                let width_to = |text: &str, column: u32| drawn_width(&String::from_utf16_lossy(&text.encode_utf16().take(column as usize).collect::<Vec<_>>())) as i32;
+                let span = |text: &str, spans: &[MatchSpan]| spans.first().map(|s| (width_to(text, s.start), width_to(text, s.end)));
+                span(&row.left_text, &row.left_spans).or(span(&row.right_text, &row.right_spans)).unwrap_or((0, 0))
+            })
+            .collect();
         let summary = if result.changes.is_empty() {
             "No differences".to_string()
         } else {
@@ -245,9 +264,14 @@ impl App {
         {
             let mut state = self.compare_state.borrow_mut();
             state.changes = result.changes.clone();
+            state.change_columns = change_columns;
             state.current = None;
         }
         self.tool_view(|b| {
+            b.set_compare_columns(columns as i32);
+            b.set_change_column(0);
+            b.set_change_end(0);
+            b.set_compare_scroll_x(0.0);
             b.set_compare_lines(ModelRc::from(Rc::new(VecModel::from(lines))));
             b.set_summary(summary.into());
             b.set_change_row(-1);
@@ -269,10 +293,13 @@ impl App {
                 (Some(i), false) => (i + count - 1) % count,
             };
             state.current = Some(next);
-            state.changes[next] as i32
+            (state.changes[next] as i32, state.change_columns.get(next).copied().unwrap_or((0, 0)))
         };
+        let (row, (start, end)) = row;
         self.tool_view(|b| {
             b.set_change_row(row);
+            b.set_change_column(start);
+            b.set_change_end(end);
             b.set_scroll_request(b.get_scroll_request() + 1);
         });
     }
@@ -295,6 +322,8 @@ impl App {
                 "subtitle": b.get_subtitle().as_str(),
                 "summary": b.get_summary().as_str(),
                 "change_row": b.get_change_row(),
+                "change_column": b.get_change_column(),
+                "scroll_x": b.get_compare_scroll_x(),
                 "compare": compare,
                 "hex_rows": hex.row_count(),
                 "hex": first_hex,
