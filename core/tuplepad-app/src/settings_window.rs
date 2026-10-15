@@ -6,7 +6,7 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use crate::app::App;
 use crate::settings::Settings;
-use crate::{SettingsValues, SettingsWindow, Theme};
+use crate::{SettingsValues, SettingsWindow, SnippetRow, Theme};
 
 /// Theme ids, in the order of `Themes.ids` in theme.slint.
 pub const THEME_IDS: [&str; 5] = ["tuplepad", "midnight", "graphite", "sepia", "high-contrast"];
@@ -137,7 +137,28 @@ impl App {
                     }
                 });
             }
+            {
+                let app = app.clone();
+                window.on_snippet_select(move |index| app.select_snippet(index));
+            }
+            {
+                let app = app.clone();
+                window.on_snippet_edited(move || app.snippet_edited());
+            }
+            {
+                let app = app.clone();
+                window.on_snippet_add(move || app.add_snippet());
+            }
+            {
+                let app = app.clone();
+                window.on_snippet_remove(move || app.remove_snippet());
+            }
+            let languages: Vec<SharedString> =
+                std::iter::once("Any language".to_string()).chain(tuplepad_core::languages().into_iter().map(|l| l.name)).map(SharedString::from).collect();
+            window.set_snippet_languages(ModelRc::new(VecModel::from(languages)));
             *self.settings_window.borrow_mut() = Some(window);
+            self.show_snippet_list();
+            self.select_snippet(0);
         }
         self.apply_settings(false);
         if let Some(window) = self.settings_window.borrow().as_ref() {
@@ -148,6 +169,100 @@ impl App {
             use slint::winit_030::WinitWindowAccessor;
             window.window().with_winit_window(|w| w.focus_window());
         }
+    }
+
+    // MARK: Snippets
+
+    fn show_snippet_list(&self) {
+        let Some(window) = self.settings_window.borrow().as_ref().map(|w| w.clone_strong()) else { return };
+        let names: std::collections::HashMap<String, String> = tuplepad_core::languages().into_iter().map(|l| (l.id, l.name)).collect();
+        let rows: Vec<SnippetRow> = self
+            .snippets
+            .borrow()
+            .snippets
+            .iter()
+            .map(|s| {
+                let language = if s.language.is_empty() { "any language".to_string() } else { names.get(&s.language).cloned().unwrap_or_else(|| s.language.clone()) };
+                SnippetRow { name: if s.name.is_empty() { "Untitled snippet".into() } else { s.name.clone().into() }, detail: format!("{} · {language}", s.trigger).into() }
+            })
+            .collect();
+        window.set_snippets(ModelRc::new(VecModel::from(rows)));
+    }
+
+    pub fn select_snippet(&self, index: i32) {
+        let Some(window) = self.settings_window.borrow().as_ref().map(|w| w.clone_strong()) else { return };
+        let snippet = usize::try_from(index).ok().and_then(|i| self.snippets.borrow().snippets.get(i).cloned());
+        let Some(snippet) = snippet else {
+            window.set_snippet_index(-1);
+            return;
+        };
+        let language = tuplepad_core::languages().iter().position(|l| l.id == snippet.language).map_or(0, |i| i + 1);
+        window.set_snippet_trigger(snippet.trigger.into());
+        window.set_snippet_name(snippet.name.into());
+        window.set_snippet_language(language as i32);
+        window.set_snippet_body(snippet.body.into());
+        window.set_snippet_index(index);
+    }
+
+    /// A field changed: the snippet follows, and is saved.
+    pub fn snippet_edited(&self) {
+        let Some(window) = self.settings_window.borrow().as_ref().map(|w| w.clone_strong()) else { return };
+        let Ok(index) = usize::try_from(window.get_snippet_index()) else { return };
+        let language = usize::try_from(window.get_snippet_language() - 1).ok().and_then(|i| tuplepad_core::languages().get(i).map(|l| l.id.clone())).unwrap_or_default();
+        {
+            let mut store = self.snippets.borrow_mut();
+            let Some(snippet) = store.snippets.get_mut(index) else { return };
+            snippet.trigger = window.get_snippet_trigger().trim().to_string();
+            snippet.name = window.get_snippet_name().to_string();
+            snippet.language = language;
+            snippet.body = window.get_snippet_body().to_string();
+            store.save();
+        }
+        self.show_snippet_list();
+    }
+
+    /// For scripted runs: fills in the chosen snippet's fields as if typed.
+    pub fn edit_snippet_fields(&self, trigger: Option<&str>, name: Option<&str>, language: Option<i32>, body: Option<&str>) {
+        let Some(window) = self.settings_window.borrow().as_ref().map(|w| w.clone_strong()) else { return };
+        if let Some(t) = trigger {
+            window.set_snippet_trigger(t.into());
+        }
+        if let Some(n) = name {
+            window.set_snippet_name(n.into());
+        }
+        if let Some(l) = language {
+            window.set_snippet_language(l);
+        }
+        if let Some(b) = body {
+            window.set_snippet_body(b.into());
+        }
+        self.snippet_edited();
+    }
+
+    pub fn add_snippet(&self) {
+        let index = {
+            let mut store = self.snippets.borrow_mut();
+            store.snippets.push(crate::snippets::Snippet { trigger: String::new(), name: "New snippet".into(), language: String::new(), body: "$0".into() });
+            store.save();
+            store.snippets.len() - 1
+        };
+        self.show_snippet_list();
+        self.select_snippet(index as i32);
+    }
+
+    pub fn remove_snippet(&self) {
+        let Some(window) = self.settings_window.borrow().as_ref().map(|w| w.clone_strong()) else { return };
+        let Ok(index) = usize::try_from(window.get_snippet_index()) else { return };
+        let count = {
+            let mut store = self.snippets.borrow_mut();
+            if index < store.snippets.len() {
+                store.snippets.remove(index);
+                store.save();
+            }
+            store.snippets.len()
+        };
+        self.show_snippet_list();
+        self.select_snippet(if count == 0 { -1 } else { index.min(count - 1) as i32 });
     }
 
     pub fn hide_settings(&self) {

@@ -509,6 +509,20 @@ fn run_next(app: Rc<App>, runner: Shared) {
             }
             return later(app, runner, 250);
         }
+        "snippetEdit" => {
+            // {"snippetEdit": {"add": true, "select": n, "trigger", "name", "language": n, "body", "remove": true}}
+            if arg.get("add").and_then(Value::as_bool) == Some(true) {
+                app.add_snippet();
+            }
+            if let Some(n) = arg.get("select").and_then(Value::as_i64) {
+                app.select_snippet(n as i32);
+            }
+            let text = |name: &str| arg.get(name).and_then(Value::as_str);
+            app.edit_snippet_fields(text("trigger"), text("name"), arg.get("language").and_then(Value::as_i64).map(|n| n as i32), text("body"));
+            if arg.get("remove").and_then(Value::as_bool) == Some(true) {
+                app.remove_snippet();
+            }
+        }
         "waitSearch" => return wait_until(app, runner, |app| !app.search_busy(), Instant::now()),
         "searchStatus" => {
             let state = app.search_dump();

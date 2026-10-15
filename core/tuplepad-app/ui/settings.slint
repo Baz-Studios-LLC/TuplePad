@@ -1,5 +1,14 @@
 import { Theme, Themes, ThemeColors } from "theme.slint";
 import { Toggle, Segmented, Stepper, Dropdown, Section, SettingRow } from "controls.slint";
+import { ListView } from "std-widgets.slint";
+import { InputField } from "findbar.slint";
+import { PillButton } from "sidebar.slint";
+
+// A snippet in the Snippets tab's list.
+export struct SnippetRow {
+    name: string,
+    detail: string,
+}
 
 // Everything the Settings window shows, set from Rust.
 export struct SettingsValues {
@@ -145,6 +154,18 @@ export component SettingsWindow inherits Window {
     in-out property <int> tab: 0;
     in property <SettingsValues> values;
     in property <string> version;
+    // The Snippets tab: the list, and the fields of the one chosen.
+    in property <[SnippetRow]> snippets;
+    in-out property <int> snippet-index: -1;
+    in-out property <string> snippet-trigger;
+    in-out property <string> snippet-name;
+    in-out property <int> snippet-language;
+    in property <[string]> snippet-languages;
+    in-out property <string> snippet-body;
+    callback snippet-select(index: int);
+    callback snippet-edited();
+    callback snippet-add();
+    callback snippet-remove();
     callback set-bool(key: string, value: bool);
     callback set-int(key: string, value: int);
     callback drag-window();
@@ -178,6 +199,12 @@ export component SettingsWindow inherits Window {
                     label: "Appearance";
                     selected: root.tab == 2;
                     clicked => { root.tab = 2; }
+                }
+                TabButton {
+                    icon: "M8 6l-5 6 5 6 M16 6l5 6-5 6 M13.5 4.5l-3 15";
+                    label: "Snippets";
+                    selected: root.tab == 3;
+                    clicked => { root.tab = 3; }
                 }
             }
             Rectangle {
@@ -350,6 +377,155 @@ export component SettingsWindow inherits Window {
                     SettingRow {
                         label: "Show minimap";
                         Toggle { on: root.values.minimap; toggled(on) => { root.set-bool("minimap", on); } }
+                    }
+                }
+            }
+
+            if root.tab == 3: HorizontalLayout {
+                padding: 24px;
+                padding-bottom: 44px;
+                spacing: 18px;
+                VerticalLayout {
+                    width: 230px;
+                    spacing: 10px;
+                    Rectangle {
+                        vertical-stretch: 1;
+                        border-radius: 10px;
+                        background: Theme.editor-background;
+                        border-width: 1px;
+                        border-color: Theme.separator;
+                        clip: true;
+                        ListView {
+                            for snippet[index] in root.snippets: Rectangle {
+                                height: 46px;
+                                Rectangle {
+                                    x: 4px;
+                                    y: 2px;
+                                    width: parent.width - 8px;
+                                    height: parent.height - 4px;
+                                    border-radius: 7px;
+                                    background: index == root.snippet-index ? Theme.selected-row : row-touch.has-hover ? Theme.sidebar-hover : transparent;
+                                }
+                                VerticalLayout {
+                                    padding-left: 14px;
+                                    padding-right: 12px;
+                                    alignment: center;
+                                    Text {
+                                        text: snippet.name;
+                                        font-size: 13px;
+                                        font-weight: 600;
+                                        color: index == root.snippet-index ? Theme.selected-row-text : Theme.primary-text;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: snippet.detail;
+                                        font-size: 11px;
+                                        color: index == root.snippet-index ? Theme.selected-row-detail : Theme.secondary-text;
+                                        overflow: elide;
+                                    }
+                                }
+                                row-touch := TouchArea {
+                                    clicked => { root.snippet-select(index); }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        PillButton {
+                            text: "Add";
+                            clicked => { root.snippet-add(); }
+                        }
+                        PillButton {
+                            text: "Remove";
+                            opacity: root.snippet-index >= 0 ? 1 : 0.45;
+                            clicked => {
+                                if root.snippet-index >= 0 { root.snippet-remove(); }
+                            }
+                        }
+                    }
+                }
+                if root.snippet-index < 0: Text {
+                    horizontal-stretch: 1;
+                    text: "Choose a snippet to change it, or add one.";
+                    font-size: 13px;
+                    color: Theme.tertiary-text;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                if root.snippet-index >= 0: VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 14px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        VerticalLayout {
+                            spacing: 5px;
+                            width: 150px;
+                            Text { text: "TRIGGER"; font-size: 11px; font-weight: 600; color: Theme.secondary-text; }
+                            InputField {
+                                text <=> root.snippet-trigger;
+                                mono: true;
+                                placeholder: "fn";
+                                edited => { root.snippet-edited(); }
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 5px;
+                            Text { text: "NAME"; font-size: 11px; font-weight: 600; color: Theme.secondary-text; }
+                            InputField {
+                                text <=> root.snippet-name;
+                                placeholder: "Function";
+                                edited => { root.snippet-edited(); }
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 5px;
+                        Text { text: "LANGUAGE"; font-size: 11px; font-weight: 600; color: Theme.secondary-text; }
+                        Dropdown {
+                            options: root.snippet-languages;
+                            selected: root.snippet-language;
+                            list-height: 300px;
+                            chosen(index) => {
+                                root.snippet-language = index;
+                                root.snippet-edited();
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 5px;
+                        vertical-stretch: 1;
+                        Text { text: "TEXT"; font-size: 11px; font-weight: 600; color: Theme.secondary-text; }
+                        Rectangle {
+                            vertical-stretch: 1;
+                            min-height: 120px;
+                            border-radius: 8px;
+                            background: Theme.editor-background;
+                            border-width: 1px;
+                            border-color: body.has-focus ? Theme.accent.with-alpha(0.6) : Theme.control-border;
+                            clip: true;
+                            body := TextInput {
+                                x: 10px;
+                                y: 8px;
+                                width: parent.width - 20px;
+                                height: parent.height - 16px;
+                                text <=> root.snippet-body;
+                                single-line: false;
+                                wrap: word-wrap;
+                                font-family: Theme.mono-family;
+                                font-size: 12.5px;
+                                color: Theme.primary-text;
+                                selection-background-color: Theme.selection;
+                                edited => { root.snippet-edited(); }
+                            }
+                        }
+                        Text {
+                            text: "Type the trigger and press Tab to insert. $1, $2… are places Tab moves to next, ${1:text} starts with text there, and $0 is where it ends.";
+                            font-size: 11px;
+                            color: Theme.secondary-text;
+                            wrap: word-wrap;
+                        }
                     }
                 }
             }

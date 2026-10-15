@@ -3,7 +3,7 @@ import { Theme } from "theme.slint";
 import { EditorView, EditorBridge, Span, Row, Caret, Band, CompletionItem } from "editor.slint";
 import { Sidebar, DocItem, IconButton, Icons, PillButton } from "sidebar.slint";
 import { Sheet, Toggle } from "controls.slint";
-import { SettingsWindow, SettingsValues } from "settings.slint";
+import { SettingsWindow, SettingsValues, SnippetRow } from "settings.slint";
 import { CommandPalette, PaletteItem, TitlePart } from "palette.slint";
 import { FindBar, FindBridge } from "findbar.slint";
 import { SearchPanel, SearchBridge, SearchRow, PlanRow, ReplacedRow, ReplacePlanSheet } from "searchpanel.slint";
@@ -11,7 +11,7 @@ import { ColumnEditorSheet, ColumnBridge } from "columneditor.slint";
 import { OutlinePanel, OutlineBridge, OutlineRow } from "outline.slint";
 import { ToolBridge, HashRow, XPathRow, HashesSheet, XPathSheet, CsvSortSheet, ShellSheet } from "toolsheets.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, Palette, SettingsWindow, SettingsValues, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow }
+export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
@@ -439,10 +439,7 @@ export component AppWindow inherits Window {
                 root.focus-editor();
             }
             toggle-sidebar => { root.command("view.sidebar"); }
-            toggle-theme => {
-                root.command("view.toggle-theme");
-                root.focus-editor();
-            }
+            open-settings => { root.command("app.settings"); }
             drag-window => { root.drag-window(); }
             resize(width) => { root.sidebar-resized(width); }
         }
