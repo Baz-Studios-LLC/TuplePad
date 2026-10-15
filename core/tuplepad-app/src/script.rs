@@ -334,7 +334,30 @@ fn run_next(app: Rc<App>, runner: Shared) {
             }
             return later(app, runner, 150);
         }
-        "gutterClick" => app.toggle_bookmark_at_row(arg.as_u64().unwrap_or(0)),
+        "gutterClick" => {
+            let pane = app.editor.borrow().focused_pane();
+            app.toggle_bookmark_at_row(pane, arg.as_u64().unwrap_or(0));
+        }
+        "split" => app.run_command(match arg.as_str().unwrap_or("off") {
+            "side" => "view.split-side",
+            "stacked" => "view.split-stacked",
+            _ => "view.split-off",
+        }),
+        "focusPane" => app.focus_pane(arg.as_u64().unwrap_or(0) as usize),
+        "panes" => {
+            let state: Vec<Value> = app
+                .editor
+                .borrow_mut()
+                .panes_state()
+                .into_iter()
+                .map(|(name, cursors)| json!({"doc": name, "cursors": cursors.iter().map(|c| json!([[c.anchor.line, c.anchor.column], [c.head.line, c.head.column]])).collect::<Vec<_>>()}))
+                .collect();
+            let focused = app.editor.borrow().focused_pane();
+            let split = format!("{:?}", app.editor.borrow().split());
+            if let Some(path) = arg.as_str() {
+                let _ = std::fs::write(path, serde_json::to_string_pretty(&json!({"split": split, "focused": focused, "panes": state})).unwrap_or_default());
+            }
+        }
         "minimapClick" => app.editor.borrow_mut().minimap_scroll(arg.as_f64().unwrap_or(0.0) as f32),
         "foldClick" => app.editor.borrow_mut().toggle_fold_at_row(arg.as_u64().unwrap_or(0)),
         "search" => {

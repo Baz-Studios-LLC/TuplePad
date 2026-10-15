@@ -43,6 +43,11 @@ export component AppWindow inherits Window {
     in property <string> status-right;
     in-out property <bool> sidebar-visible: true;
     in property <bool> outline-visible;
+    // Split view: 0 off, 1 side by side, 2 top and bottom; which pane has the keyboard; where
+    // the divider is, as a fraction.
+    in property <int> split;
+    in property <int> focused-pane;
+    in-out property <float> split-ratio: 0.5;
     in-out property <length> sidebar-width: 264px;
     in property <bool> wraps;
     // A note above the editor: 0 none, 1 the file changed on disk, 2 the file is gone.
@@ -96,7 +101,11 @@ export component AppWindow inherits Window {
     }
 
     public function focus-editor() {
-        editor.focus-editor();
+        if root.split != 0 && root.focused-pane == 1 {
+            editor2.focus-editor();
+        } else {
+            editor.focus-editor();
+        }
     }
 
     public function focus-find() {
@@ -311,12 +320,12 @@ export component AppWindow inherits Window {
             top-inset: root.titlebar-height;
             select(index) => {
                 root.select-doc(index);
-                editor.focus-editor();
+                root.focus-editor();
             }
             toggle-sidebar => { root.command("view.sidebar"); }
             toggle-theme => {
                 root.command("view.toggle-theme");
-                editor.focus-editor();
+                root.focus-editor();
             }
             drag-window => { root.drag-window(); }
             resize(width) => { root.sidebar-resized(width); }
@@ -376,14 +385,14 @@ export component AppWindow inherits Window {
                                 on: root.wraps;
                                 clicked => {
                                     root.command("view.wrap");
-                                    editor.focus-editor();
+                                    root.focus-editor();
                                 }
                             }
                             IconButton {
                                 icon: Icons.plus;
                                 clicked => {
                                     root.command("file.new");
-                                    editor.focus-editor();
+                                    root.focus-editor();
                                 }
                             }
                         }
@@ -467,9 +476,54 @@ export component AppWindow inherits Window {
                 background: Theme.separator;
             }
 
-            editor := EditorView {
-                font-family: Theme.mono-family;
+            panes := Rectangle {
                 vertical-stretch: 1;
+                property <bool> side: root.split == 1;
+                property <bool> stacked: root.split == 2;
+                property <length> first-width: self.side ? round((self.width - 1px) * root.split-ratio / 1px) * 1px : self.width;
+                property <length> first-height: self.stacked ? round((self.height - 1px) * root.split-ratio / 1px) * 1px : self.height;
+
+                editor := EditorView {
+                    pane: 0;
+                    x: 0;
+                    y: 0;
+                    width: panes.first-width;
+                    height: panes.first-height;
+                    font-family: Theme.mono-family;
+                }
+                editor2 := EditorView {
+                    pane: 1;
+                    visible: root.split != 0;
+                    x: panes.side ? panes.first-width + 1px : 0;
+                    y: panes.stacked ? panes.first-height + 1px : 0;
+                    width: root.split == 0 ? 0 : panes.side ? panes.width - panes.first-width - 1px : panes.width;
+                    height: root.split == 0 ? 0 : panes.stacked ? panes.height - panes.first-height - 1px : panes.height;
+                    font-family: Theme.mono-family;
+                }
+                // The divider between the panes; drag it to resize them.
+                if root.split != 0: Rectangle {
+                    x: panes.side ? panes.first-width : 0;
+                    y: panes.stacked ? panes.first-height : 0;
+                    width: panes.side ? 1px : panes.width;
+                    height: panes.stacked ? 1px : panes.height;
+                    background: Theme.separator;
+                    TouchArea {
+                        x: panes.side ? -3px : 0;
+                        y: panes.stacked ? -3px : 0;
+                        width: panes.side ? 7px : parent.width;
+                        height: panes.stacked ? 7px : parent.height;
+                        mouse-cursor: panes.side ? col-resize : row-resize;
+                        moved => {
+                            if self.pressed {
+                                if panes.side {
+                                    root.split-ratio = max(0.2, min(0.8, (parent.x + self.mouse-x - 3px) / panes.width));
+                                } else {
+                                    root.split-ratio = max(0.2, min(0.8, (parent.y + self.mouse-y - 3px) / panes.height));
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             if SearchBridge.open: SearchPanel {

@@ -191,12 +191,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn connect(ui: &AppWindow, app: &Rc<App>) {
     let bridge = ui.global::<EditorBridge>();
 
-    // Runs `f` on the editor, then redraws.
+    // Runs `f` on the editor with a pane's view in place, then redraws.
     let edit = {
         let app = app.clone();
-        Rc::new(move |f: &dyn Fn(&mut editor::Editor)| {
+        Rc::new(move |pane: i32, f: &dyn Fn(&mut editor::Editor)| {
             if let Ok(mut editor) = app.editor.try_borrow_mut() {
-                f(&mut editor);
+                editor.with_pane(pane.max(0) as usize, |e| f(e));
             }
             app.refresh();
         })
@@ -204,66 +204,86 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
 
     {
         let app = app.clone();
-        bridge.on_key(move |event| {
+        bridge.on_key(move |pane, event| {
+            app.focus_pane(pane.max(0) as usize);
             let m = event.modifiers;
             app.key(&event.text, m.control, m.alt, m.shift, m.meta)
         });
     }
     {
         let app = app.clone();
-        bridge.on_text(move |text: SharedString| app.typed(&text));
-    }
-    {
-        let edit = edit.clone();
-        bridge.on_minimap_pointer(move |y| edit(&|e| e.minimap_scroll(y)));
-    }
-    {
-        let app = app.clone();
-        bridge.on_completion_chosen(move |index| app.accept_completion(index.max(0) as usize));
-    }
-    {
-        let edit = edit.clone();
-        bridge.on_preedit(move |text: SharedString| edit(&|e| e.set_preedit(&text)));
-    }
-    {
-        let edit = edit.clone();
-        bridge.on_pointer_down(move |x, y, m| {
-            edit(&|e| {
-                e.completion = None;
-                e.pointer_down(x, y, m.control, m.alt, m.shift)
-            })
+        bridge.on_text(move |pane, text: SharedString| {
+            app.focus_pane(pane.max(0) as usize);
+            app.typed(&text);
         });
     }
     {
         let edit = edit.clone();
-        bridge.on_pointer_drag(move |x, y| edit(&|e| e.pointer_drag(x, y)));
+        bridge.on_minimap_pointer(move |pane, y| edit(pane, &|e| e.minimap_scroll(y)));
+    }
+    {
+        let app = app.clone();
+        bridge.on_completion_chosen(move |_, index| app.accept_completion(index.max(0) as usize));
+    }
+    {
+        let app = app.clone();
+        bridge.on_preedit(move |pane, text: SharedString| {
+            app.focus_pane(pane.max(0) as usize);
+            if let Ok(mut editor) = app.editor.try_borrow_mut() {
+                editor.set_preedit(&text);
+            }
+            app.refresh();
+        });
+    }
+    {
+        let app = app.clone();
+        bridge.on_pointer_down(move |pane, x, y, m| {
+            app.focus_pane(pane.max(0) as usize);
+            if let Ok(mut editor) = app.editor.try_borrow_mut() {
+                editor.completion = None;
+                editor.pointer_down(x, y, m.control, m.alt, m.shift);
+            }
+            app.refresh();
+        });
     }
     {
         let edit = edit.clone();
-        bridge.on_pointer_up(move |m| edit(&|e| e.pointer_up(m.alt)));
+        bridge.on_pointer_drag(move |pane, x, y| edit(pane, &|e| e.pointer_drag(x, y)));
     }
     {
         let edit = edit.clone();
-        bridge.on_scrolled(move |dx, dy| edit(&|e| e.scroll_by(dx, dy)));
+        bridge.on_pointer_up(move |pane, m| edit(pane, &|e| e.pointer_up(m.alt)));
     }
     {
         let edit = edit.clone();
-        bridge.on_scrollbar_drag(move |fraction| edit(&|e| e.scroll_to_fraction(fraction)));
+        bridge.on_scrolled(move |pane, dx, dy| edit(pane, &|e| e.scroll_by(dx, dy)));
     }
     {
         let edit = edit.clone();
-        bridge.on_scrollbar_hover(move |inside| edit(&|e| e.set_scrollbar_hover(inside)));
+        bridge.on_scrollbar_drag(move |pane, fraction| edit(pane, &|e| e.scroll_to_fraction(fraction)));
     }
     {
         let edit = edit.clone();
-        bridge.on_focus_changed(move |_| edit(&|e| e.touch()));
+        bridge.on_scrollbar_hover(move |pane, inside| edit(pane, &|e| e.set_scrollbar_hover(inside)));
+    }
+    {
+        let app = app.clone();
+        bridge.on_focus_changed(move |pane, focused| {
+            if focused {
+                app.focus_pane(pane.max(0) as usize);
+            }
+            if let Ok(mut editor) = app.editor.try_borrow_mut() {
+                editor.touch();
+            }
+            app.refresh();
+        });
     }
     {
         let edit = edit.clone();
         let weak = ui.as_weak();
-        bridge.on_resized(move |width, height| {
+        bridge.on_resized(move |pane, width, height| {
             let scale = weak.upgrade().map_or(1.0, |ui| ui.window().scale_factor());
-            edit(&|e| e.resize(width, height, scale));
+            edit(pane, &|e| e.resize(width, height, scale));
         });
     }
     {
@@ -305,12 +325,12 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
     }
     {
         let app = app.clone();
-        bridge.on_gutter_clicked(move |row| app.toggle_bookmark_at_row(row.max(0) as u64));
+        bridge.on_gutter_clicked(move |pane, row| app.toggle_bookmark_at_row(pane.max(0) as usize, row.max(0) as u64));
     }
     {
         let app = app.clone();
-        bridge.on_fold_clicked(move |row| {
-            app.editor.borrow_mut().toggle_fold_at_row(row.max(0) as u64);
+        bridge.on_fold_clicked(move |pane, row| {
+            app.editor.borrow_mut().with_pane(pane.max(0) as usize, |e| e.toggle_fold_at_row(row.max(0) as u64));
             app.refresh();
         });
     }

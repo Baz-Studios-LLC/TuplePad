@@ -5,6 +5,7 @@
 pub mod display;
 pub mod folding;
 pub mod minimap;
+pub mod panes;
 pub mod geometry;
 pub mod input;
 pub mod layout;
@@ -72,6 +73,14 @@ struct RowsKey {
     wrap: bool,
     cells: u32,
     tab_width: u32,
+}
+
+/// Sets one of the bridge's per-pane properties: `set_x` for the first pane, `set_x_2` for the
+/// second.
+macro_rules! put {
+    ($bridge:expr, $pane:expr, $set:ident, $set2:ident, $value:expr) => {
+        if $pane == 0 { $bridge.$set($value) } else { $bridge.$set2($value) }
+    };
 }
 
 pub struct Editor {
@@ -144,6 +153,11 @@ pub struct Editor {
     pub private_clipboard: Option<String>,
     /// Milliseconds the last `sync` took, for benchmarks.
     pub last_sync_ms: f64,
+    /// Which pane the view fields above belong to (the focused one), the other pane's view,
+    /// and how the panes are split.
+    pane: usize,
+    other: Option<Box<panes::PaneView>>,
+    split: panes::Split,
 }
 
 impl Editor {
@@ -226,6 +240,9 @@ impl Editor {
             smart_for: None,
             private_clipboard: None,
             last_sync_ms: 0.0,
+            pane: 0,
+            other: Some(panes::PaneView::second(&bridge)),
+            split: panes::Split::Off,
         }
     }
 
@@ -660,6 +677,16 @@ impl Editor {
     /// rebuilt when their content, colors or decorations changed.
     pub fn sync(&mut self, ui: &AppWindow) {
         let started = Instant::now();
+        self.sync_view(ui);
+        if self.split != panes::Split::Off {
+            let other = 1 - self.pane;
+            self.with_pane(other, |e| e.sync_view(ui));
+        }
+        let _ = started;
+    }
+
+    fn sync_view(&mut self, ui: &AppWindow) {
+        let started = Instant::now();
         self.update_smart_highlight(started.duration_since(self.last_activity));
         self.reveal_folded_carets();
         self.ensure_rows();
@@ -949,7 +976,7 @@ impl Editor {
 
         // The minimap, and where the view is in it.
         let minimap_width = self.minimap_width();
-        bridge.set_minimap_width(minimap_width);
+        put!(bridge, self.pane, set_minimap_width, set_minimap_width_2, minimap_width);
         if minimap_width > 0.0 {
             let fits = (self.height / minimap::LINE).floor() as u64;
             let max_y = self.max_scroll_y();
@@ -970,11 +997,11 @@ impl Editor {
                 dark: theme.get_dark(),
             };
             if self.minimap.update(&request) {
-                bridge.set_minimap(self.minimap.image.clone());
+                put!(bridge, self.pane, set_minimap, set_minimap_2, self.minimap.image.clone());
             }
             let last_visible = lines.last().copied().unwrap_or(first_line);
-            bridge.set_minimap_view_y((first_line as f32 - first as f32) * minimap::LINE);
-            bridge.set_minimap_view_height(((last_visible + 1 - first_line) as f32 * minimap::LINE).max(minimap::LINE * 4.0));
+            put!(bridge, self.pane, set_minimap_view_y, set_minimap_view_y_2, (first_line as f32 - first as f32) * minimap::LINE);
+            put!(bridge, self.pane, set_minimap_view_height, set_minimap_view_height_2, ((last_visible + 1 - first_line) as f32 * minimap::LINE).max(minimap::LINE * 4.0));
         }
 
         // Word completion's list, under the start of the word being completed.
@@ -999,12 +1026,12 @@ impl Editor {
                             CompletionItem { head: word[..split].into(), tail: word[split..].into() }
                         })
                         .collect();
-                    bridge.set_completions(ModelRc::new(VecModel::from(items)));
-                    bridge.set_completion_selected(c.selected as i32);
-                    bridge.set_completion_row(*row);
-                    bridge.set_completion_x(*x);
+                    put!(bridge, self.pane, set_completions, set_completions_2, ModelRc::new(VecModel::from(items)));
+                    put!(bridge, self.pane, set_completion_selected, set_completion_selected_2, c.selected as i32);
+                    put!(bridge, self.pane, set_completion_row, set_completion_row_2, *row);
+                    put!(bridge, self.pane, set_completion_x, set_completion_x_2, *x);
                 }
-                None => bridge.set_completions(ModelRc::default()),
+                None => put!(bridge, self.pane, set_completions, set_completions_2, ModelRc::default()),
             }
             self.completion_shown = placed;
         }
@@ -1012,27 +1039,27 @@ impl Editor {
         let max_y = self.max_scroll_y();
         let content = max_y + self.height as f64;
         let (scroll_x, scroll_y) = (self.doc().scroll_x, self.doc().scroll_y);
-        bridge.set_top_row(top_row as i32);
-        bridge.set_scroll_offset(offset);
-        bridge.set_scroll_x(scroll_x as f32);
+        put!(bridge, self.pane, set_top_row, set_top_row_2, top_row as i32);
+        put!(bridge, self.pane, set_scroll_offset, set_scroll_offset_2, offset);
+        put!(bridge, self.pane, set_scroll_x, set_scroll_x_2, scroll_x as f32);
         bridge.set_line_height(lh);
         bridge.set_font_size(self.font_size);
-        bridge.set_gutter_width(self.gutter);
+        put!(bridge, self.pane, set_gutter_width, set_gutter_width_2, self.gutter);
         bridge.set_highlight_current_line(self.options.highlight_current_line);
         let drop = self.text_drag.as_ref().filter(|d| d.started).and_then(|d| d.target);
         match drop {
             Some(target) => {
                 let (row, x) = self.locate(target);
-                bridge.set_drop_row(row as i32);
-                bridge.set_drop_x(x);
-                bridge.set_drop_visible(true);
+                put!(bridge, self.pane, set_drop_row, set_drop_row_2, row as i32);
+                put!(bridge, self.pane, set_drop_x, set_drop_x_2, x);
+                put!(bridge, self.pane, set_drop_visible, set_drop_visible_2, true);
             }
-            None => bridge.set_drop_visible(false),
+            None => put!(bridge, self.pane, set_drop_visible, set_drop_visible_2, false),
         }
-        bridge.set_ime_row(ime.0 as i32);
-        bridge.set_ime_x(ime.1);
-        bridge.set_thumb_size((self.height as f64 / content).min(1.0) as f32);
-        bridge.set_thumb_start(if max_y > 0.0 { (scroll_y / max_y) as f32 } else { 0.0 });
+        put!(bridge, self.pane, set_ime_row, set_ime_row_2, ime.0 as i32);
+        put!(bridge, self.pane, set_ime_x, set_ime_x_2, ime.1);
+        put!(bridge, self.pane, set_thumb_size, set_thumb_size_2, (self.height as f64 / content).min(1.0) as f32);
+        put!(bridge, self.pane, set_thumb_start, set_thumb_start_2, if max_y > 0.0 { (scroll_y / max_y) as f32 } else { 0.0 });
         self.blink(ui);
         self.last_sync_ms = started.elapsed().as_secs_f64() * 1000.0;
     }
@@ -1041,6 +1068,10 @@ impl Editor {
     /// timer. Returns true when the view needs a sync.
     pub fn tick(&mut self, ui: &AppWindow) -> bool {
         self.blink(ui);
+        if self.split != panes::Split::Off {
+            let other = 1 - self.pane;
+            self.with_pane(other, |e| e.blink(ui));
+        }
         self.update_smart_highlight(self.last_activity.elapsed())
     }
 
@@ -1051,11 +1082,11 @@ impl Editor {
         let caret = idle < BLINK || (idle.as_millis() / BLINK.as_millis()) % 2 == 0;
         if caret != self.caret_shown {
             self.caret_shown = caret;
-            bridge.set_caret_visible(caret);
+            put!(bridge, self.pane, set_caret_visible, set_caret_visible_2, caret);
         }
         let scrollbar = now < self.scrollbar_until || self.scrollbar_hover;
-        if bridge.get_scrollbar_shown() != scrollbar {
-            bridge.set_scrollbar_shown(scrollbar);
+        if (if self.pane == 0 { bridge.get_scrollbar_shown() } else { bridge.get_scrollbar_shown_2() }) != scrollbar {
+            put!(bridge, self.pane, set_scrollbar_shown, set_scrollbar_shown_2, scrollbar);
         }
     }
 

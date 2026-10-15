@@ -340,12 +340,14 @@ impl App {
     // MARK: Bookmarks
 
     /// A click on a line number.
-    pub fn toggle_bookmark_at_row(&self, row: u64) {
+    pub fn toggle_bookmark_at_row(&self, pane: usize, row: u64) {
         {
             let mut editor = self.editor.borrow_mut();
-            let line = editor.line_at_row(row);
-            editor.buffer().toggle_bookmark(line);
-            editor.touch();
+            editor.with_pane(pane, |e| {
+                let line = e.line_at_row(row);
+                e.buffer().toggle_bookmark(line);
+                e.touch();
+            });
         }
         self.refresh();
     }

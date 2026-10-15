@@ -45,6 +45,8 @@ pub fn values(settings: &Settings, fonts: &[(String, String)]) -> SettingsValues
         invisibles: settings.show_invisibles,
         indent_guides: settings.show_indent_guides,
         current_line: settings.highlight_current_line,
+        minimap: settings.show_minimap,
+        word_completion: settings.word_completion,
         encoding_index: encodings.iter().position(|e| *e == settings.new_document_encoding).unwrap_or(0) as i32,
         encodings: ModelRc::new(VecModel::from(encodings.into_iter().map(SharedString::from).collect::<Vec<_>>())),
         bom: settings.new_document_bom,
@@ -66,6 +68,8 @@ fn set_bool(settings: &mut Settings, key: &str, value: bool) {
         "invisibles" => settings.show_invisibles = value,
         "indent-guides" => settings.show_indent_guides = value,
         "current-line" => settings.highlight_current_line = value,
+        "minimap" => settings.show_minimap = value,
+        "word-completion" => settings.word_completion = value,
         _ => eprintln!("unknown setting {key}"),
     }
 }

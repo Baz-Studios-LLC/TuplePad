@@ -51,75 +51,111 @@ export struct Band {
 // Everything the editor shows, set from Rust, and what it reports back.
 export global EditorBridge {
     in property <[Row]> rows;
+    in property <[Row]> rows-2;
     in property <[Caret]> carets;
+    in property <[Caret]> carets-2;
     in property <[Band]> selections;
+    in property <[Band]> selections-2;
     in property <[Band]> occurrences;
+    in property <[Band]> occurrences-2;
     in property <[Band]> find-matches;
+    in property <[Band]> find-matches-2;
     in property <[Band]> current-matches;
+    in property <[Band]> current-matches-2;
     in property <[Band]> marks;
+    in property <[Band]> marks-2;
     in property <[Band]> brackets;
+    in property <[Band]> brackets-2;
     in property <[Band]> preedit-underlines;
+    in property <[Band]> preedit-underlines-2;
     in property <[int]> active-rows;
+    in property <[int]> active-rows-2;
     in property <int> top-row;
+    in property <int> top-row-2;
     in property <length> scroll-offset;
+    in property <length> scroll-offset-2;
     in property <length> scroll-x;
+    in property <length> scroll-x-2;
     in property <length> line-height: 20px;
     in property <length> font-size: 13px;
     in property <length> gutter-width: 64px;
+    in property <length> gutter-width-2: 64px;
     in property <bool> caret-visible: true;
+    in property <bool> caret-visible-2: true;
     in property <bool> highlight-current-line: true;
     // Where dragged text would land.
     in property <bool> drop-visible;
+    in property <bool> drop-visible-2;
     in property <int> drop-row;
+    in property <int> drop-row-2;
     in property <length> drop-x;
+    in property <length> drop-x-2;
     in property <int> ime-row;
+    in property <int> ime-row-2;
     in property <length> ime-x;
+    in property <length> ime-x-2;
     // The vertical scrollbar, as fractions of the track.
     in property <float> thumb-start;
+    in property <float> thumb-start-2;
     in property <float> thumb-size: 1;
+    in property <float> thumb-size-2: 1;
     in property <bool> scrollbar-shown;
+    in property <bool> scrollbar-shown-2;
     // The minimap (0 wide when it's off), and the view's place in it.
     in property <length> minimap-width;
+    in property <length> minimap-width-2;
     in property <image> minimap;
+    in property <image> minimap-2;
     in property <length> minimap-view-y;
+    in property <length> minimap-view-y-2;
     in property <length> minimap-view-height;
+    in property <length> minimap-view-height-2;
     // Word completion's list, under the word at (completion-row, completion-x).
     in property <[CompletionItem]> completions;
+    in property <[CompletionItem]> completions-2;
     in property <int> completion-selected;
+    in property <int> completion-selected-2;
     in property <int> completion-row;
+    in property <int> completion-row-2;
     in property <length> completion-x;
+    in property <length> completion-x-2;
 
-    callback key(event: KeyEvent) -> bool;
-    callback text(text: string);
-    callback preedit(text: string);
-    callback pointer-down(x: length, y: length, modifiers: KeyboardModifiers);
-    callback pointer-drag(x: length, y: length);
-    callback pointer-up(modifiers: KeyboardModifiers);
-    callback scrolled(dx: length, dy: length);
-    callback resized(width: length, height: length);
-    callback scrollbar-drag(fraction: float);
-    callback scrollbar-hover(inside: bool);
-    callback focus-changed(focused: bool);
+    callback key(pane: int, event: KeyEvent) -> bool;
+    callback text(pane: int, text: string);
+    callback preedit(pane: int, text: string);
+    callback pointer-down(pane: int, x: length, y: length, modifiers: KeyboardModifiers);
+    callback pointer-drag(pane: int, x: length, y: length);
+    callback pointer-up(pane: int, modifiers: KeyboardModifiers);
+    callback scrolled(pane: int, dx: length, dy: length);
+    callback resized(pane: int, width: length, height: length);
+    callback scrollbar-drag(pane: int, fraction: float);
+    callback scrollbar-hover(pane: int, inside: bool);
+    callback focus-changed(pane: int, focused: bool);
     // A click in the gutter, on a visual row.
-    callback gutter-clicked(row: int);
+    callback gutter-clicked(pane: int, row: int);
     // A click on a fold control or a folded line's "⋯".
-    callback fold-clicked(row: int);
-    callback completion-chosen(index: int);
-    callback minimap-pointer(y: length);
+    callback fold-clicked(pane: int, row: int);
+    callback completion-chosen(pane: int, index: int);
+    callback minimap-pointer(pane: int, y: length);
 }
 
 component Scrollbar inherits Rectangle {
+    in property <int> pane;
+    property <float> thumb-start: root.pane == 0 ? EditorBridge.thumb-start : EditorBridge.thumb-start-2;
+    property <float> thumb-size: root.pane == 0 ? EditorBridge.thumb-size : EditorBridge.thumb-size-2;
+    property <bool> scrollbar-shown: root.pane == 0 ? EditorBridge.scrollbar-shown : EditorBridge.scrollbar-shown-2;
+
     width: 14px;
     property <length> track: self.height - 8px;
-    property <length> thumb-height: max(36px, self.track * EditorBridge.thumb-size);
-    property <bool> shown: EditorBridge.scrollbar-shown || area.has-hover || area.pressed;
+    property <length> thumb-height: max(36px, self.track * root.thumb-size);
+    property <bool> shown: root.scrollbar-shown || area.has-hover || area.pressed;
     property <float> grab;
-    visible: EditorBridge.thumb-size < 1;
+    visible: root.thumb-size < 1;
 
     thumb := Rectangle {
         x: area.has-hover || area.pressed ? 3px : 5px;
         width: area.has-hover || area.pressed ? 8px : 5px;
-        y: 4px + (root.track - root.thumb-height) * EditorBridge.thumb-start;
+        y: 4px + (root.track - root.thumb-height) * root.thumb-start;
         height: root.thumb-height;
         border-radius: self.width / 2;
         background: Theme.scrollbar-thumb;
@@ -129,7 +165,7 @@ component Scrollbar inherits Rectangle {
     }
 
     area := TouchArea {
-        changed has-hover => { EditorBridge.scrollbar-hover(self.has-hover); }
+        changed has-hover => { EditorBridge.scrollbar-hover(root.pane, self.has-hover); }
         pointer-event(event) => {
             if event.kind == PointerEventKind.down {
                 // Grab the thumb where it was pressed, or center it under the pointer.
@@ -149,23 +185,58 @@ component Scrollbar inherits Rectangle {
     function drag-to(y: length) {
         let room = root.track - root.thumb-height;
         if room > 0 {
-            EditorBridge.scrollbar-drag(max(0, min(1, (y - 4px - root.thumb-height * root.grab) / room)));
+            EditorBridge.scrollbar-drag(root.pane, max(0, min(1, (y - 4px - root.thumb-height * root.grab) / room)));
         }
     }
 }
 
 export component EditorView inherits Rectangle {
+    in property <int> pane;
+    property <[Row]> rows: root.pane == 0 ? EditorBridge.rows : EditorBridge.rows-2;
+    property <[Caret]> carets: root.pane == 0 ? EditorBridge.carets : EditorBridge.carets-2;
+    property <[Band]> selections: root.pane == 0 ? EditorBridge.selections : EditorBridge.selections-2;
+    property <[Band]> occurrences: root.pane == 0 ? EditorBridge.occurrences : EditorBridge.occurrences-2;
+    property <[Band]> find-matches: root.pane == 0 ? EditorBridge.find-matches : EditorBridge.find-matches-2;
+    property <[Band]> current-matches: root.pane == 0 ? EditorBridge.current-matches : EditorBridge.current-matches-2;
+    property <[Band]> marks: root.pane == 0 ? EditorBridge.marks : EditorBridge.marks-2;
+    property <[Band]> brackets: root.pane == 0 ? EditorBridge.brackets : EditorBridge.brackets-2;
+    property <[Band]> preedit-underlines: root.pane == 0 ? EditorBridge.preedit-underlines : EditorBridge.preedit-underlines-2;
+    property <[int]> active-rows: root.pane == 0 ? EditorBridge.active-rows : EditorBridge.active-rows-2;
+    property <int> top-row: root.pane == 0 ? EditorBridge.top-row : EditorBridge.top-row-2;
+    property <length> scroll-offset: root.pane == 0 ? EditorBridge.scroll-offset : EditorBridge.scroll-offset-2;
+    property <length> scroll-x: root.pane == 0 ? EditorBridge.scroll-x : EditorBridge.scroll-x-2;
+    property <length> gutter-width: root.pane == 0 ? EditorBridge.gutter-width : EditorBridge.gutter-width-2;
+    property <bool> caret-visible: root.pane == 0 ? EditorBridge.caret-visible : EditorBridge.caret-visible-2;
+    property <bool> drop-visible: root.pane == 0 ? EditorBridge.drop-visible : EditorBridge.drop-visible-2;
+    property <int> drop-row: root.pane == 0 ? EditorBridge.drop-row : EditorBridge.drop-row-2;
+    property <length> drop-x: root.pane == 0 ? EditorBridge.drop-x : EditorBridge.drop-x-2;
+    property <int> ime-row: root.pane == 0 ? EditorBridge.ime-row : EditorBridge.ime-row-2;
+    property <length> ime-x: root.pane == 0 ? EditorBridge.ime-x : EditorBridge.ime-x-2;
+    property <float> thumb-start: root.pane == 0 ? EditorBridge.thumb-start : EditorBridge.thumb-start-2;
+    property <float> thumb-size: root.pane == 0 ? EditorBridge.thumb-size : EditorBridge.thumb-size-2;
+    property <bool> scrollbar-shown: root.pane == 0 ? EditorBridge.scrollbar-shown : EditorBridge.scrollbar-shown-2;
+    property <length> minimap-width: root.pane == 0 ? EditorBridge.minimap-width : EditorBridge.minimap-width-2;
+    property <image> minimap: root.pane == 0 ? EditorBridge.minimap : EditorBridge.minimap-2;
+    property <length> minimap-view-y: root.pane == 0 ? EditorBridge.minimap-view-y : EditorBridge.minimap-view-y-2;
+    property <length> minimap-view-height: root.pane == 0 ? EditorBridge.minimap-view-height : EditorBridge.minimap-view-height-2;
+    property <[CompletionItem]> completions: root.pane == 0 ? EditorBridge.completions : EditorBridge.completions-2;
+    property <int> completion-selected: root.pane == 0 ? EditorBridge.completion-selected : EditorBridge.completion-selected-2;
+    property <int> completion-row: root.pane == 0 ? EditorBridge.completion-row : EditorBridge.completion-row-2;
+    property <length> completion-x: root.pane == 0 ? EditorBridge.completion-x : EditorBridge.completion-x-2;
+
     in property <string> font-family;
     background: Theme.editor-background;
     clip: true;
 
     property <length> lh: EditorBridge.line-height;
 
-    changed width => { EditorBridge.resized(self.width, self.height); }
-    changed height => { EditorBridge.resized(self.width, self.height); }
+    changed width => { EditorBridge.resized(root.pane, self.width, self.height); }
+    changed height => { EditorBridge.resized(root.pane, self.width, self.height); }
     init => {
-        EditorBridge.resized(self.width, self.height);
-        input.focus();
+        EditorBridge.resized(root.pane, self.width, self.height);
+        if root.pane == 0 {
+            input.focus();
+        }
     }
 
     public function focus-editor() {
@@ -173,12 +244,12 @@ export component EditorView inherits Rectangle {
     }
 
     function row-y(row: int) -> length {
-        return (row - EditorBridge.top-row) * root.lh - EditorBridge.scroll-offset;
+        return (row - root.top-row) * root.lh - root.scroll-offset;
     }
 
     // The current-line bands run under the gutter too.
     if EditorBridge.highlight-current-line: Rectangle {
-        for row in EditorBridge.active-rows: Rectangle {
+        for row in root.active-rows: Rectangle {
             y: root.row-y(row);
             height: root.lh;
             background: Theme.current-line;
@@ -186,12 +257,12 @@ export component EditorView inherits Rectangle {
     }
 
     text-area := Rectangle {
-        x: EditorBridge.gutter-width;
-        width: root.width - self.x - EditorBridge.minimap-width;
+        x: root.gutter-width;
+        width: root.width - self.x - root.minimap-width;
         clip: true;
 
-        for band in EditorBridge.occurrences: Rectangle {
-            x: band.x - EditorBridge.scroll-x;
+        for band in root.occurrences: Rectangle {
+            x: band.x - root.scroll-x;
             width: band.width;
             y: root.row-y(band.row) + 1px;
             height: root.lh - 2px;
@@ -199,8 +270,8 @@ export component EditorView inherits Rectangle {
             background: Theme.occurrence;
         }
 
-        for band in EditorBridge.marks: Rectangle {
-            x: band.x - EditorBridge.scroll-x - 1px;
+        for band in root.marks: Rectangle {
+            x: band.x - root.scroll-x - 1px;
             width: band.width + 2px;
             y: root.row-y(band.row) + 1px;
             height: root.lh - 2px;
@@ -208,8 +279,8 @@ export component EditorView inherits Rectangle {
             background: Theme.mark;
         }
 
-        for band in EditorBridge.find-matches: Rectangle {
-            x: band.x - EditorBridge.scroll-x - 1px;
+        for band in root.find-matches: Rectangle {
+            x: band.x - root.scroll-x - 1px;
             width: band.width + 2px;
             y: root.row-y(band.row) + 1px;
             height: root.lh - 2px;
@@ -217,8 +288,8 @@ export component EditorView inherits Rectangle {
             background: Theme.find-match;
         }
 
-        for band in EditorBridge.selections: Rectangle {
-            x: band.x - EditorBridge.scroll-x;
+        for band in root.selections: Rectangle {
+            x: band.x - root.scroll-x;
             width: band.width;
             y: root.row-y(band.row);
             height: root.lh;
@@ -227,8 +298,8 @@ export component EditorView inherits Rectangle {
         }
 
         // The selected match: stronger than the others, over the selection.
-        for band in EditorBridge.current-matches: Rectangle {
-            x: band.x - EditorBridge.scroll-x - 1px;
+        for band in root.current-matches: Rectangle {
+            x: band.x - root.scroll-x - 1px;
             width: band.width + 2px;
             y: root.row-y(band.row) + 1px;
             height: root.lh - 2px;
@@ -238,8 +309,8 @@ export component EditorView inherits Rectangle {
             border-color: Theme.find-match.with-alpha(1);
         }
 
-        for band in EditorBridge.brackets: Rectangle {
-            x: band.x - EditorBridge.scroll-x - 0.5px;
+        for band in root.brackets: Rectangle {
+            x: band.x - root.scroll-x - 0.5px;
             width: band.width + 1px;
             y: root.row-y(band.row) + 1px;
             height: root.lh - 2px;
@@ -249,8 +320,8 @@ export component EditorView inherits Rectangle {
             border-color: Theme.bracket-border;
         }
 
-        for row in EditorBridge.rows: Rectangle {
-            x: -EditorBridge.scroll-x;
+        for row in root.rows: Rectangle {
+            x: -root.scroll-x;
             y: root.row-y(row.row);
             height: root.lh;
             for guide in row.guides: Rectangle {
@@ -271,27 +342,27 @@ export component EditorView inherits Rectangle {
             }
         }
 
-        for band in EditorBridge.preedit-underlines: Rectangle {
-            x: band.x - EditorBridge.scroll-x;
+        for band in root.preedit-underlines: Rectangle {
+            x: band.x - root.scroll-x;
             width: band.width;
             y: root.row-y(band.row + 1) - 3px;
             height: 1.5px;
             background: Theme.preedit-underline;
         }
 
-        for caret in EditorBridge.carets: Rectangle {
-            x: caret.x - EditorBridge.scroll-x - 1px;
+        for caret in root.carets: Rectangle {
+            x: caret.x - root.scroll-x - 1px;
             y: root.row-y(caret.row) + 2px;
             width: 2px;
             height: root.lh - 4px;
             border-radius: 1px;
             background: Theme.caret;
-            opacity: EditorBridge.caret-visible && input.has-focus ? 1 : 0;
+            opacity: root.caret-visible && input.has-focus ? 1 : 0;
         }
 
-        if EditorBridge.drop-visible: Rectangle {
-            x: EditorBridge.drop-x - EditorBridge.scroll-x - 1px;
-            y: root.row-y(EditorBridge.drop-row) + 1px;
+        if root.drop-visible: Rectangle {
+            x: root.drop-x - root.scroll-x - 1px;
+            y: root.row-y(root.drop-row) + 1px;
             width: 2px;
             height: root.lh - 2px;
             border-radius: 1px;
@@ -299,9 +370,9 @@ export component EditorView inherits Rectangle {
         }
 
         // What a fold hides, shown after its first line; a click unfolds it.
-        for row in EditorBridge.rows: Rectangle {
+        for row in root.rows: Rectangle {
             visible: row.folded-end;
-            x: row.folded-x + 8px - EditorBridge.scroll-x;
+            x: row.folded-x + 8px - root.scroll-x;
             y: root.row-y(row.row) + 3px;
             width: 28px;
             height: root.lh - 6px;
@@ -318,15 +389,15 @@ export component EditorView inherits Rectangle {
             }
             pill-touch := TouchArea {
                 mouse-cursor: pointer;
-                clicked => { EditorBridge.fold-clicked(row.row); }
+                clicked => { EditorBridge.fold-clicked(root.pane, row.row); }
             }
         }
 
         // Keyboard and input-method entry point. It sits at the main caret so the input method's
         // candidate window opens there; it draws nothing, and the editor shows composing text inline.
         input := TextInput {
-            x: EditorBridge.ime-x - EditorBridge.scroll-x;
-            y: root.row-y(EditorBridge.ime-row);
+            x: root.ime-x - root.scroll-x;
+            y: root.row-y(root.ime-row);
             width: 2px;
             height: root.lh;
             color: transparent;
@@ -337,21 +408,21 @@ export component EditorView inherits Rectangle {
             font-size: EditorBridge.font-size;
             single-line: true;
             vertical-alignment: center;
-            changed has-focus => { EditorBridge.focus-changed(self.has-focus); }
+            changed has-focus => { EditorBridge.focus-changed(root.pane, self.has-focus); }
             key-pressed(event) => {
-                if EditorBridge.key(event) {
+                if EditorBridge.key(root.pane, event) {
                     return EventResult.accept;
                 }
                 return EventResult.reject;
             }
             edited => {
                 if self.text != "" {
-                    EditorBridge.text(self.text);
+                    EditorBridge.text(root.pane, self.text);
                     self.text = "";
                 }
             }
             changed preedit-text => {
-                EditorBridge.preedit(self.preedit-text);
+                EditorBridge.preedit(root.pane, self.preedit-text);
             }
         }
 
@@ -360,22 +431,22 @@ export component EditorView inherits Rectangle {
             pointer-event(event) => {
                 if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
                     input.focus();
-                    EditorBridge.pointer-down(self.mouse-x, self.mouse-y, event.modifiers);
+                    EditorBridge.pointer-down(root.pane, self.mouse-x, self.mouse-y, event.modifiers);
                 } else if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
-                    EditorBridge.pointer-up(event.modifiers);
+                    EditorBridge.pointer-up(root.pane, event.modifiers);
                 }
             }
             moved => {
                 if self.pressed {
-                    EditorBridge.pointer-drag(self.mouse-x, self.mouse-y);
+                    EditorBridge.pointer-drag(root.pane, self.mouse-x, self.mouse-y);
                 }
             }
             scroll-event(event) => {
                 // A mouse wheel with Shift scrolls sideways (trackpads send both directions).
                 if event.modifiers.shift && event.delta-x == 0 {
-                    EditorBridge.scrolled(event.delta-y, 0);
+                    EditorBridge.scrolled(root.pane, event.delta-y, 0);
                 } else {
-                    EditorBridge.scrolled(event.delta-x, event.delta-y);
+                    EditorBridge.scrolled(root.pane, event.delta-x, event.delta-y);
                 }
                 return EventResult.accept;
             }
@@ -385,29 +456,29 @@ export component EditorView inherits Rectangle {
     // Line numbers, drawn over the text when it scrolls sideways.
     Rectangle {
         x: 0;
-        width: EditorBridge.gutter-width;
+        width: root.gutter-width;
         clip: true;
         background: Theme.editor-background;
         if EditorBridge.highlight-current-line: Rectangle {
-            for row in EditorBridge.active-rows: Rectangle {
+            for row in root.active-rows: Rectangle {
                 y: root.row-y(row);
                 height: root.lh;
                 background: Theme.current-line;
             }
         }
-        for row in EditorBridge.rows: Rectangle {
+        for row in root.rows: Rectangle {
             x: 4px;
             y: root.row-y(row.row) + 2px;
-            width: EditorBridge.gutter-width - 22px;
+            width: root.gutter-width - 22px;
             height: root.lh - 4px;
             visible: row.bookmarked;
             border-radius: 4px;
             background: Theme.accent.with-alpha(Theme.dark ? 0.55 : 0.16);
         }
         // Fold controls: always for folded regions, on hover for the rest.
-        for row in EditorBridge.rows: Path {
+        for row in root.rows: Path {
             visible: row.fold == 2 || (row.fold == 1 && gutter-touch.has-hover);
-            x: EditorBridge.gutter-width - 17px;
+            x: root.gutter-width - 17px;
             y: root.row-y(row.row) + (root.lh - 10px) / 2;
             width: 10px;
             height: 10px;
@@ -420,9 +491,9 @@ export component EditorView inherits Rectangle {
             stroke-line-cap: round;
             stroke-line-join: round;
         }
-        for row in EditorBridge.rows: Text {
+        for row in root.rows: Text {
             x: 0;
-            width: EditorBridge.gutter-width - 24px;
+            width: root.gutter-width - 24px;
             y: root.row-y(row.row);
             height: root.lh;
             text: row.number;
@@ -438,36 +509,36 @@ export component EditorView inherits Rectangle {
     // Clicking a line number bookmarks the line; the strip beside the numbers folds.
     gutter-touch := TouchArea {
         x: 0;
-        width: EditorBridge.gutter-width - 2px;
+        width: root.gutter-width - 2px;
         clicked => {
-            let row = EditorBridge.top-row + floor((self.pressed-y + EditorBridge.scroll-offset) / root.lh);
-            if self.pressed-x >= EditorBridge.gutter-width - 21px {
-                EditorBridge.fold-clicked(row);
+            let row = root.top-row + floor((self.pressed-y + root.scroll-offset) / root.lh);
+            if self.pressed-x >= root.gutter-width - 21px {
+                EditorBridge.fold-clicked(root.pane, row);
             } else {
-                EditorBridge.gutter-clicked(row);
+                EditorBridge.gutter-clicked(root.pane, row);
             }
         }
         scroll-event(event) => {
-            EditorBridge.scrolled(event.delta-x, event.delta-y);
+            EditorBridge.scrolled(root.pane, event.delta-x, event.delta-y);
             return EventResult.accept;
         }
     }
 
-    if EditorBridge.minimap-width > 0: Rectangle {
-        x: root.width - EditorBridge.minimap-width;
-        width: EditorBridge.minimap-width - 14px;
+    if root.minimap-width > 0: Rectangle {
+        x: root.width - root.minimap-width;
+        width: root.minimap-width - 14px;
         Image {
             x: 0;
             y: 0;
             width: parent.width;
             height: root.height;
-            source: EditorBridge.minimap;
+            source: root.minimap;
             image-rendering: pixelated;
         }
         // Where the view is.
         Rectangle {
-            y: EditorBridge.minimap-view-y;
-            height: EditorBridge.minimap-view-height;
+            y: root.minimap-view-y;
+            height: root.minimap-view-height;
             background: Theme.dark ? #FFFFFF : #000000;
             opacity: minimap-touch.has-hover || minimap-touch.pressed ? (Theme.dark ? 0.12 : 0.08) : (Theme.dark ? 0.07 : 0.045);
             animate opacity { duration: 120ms; }
@@ -476,24 +547,24 @@ export component EditorView inherits Rectangle {
             mouse-cursor: default;
             pointer-event(event) => {
                 if event.kind == PointerEventKind.down {
-                    EditorBridge.minimap-pointer(self.mouse-y);
+                    EditorBridge.minimap-pointer(root.pane, self.mouse-y);
                 }
             }
             moved => {
-                if self.pressed { EditorBridge.minimap-pointer(self.mouse-y); }
+                if self.pressed { EditorBridge.minimap-pointer(root.pane, self.mouse-y); }
             }
             scroll-event(event) => {
-                EditorBridge.scrolled(event.delta-x, event.delta-y);
+                EditorBridge.scrolled(root.pane, event.delta-x, event.delta-y);
                 return EventResult.accept;
             }
         }
     }
 
     // Word completion's list: under the word, or above it near the bottom.
-    if EditorBridge.completions.length > 0: Rectangle {
-        property <length> below: root.row-y(EditorBridge.completion-row + 1) + 3px;
-        x: max(4px, min(root.width - self.width - 4px, EditorBridge.gutter-width + EditorBridge.completion-x - EditorBridge.scroll-x - 9px));
-        y: below + self.height <= root.height - 4px ? below : root.row-y(EditorBridge.completion-row) - self.height - 3px;
+    if root.completions.length > 0: Rectangle {
+        property <length> below: root.row-y(root.completion-row + 1) + 3px;
+        x: max(4px, min(root.width - self.width - 4px, root.gutter-width + root.completion-x - root.scroll-x - 9px));
+        y: below + self.height <= root.height - 4px ? below : root.row-y(root.completion-row) - self.height - 3px;
         width: max(150px, list.preferred-width);
         height: list.preferred-height;
         border-radius: 8px;
@@ -505,10 +576,10 @@ export component EditorView inherits Rectangle {
         drop-shadow-color: #00000038;
         list := VerticalLayout {
             padding: 4px;
-            for item[index] in EditorBridge.completions: Rectangle {
+            for item[index] in root.completions: Rectangle {
                 height: max(22px, root.lh - 2px);
                 border-radius: 5px;
-                background: index == EditorBridge.completion-selected ? Theme.accent : transparent;
+                background: index == root.completion-selected ? Theme.accent : transparent;
                 HorizontalLayout {
                     padding-left: 6px;
                     padding-right: 12px;
@@ -517,26 +588,27 @@ export component EditorView inherits Rectangle {
                         font-family: root.font-family;
                         font-size: EditorBridge.font-size;
                         font-weight: 700;
-                        color: index == EditorBridge.completion-selected ? Theme.accent-text : Theme.primary-text;
+                        color: index == root.completion-selected ? Theme.accent-text : Theme.primary-text;
                         vertical-alignment: center;
                     }
                     Text {
                         text: item.tail;
                         font-family: root.font-family;
                         font-size: EditorBridge.font-size;
-                        color: index == EditorBridge.completion-selected ? Theme.accent-text : Theme.primary-text;
+                        color: index == root.completion-selected ? Theme.accent-text : Theme.primary-text;
                         vertical-alignment: center;
                     }
                     Rectangle { horizontal-stretch: 1; }
                 }
                 TouchArea {
-                    clicked => { EditorBridge.completion-chosen(index); }
+                    clicked => { EditorBridge.completion-chosen(root.pane, index); }
                 }
             }
         }
     }
 
     Scrollbar {
+        pane: root.pane;
         x: root.width - self.width;
         height: root.height;
     }

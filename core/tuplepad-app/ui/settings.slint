@@ -17,6 +17,8 @@ export struct SettingsValues {
     invisibles: bool,
     indent-guides: bool,
     current-line: bool,
+    minimap: bool,
+    word-completion: bool,
     encodings: [string],
     encoding-index: int,
     bom: bool,
@@ -253,6 +255,11 @@ export component SettingsWindow inherits Window {
                         detail: "Of the selected text, or the word at the caret";
                         Toggle { on: root.values.smart-highlight; toggled(on) => { root.set-bool("smart-highlight", on); } }
                     }
+                    SettingRow {
+                        label: "Suggest words";
+                        detail: "Finish words from the open documents (Tab or Return)";
+                        Toggle { on: root.values.word-completion; toggled(on) => { root.set-bool("word-completion", on); } }
+                    }
                 }
             }
 
@@ -338,6 +345,10 @@ export component SettingsWindow inherits Window {
                     SettingRow {
                         label: "Highlight the current line";
                         Toggle { on: root.values.current-line; toggled(on) => { root.set-bool("current-line", on); } }
+                    }
+                    SettingRow {
+                        label: "Show minimap";
+                        Toggle { on: root.values.minimap; toggled(on) => { root.set-bool("minimap", on); } }
                     }
                 }
             }

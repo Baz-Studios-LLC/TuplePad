@@ -212,6 +212,12 @@ impl App {
         let Some(ui) = self.ui.upgrade() else { return };
         let Ok(mut editor) = self.editor.try_borrow_mut() else { return };
         editor.sync(&ui);
+        ui.set_split(match editor.split() {
+            crate::editor::panes::Split::Off => 0,
+            crate::editor::panes::Split::SideBySide => 1,
+            crate::editor::panes::Split::Stacked => 2,
+        });
+        ui.set_focused_pane(editor.focused_pane() as i32);
 
         let items: Vec<DocItem> = {
             let mut cache = self.doc_items.borrow_mut();
@@ -292,6 +298,7 @@ impl App {
         let has_path = doc.path().is_some();
         let (can_undo, can_redo, wrap, follow, modified) = (doc.buffer.can_undo(), doc.buffer.can_redo(), doc.wrap, doc.follow, doc.buffer.is_modified());
         let several = editor.docs.len() > 1;
+        let split = editor.split();
         let enabled = |id: &str| match id {
             "edit.undo" => can_undo,
             "edit.redo" => can_redo,
@@ -303,6 +310,8 @@ impl App {
         let checked = |id: &str| match id {
             "view.sidebar" => settings.sidebar_visible,
             "view.minimap" => settings.show_minimap,
+            "view.split-side" => split == crate::editor::panes::Split::SideBySide,
+            "view.split-stacked" => split == crate::editor::panes::Split::Stacked,
             "view.outline" => settings.show_outline,
             "view.wrap" => wrap,
             "view.follow" => follow,
@@ -584,6 +593,11 @@ impl App {
             "bookmark.delete" => self.delete_bookmarked_lines(),
             "bookmark.clear" => self.clear_bookmarks(),
             "view.minimap" => self.change_settings(|s| s.show_minimap = !s.show_minimap),
+            "view.split-side" => self.set_split(crate::editor::panes::Split::SideBySide),
+            "view.split-stacked" => self.set_split(crate::editor::panes::Split::Stacked),
+            "view.split-off" => {
+                self.editor.borrow_mut().set_split(crate::editor::panes::Split::Off);
+            }
             "view.outline" => self.change_settings(|s| s.show_outline = !s.show_outline),
             "view.sidebar" => self.change_settings(|s| s.sidebar_visible = !s.sidebar_visible),
             "view.invisibles" => self.change_settings(|s| s.show_invisibles = !s.show_invisibles),
@@ -670,6 +684,32 @@ impl App {
                 editor.text_replaced();
             }
             _ => {}
+        }
+    }
+
+    /// The pane that has (or takes) the keyboard; menus, the sidebar and the find bar act on it.
+    pub fn focus_pane(&self, pane: usize) {
+        let changed = match self.editor.try_borrow_mut() {
+            Ok(mut editor) if editor.focused_pane() != pane => {
+                editor.focus_pane(pane);
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            self.refresh();
+            // The keyboard goes with it (the pane's own text input takes focus).
+            if let Some(ui) = self.ui.upgrade() {
+                ui.invoke_focus_editor();
+            }
+        }
+    }
+
+    fn set_split(&self, split: crate::editor::panes::Split) {
+        let split = if self.editor.borrow().split() == split { crate::editor::panes::Split::Off } else { split };
+        self.editor.borrow_mut().set_split(split);
+        if let Some(ui) = self.ui.upgrade() {
+            ui.invoke_focus_editor();
         }
     }
 
