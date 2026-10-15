@@ -60,7 +60,10 @@ for app in (desktop.getChildAtIndex(i) for i in range(desktop.childCount)):
             text = editor.queryText()
             print("editor text:", repr(text.getText(0, text.characterCount)), "caret:", text.caretOffset)
 PY
-kill "$APP_PID" "$ORCA" 2>/dev/null
+# Orca writes its log in chunks: let it quit properly so the end isn't lost, then close TuplePad.
+orca --quit > /dev/null 2>&1 || kill -INT "$ORCA" 2>/dev/null
+for _ in $(seq 1 20); do kill -0 "$ORCA" 2>/dev/null || break; sleep 0.5; done
+kill "$ORCA" "$APP_PID" 2>/dev/null
 sleep 1
 SPOKEN="$(grep -a "SPEECH OUTPUT" "$WORK/orca.txt" || true)"
 echo "What Orca said:"
