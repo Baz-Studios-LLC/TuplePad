@@ -47,7 +47,8 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             "-v" | "--version" => {
-                println!("tuplepad {}", env!("CARGO_PKG_VERSION"));
+                // TuplePad's own version name (v001, …), from VERSION at the repository's root.
+                println!("tuplepad {}", include_str!("../../../VERSION").trim());
                 return ExitCode::SUCCESS;
             }
             "-" => match stdin_document() {
