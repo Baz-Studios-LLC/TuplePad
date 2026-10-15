@@ -1,6 +1,12 @@
 import { Theme } from "theme.slint";
 import { Sheet } from "controls.slint";
 
+// A line of an update's notes: 0 text, 1 heading, 2 list item.
+export struct NoteLine {
+    kind: int,
+    text: string,
+}
+
 // Updates: what a check found (Help ▸ Check for Updates…), and an update as it downloads and
 // installs. The status bar shows a pill while there's one to install.
 export global UpdateBridge {
@@ -9,8 +15,8 @@ export global UpdateBridge {
     in property <int> kind;
     in property <string> title;
     in property <string> detail;
-    // What's new in the update, as plain text.
-    in property <string> notes;
+    // What's new in the update, line by line.
+    in property <[NoteLine]> notes;
     // This copy can replace itself (else the main button opens the release page).
     in property <bool> installable;
     in property <float> progress;
@@ -59,23 +65,45 @@ export component UpdateSheet inherits Sheet {
     }
 
     // What's new.
-    if UpdateBridge.kind == 2 && UpdateBridge.notes != "": Rectangle {
-        height: min(notes.preferred-height + 24px, 260px);
+    if UpdateBridge.kind == 2 && UpdateBridge.notes.length > 0: Rectangle {
+        height: min(notes.preferred-height, 260px);
         border-radius: 8px;
         background: Theme.dark ? #FFFFFF0A : #00000008;
         border-width: 1px;
         border-color: Theme.separator;
         clip: true;
-        Flickable {
-            content-height: notes.preferred-height + 24px;
-            notes := Text {
-                x: 12px;
-                y: 12px;
-                width: parent.width - 24px;
-                text: UpdateBridge.notes;
-                font-size: 12.5px;
-                color: Theme.primary-text;
-                wrap: word-wrap;
+        notes-scroll := Flickable {
+            content-height: notes.preferred-height;
+            notes := VerticalLayout {
+                width: notes-scroll.width;
+                padding: 12px;
+                padding-left: 14px;
+                padding-right: 14px;
+                spacing: 6px;
+                alignment: start;
+                for line[index] in UpdateBridge.notes: HorizontalLayout {
+                    // A heading after the first gets room above it.
+                    padding-top: line.kind == 1 && index > 0 ? 8px : 0px;
+                    spacing: 7px;
+                    // Layouts measure text on one line; this counts the lines it wraps to.
+                    min-height: body.preferred-height + self.padding-top;
+                    // List items hang from their bullet.
+                    if line.kind == 2: Text {
+                        accessible-role: none;
+                        width: 6px;
+                        text: "•";
+                        font-size: 12.5px;
+                        color: Theme.secondary-text;
+                    }
+                    body := Text {
+                        horizontal-stretch: 1;
+                        text: line.text;
+                        font-size: line.kind == 1 ? 11px : 12.5px;
+                        font-weight: line.kind == 1 ? 700 : 400;
+                        color: line.kind == 1 ? Theme.secondary-text : Theme.primary-text;
+                        wrap: word-wrap;
+                    }
+                }
             }
         }
     }

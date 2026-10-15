@@ -236,7 +236,9 @@ export component CompareView inherits Rectangle {
         if ToolViewBridge.change-row < 0 {
             return;
         }
-        list.content-y = -max(0px, ToolViewBridge.change-row * root.row-height - list.visible-height / 3);
+        // Down to the change only if it's below the first screen, a third of the way down.
+        let top = ToolViewBridge.change-row * root.row-height;
+        list.content-y = top + root.row-height <= list.visible-height ? 0px : -(top - list.visible-height / 3);
         // Sideways: from the left edge if the change fits there; otherwise only as far as it takes
         // to show the change's end (or its start, if it's wider than the view).
         let start = ToolViewBridge.change-column * root.char-width;

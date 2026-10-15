@@ -667,7 +667,8 @@ export component SettingsWindow inherits Window {
                     SettingRow {
                         label: "Also over HTTP";
                         detail: root.mcp-http-detail;
-                        Toggle { accessible-label: "Also over HTTP"; on: root.values.mcp-http; toggled(on) => { root.set-bool("mcp-http", on); } }
+                        enabled: root.values.mcp;
+                        Toggle { accessible-label: "Also over HTTP"; enabled: root.values.mcp; on: root.values.mcp-http; toggled(on) => { root.set-bool("mcp-http", on); } }
                     }
                 }
                 if root.values.mcp: Section {

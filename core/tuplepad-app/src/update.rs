@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 
 use crate::app::App;
-use crate::UpdateBridge;
-use slint::ComponentHandle;
+use crate::{NoteLine, UpdateBridge};
+use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 /// The newest release's manifest (GitHub redirects this to the latest release's file).
 const FEED: &str = "https://github.com/Baz-Studios-LLC/TuplePad/releases/latest/download/latest.json";
@@ -427,26 +427,24 @@ fn relaunch_after_exit(relaunch: &Relaunch) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Release notes for the sheet: Markdown's markers turned into plain text.
-pub fn plain_notes(notes: &str) -> String {
+/// Release notes for the sheet, line by line: (kind, text) with kind 0 for text, 1 for a heading
+/// and 2 for a list item, and Markdown's emphasis and code markers taken out.
+pub fn note_lines(notes: &str) -> Vec<(i32, String)> {
     notes
         .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
         .map(|line| {
-            let line = line.trim_end();
-            let bare = line.trim_start_matches('#').trim_start();
-            if line.starts_with('#') {
-                bare.to_string()
+            let (kind, text) = if line.starts_with('#') {
+                (1, line.trim_start_matches('#').trim_start())
             } else if let Some(item) = line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")) {
-                format!("•  {item}")
+                (2, item)
             } else {
-                line.to_string()
-            }
+                (0, line)
+            };
+            (kind, text.replace("**", "").replace('`', ""))
         })
-        .map(|line| line.replace("**", "").replace('`', ""))
-        .collect::<Vec<_>>()
-        .join("\n")
-        .trim()
-        .to_string()
+        .collect()
 }
 
 fn megabytes(bytes: u64) -> String {
@@ -712,7 +710,9 @@ impl App {
         bridge.set_kind(kind);
         bridge.set_title(title.into());
         bridge.set_detail(detail.into());
-        bridge.set_notes(manifest.as_ref().map(|m| plain_notes(&m.notes)).unwrap_or_default().into());
+        let notes = manifest.as_ref().map(|m| note_lines(&m.notes)).unwrap_or_default();
+        let notes = notes.into_iter().map(|(kind, text)| NoteLine { kind, text: text.into() }).collect::<Vec<_>>();
+        bridge.set_notes(ModelRc::new(VecModel::from(notes)));
         bridge.set_installable(installable.is_ok());
         bridge.set_progress(match phase {
             Phase::Downloading { received, total } if total > 0 => received as f32 / total as f32,
@@ -778,6 +778,7 @@ impl App {
             "pill": ui.as_ref().map(|ui| ui.global::<UpdateBridge>().get_pill().to_string()),
             "title": ui.as_ref().map(|ui| ui.global::<UpdateBridge>().get_title().to_string()),
             "detail": ui.as_ref().map(|ui| ui.global::<UpdateBridge>().get_detail().to_string()),
+            "notes": ui.as_ref().map(|ui| ui.global::<UpdateBridge>().get_notes().iter().map(|line| (line.kind, line.text.to_string())).collect::<Vec<_>>()),
             "installable": ui.as_ref().map(|ui| ui.global::<UpdateBridge>().get_installable()),
             "skipped": self.settings.borrow().skipped_update,
             "relaunch": match &state.relaunched {
@@ -815,7 +816,8 @@ mod tests {
         .unwrap();
         assert!(manifest.download().is_some());
         assert_eq!(manifest.page(), RELEASES);
-        assert_eq!(plain_notes(&manifest.notes), "What's new\n•  Faster search\n•  tuplepad command");
+        let lines = note_lines(&manifest.notes);
+        assert_eq!(lines, [(1, "What's new".to_string()), (2, "Faster search".to_string()), (2, "tuplepad command".to_string())]);
     }
 
     #[test]

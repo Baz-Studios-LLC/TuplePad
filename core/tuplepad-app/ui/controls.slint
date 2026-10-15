@@ -1,20 +1,42 @@
 import { Theme } from "theme.slint";
 import { PillButton } from "sidebar.slint";
 
+// A check mark, drawn: not every system's fonts have "✓", and Slint doesn't fall back to one
+// that does.
+export component Tick inherits Path {
+    in property <color> color: Theme.primary-text;
+    width: 10px;
+    height: 10px;
+    viewbox-width: 10;
+    viewbox-height: 10;
+    commands: "M1.5 5.4l2.4 2.4 4.6-5";
+    fill: transparent;
+    stroke: root.color;
+    stroke-width: 1.6px;
+    stroke-line-cap: round;
+    stroke-line-join: round;
+}
+
 // An on/off switch with a label.
 export component Toggle inherits Rectangle {
     in-out property <bool> on;
     in property <string> text;
+    // Off for an option that depends on another one that's off.
+    in property <bool> enabled: true;
     callback toggled(on: bool);
     // A settings row's switch takes the row's label at the call site (`accessible-label`).
     accessible-role: switch;
     accessible-label: root.text;
     accessible-checkable: true;
     accessible-checked: root.on;
+    accessible-enabled: root.enabled;
     accessible-action-default => {
-        root.on = !root.on;
-        root.toggled(root.on);
+        if root.enabled {
+            root.on = !root.on;
+            root.toggled(root.on);
+        }
     }
+    opacity: root.enabled ? 1 : 0.4;
     height: 28px;
     // Just the switch when there's no label.
     max-width: root.text == "" ? 34px : 100000px;
@@ -54,6 +76,7 @@ export component Toggle inherits Rectangle {
     }
 
     TouchArea {
+        enabled: root.enabled;
         clicked => {
             root.on = !root.on;
             root.toggled(root.on);
@@ -330,13 +353,11 @@ export component Dropdown inherits Rectangle {
                             padding-left: 8px;
                             padding-right: 8px;
                             spacing: 6px;
-                            Text {
-                                accessible-role: none;
+                            Rectangle {
                                 width: 14px;
-                                text: index == root.selected ? "✓" : "";
-                                font-size: 12px;
-                                color: option-touch.has-hover ? Theme.accent-text : Theme.primary-text;
-                                vertical-alignment: center;
+                                if index == root.selected: Tick {
+                                    color: option-touch.has-hover ? Theme.accent-text : Theme.primary-text;
+                                }
                             }
                             Text {
                                 accessible-role: none;
@@ -390,6 +411,8 @@ export component Section inherits VerticalLayout {
 export component SettingRow inherits HorizontalLayout {
     in property <string> label;
     in property <string> detail;
+    // Dimmed when it depends on an option that's off (its control is disabled at the call site).
+    in property <bool> enabled: true;
     // Every row gets the same room above and below, whether or not it has a detail line.
     min-height: 46px;
     padding-top: 9px;
@@ -402,12 +425,12 @@ export component SettingRow inherits HorizontalLayout {
         Text {
             text: root.label;
             font-size: 13px;
-            color: Theme.primary-text;
+            color: root.enabled ? Theme.primary-text : Theme.tertiary-text;
         }
         if root.detail != "": Text {
             text: root.detail;
             font-size: 11px;
-            color: Theme.secondary-text;
+            color: root.enabled ? Theme.secondary-text : Theme.tertiary-text;
             wrap: word-wrap;
         }
     }

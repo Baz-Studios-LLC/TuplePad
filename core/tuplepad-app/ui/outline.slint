@@ -1,5 +1,6 @@
 import { ListView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Tick } from "controls.slint";
 
 // One symbol in the outline.
 export struct OutlineRow {
@@ -29,12 +30,25 @@ component KindBadge inherits Rectangle {
     border-radius: 5px;
     background: root.tint.with-alpha(Theme.dark ? 0.2 : 0.12);
     Text {
-        text: ["ƒ", "m", "T", "N", "#", "C", "P", "{}", "[]", "\"", "1", "✓", "∅"][root.kind];
+        text: ["ƒ", "m", "T", "N", "#", "C", "P", "{}", "[]", "\"", "1", "", ""][root.kind];
         font-size: 11px;
         font-weight: 700;
         color: root.tint;
         horizontal-alignment: center;
         vertical-alignment: center;
+    }
+    // True or false, and null: drawn, since not every system's fonts have "✓" and "∅".
+    if root.kind == 11: Tick { color: root.tint; }
+    if root.kind == 12: Path {
+        width: 10px;
+        height: 10px;
+        viewbox-width: 10;
+        viewbox-height: 10;
+        commands: "M5 1.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7z M1.8 8.2l6.4-6.4";
+        fill: transparent;
+        stroke: root.tint;
+        stroke-width: 1.4px;
+        stroke-line-cap: round;
     }
 }
 

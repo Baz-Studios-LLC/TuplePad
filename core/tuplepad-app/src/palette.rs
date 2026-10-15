@@ -60,18 +60,18 @@ fn menu_name(menu: Menu) -> &'static str {
         Menu::Selection => "Selection",
         Menu::Find => "Find",
         Menu::Text => "Text",
-        Menu::Lines => "Text ▸ Lines",
-        Menu::Case => "Text ▸ Case",
-        Menu::Whitespace => "Text ▸ Whitespace",
+        Menu::Lines => "Text › Lines",
+        Menu::Case => "Text › Case",
+        Menu::Whitespace => "Text › Whitespace",
         Menu::Tools => "Tools",
-        Menu::Compare => "Tools ▸ Compare",
-        Menu::Json => "Tools ▸ JSON",
-        Menu::Xml => "Tools ▸ XML",
-        Menu::Csv => "Tools ▸ CSV",
-        Menu::Encode => "Tools ▸ Encode",
-        Menu::Decode => "Tools ▸ Decode",
+        Menu::Compare => "Tools › Compare",
+        Menu::Json => "Tools › JSON",
+        Menu::Xml => "Tools › XML",
+        Menu::Csv => "Tools › CSV",
+        Menu::Encode => "Tools › Encode",
+        Menu::Decode => "Tools › Decode",
         Menu::View => "View",
-        Menu::Folding => "View ▸ Code Folding",
+        Menu::Folding => "View › Code Folding",
         Menu::Help => "Help",
         Menu::None => "",
     }
@@ -94,7 +94,7 @@ pub fn entries(app: &App) -> Vec<Entry> {
             title: match command.menu {
                 // Items that only make sense with their submenu's name ("JSON: Format").
                 Menu::Compare | Menu::Json | Menu::Xml | Menu::Csv | Menu::Encode | Menu::Decode => {
-                    format!("{}: {}", menu_name(command.menu).trim_start_matches("Tools ▸ "), command.title.trim_end_matches('…'))
+                    format!("{}: {}", menu_name(command.menu).trim_start_matches("Tools › "), command.title.trim_end_matches('…'))
                 }
                 _ => command.title.trim_end_matches('…').into(),
             },

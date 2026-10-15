@@ -90,7 +90,7 @@ served = os.path.join(work, "served")
 os.makedirs(served)
 download = {"url": "http://127.0.0.1/none.zip", "size": 1, "signature": "unused"}
 with open(os.path.join(served, "latest.json"), "w") as f:
-    json.dump({"version": "v999", "notes": "## What's new\n- Faster Find in Files\n- A calmer sidebar", "downloads": {s: download for s in ["mac", "windows-x64", "linux-x64"]}}, f)
+    json.dump({"version": "v999", "notes": "## What's new\n\n- Find in Files is faster, and stopping a search inside a huge file takes effect at once.\n- A calmer sidebar\n\n## Fixed\n\n- Pasted text keeps its indentation.", "downloads": {s: download for s in ["mac", "windows-x64", "linux-x64"]}}, f)
 
 
 class Quiet(http.server.SimpleHTTPRequestHandler):

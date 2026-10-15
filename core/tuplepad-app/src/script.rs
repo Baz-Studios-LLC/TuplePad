@@ -984,7 +984,7 @@ fn palette_titles(ui: &AppWindow) -> Vec<Value> {
         .map(|item| {
             let title: String = item.parts.iter().map(|p| p.text.to_string()).collect();
             let matched: String = item.parts.iter().filter(|p| p.matched).map(|p| p.text.to_string()).collect();
-            json!({"title": title, "matched": matched, "trailing": item.trailing.as_str()})
+            json!({"title": title, "matched": matched, "detail": item.detail.as_str(), "trailing": item.trailing.as_str()})
         })
         .collect()
 }
