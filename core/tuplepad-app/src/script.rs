@@ -672,6 +672,23 @@ fn run_next(app: Rc<App>, runner: Shared) {
                 let _ = std::fs::write(path, serde_json::to_string_pretty(&elements).unwrap_or_default());
             }
         }
+        // {"axTree": path}: the window's accessibility tree as the system hands it to screen readers
+        // (on a Mac, what VoiceOver reads: each element's role, label, title and value), walked
+        // from inside the app, which needs no accessibility permission. Settings too when open.
+        "axTree" => {
+            let mut elements = platform_accessibility(ui.window());
+            if let Some(settings) = app.settings_window.borrow().as_ref()
+                && settings.window().is_visible()
+            {
+                elements.extend(platform_accessibility(settings.window()).into_iter().map(|mut e| {
+                    e["window"] = json!("settings");
+                    e
+                }));
+            }
+            if let Some(path) = arg.as_str() {
+                let _ = std::fs::write(path, serde_json::to_string_pretty(&elements).unwrap_or_default());
+            }
+        }
         // {"a11yPress": "label"}: what a screen reader's "press" does to the element with that label.
         "a11yPress" => {
             let label = arg.as_str().unwrap_or_default();
@@ -746,6 +763,69 @@ fn window_number(window: &slint::Window) -> Option<isize> {
 #[cfg(not(target_os = "macos"))]
 fn window_number(_window: &slint::Window) -> Option<isize> {
     None
+}
+
+/// The accessibility tree AppKit gives VoiceOver for a window: from the content view down
+/// through `accessibilityChildren`, each element's role, label, title and value.
+#[cfg(target_os = "macos")]
+fn platform_accessibility(window: &slint::Window) -> Vec<Value> {
+    use objc2::msg_send;
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::{NSArray, NSString};
+    use slint::winit_030::WinitWindowAccessor;
+    use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    fn walk(element: &AnyObject, depth: usize, out: &mut Vec<Value>) {
+        if depth > 60 || out.len() > 10_000 {
+            return;
+        }
+        // SAFETY: every element in AppKit's accessibility tree answers these NSAccessibility
+        // messages, returning an object or nil.
+        unsafe {
+            let text = |value: Option<Retained<NSString>>| value.map(|v| v.to_string()).filter(|v| !v.is_empty());
+            let role: Option<Retained<NSString>> = msg_send![element, accessibilityRole];
+            let label: Option<Retained<NSString>> = msg_send![element, accessibilityLabel];
+            let title: Option<Retained<NSString>> = msg_send![element, accessibilityTitle];
+            let value: Option<Retained<AnyObject>> = msg_send![element, accessibilityValue];
+            let value = value.map(|v| {
+                let description: Retained<NSString> = msg_send![&*v, description];
+                description.to_string()
+            });
+            let role = text(role);
+            let help: Option<Retained<NSString>> = msg_send![element, accessibilityHelp];
+            // Where the caret is in a text field, as VoiceOver sees it.
+            let caret = if matches!(role.as_deref(), Some("AXTextField" | "AXTextArea")) {
+                let range: objc2_foundation::NSRange = msg_send![element, accessibilitySelectedTextRange];
+                Some(json!([range.location, range.length]))
+            } else {
+                None
+            };
+            // Whether VoiceOver can press it, and whether it says it's the selected one.
+            let press: bool = msg_send![element, isAccessibilitySelectorAllowed: objc2::sel!(accessibilityPerformPress)];
+            let selected: bool = msg_send![element, isAccessibilitySelected];
+            out.push(json!({"depth": depth, "role": role, "label": text(label), "title": text(title), "value": value, "help": text(help), "caret": caret, "press": press, "selected": selected}));
+            let children: Option<Retained<NSArray<AnyObject>>> = msg_send![element, accessibilityChildren];
+            for child in children.iter().flat_map(|c| c.iter()) {
+                walk(&child, depth + 1, out);
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    window.with_winit_window(|w| {
+        let Ok(handle) = w.window_handle() else { return };
+        let RawWindowHandle::AppKit(handle) = handle.as_raw() else { return };
+        // SAFETY: winit's handle points at the window's live content view.
+        let view: &AnyObject = unsafe { handle.ns_view.cast().as_ref() };
+        walk(view, 0, &mut out);
+    });
+    out
+}
+
+#[cfg(not(target_os = "macos"))]
+fn platform_accessibility(_window: &slint::Window) -> Vec<Value> {
+    Vec::new()
 }
 
 /// Every visible element with an accessible role, as a screen reader would get it.

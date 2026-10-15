@@ -267,9 +267,9 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
     }
     {
         let app = app.clone();
-        bridge.on_text(move |pane, text: SharedString| {
+        bridge.on_input_edited(move |pane, text: SharedString| {
             app.focus_pane(pane.max(0) as usize);
-            app.typed(&text);
+            app.input_edited(&text);
         });
     }
     {

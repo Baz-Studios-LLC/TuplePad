@@ -131,6 +131,7 @@ impl App {
                     alt: block.text.clone().into(),
                     header: block.header,
                     last: next.is_none_or(|n| n.kind != block.kind || n.quote != block.quote),
+                    spoken: spoken(block).into(),
                     ..Default::default()
                 };
                 match block.kind {
@@ -241,5 +242,59 @@ mod tests {
         let text: Vec<String> = lines.iter().map(|l| l.parts.iter().map(|p| p.text.to_string()).collect()).collect();
         assert_eq!(text, ["fn main() {", "    let x = 1;", "}"]);
         assert!(lines[0].parts.iter().any(|p| p.style == 1));
+    }
+}
+
+/// What a screen reader says for a preview block.
+fn spoken(block: &MarkdownBlock) -> String {
+    let text = plain(&block.text);
+    let quoted = |s: String| if block.quote > 0 { format!("Quote: {s}") } else { s };
+    match block.kind {
+        MarkdownBlockKind::Heading => format!("{text}, heading level {}", block.level),
+        MarkdownBlockKind::Paragraph => quoted(text),
+        MarkdownBlockKind::Code => format!("Code: {}", block.code.trim_end()),
+        MarkdownBlockKind::ListItem => quoted(format!("{} {text}", block.marker)),
+        MarkdownBlockKind::Rule => "Separator".into(),
+        MarkdownBlockKind::TableRow => {
+            let cells = block.cells.iter().map(|c| plain(c)).collect::<Vec<_>>().join(", ");
+            if block.header { format!("Table header: {cells}") } else { cells }
+        }
+        MarkdownBlockKind::Image => format!("Image: {}", block.text),
+    }
+}
+
+/// Inline Markdown as plain words: emphasis and code marks dropped, links as their text.
+fn plain(markdown: &str) -> String {
+    let mut out = String::new();
+    let mut chars = markdown.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '*' | '`' => {}
+            '~' if chars.peek() == Some(&'~') => {
+                chars.next();
+            }
+            // [label](url): just the label.
+            ']' if chars.peek() == Some(&'(') => {
+                for c in chars.by_ref() {
+                    if c == ')' {
+                        break;
+                    }
+                }
+            }
+            '[' => {}
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod spoken_tests {
+    use super::plain;
+
+    #[test]
+    fn markdown_as_plain_words() {
+        assert_eq!(plain("Pack a **map** and `water`, see [the guide](https://x.y) ~~now~~"), "Pack a map and water, see the guide now");
+        assert_eq!(plain("snake_case stays"), "snake_case stays");
     }
 }

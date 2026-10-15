@@ -28,6 +28,8 @@ use layout::Layouter;
 use rows::RowMap;
 
 const BLINK: Duration = Duration::from_millis(530);
+/// How much of the caret's line, on each side of it, the hidden text input holds.
+const MIRROR_COLUMNS: u64 = 500;
 const SCROLLBAR_LINGER: Duration = Duration::from_millis(900);
 /// How long the caret rests before other occurrences of its word light up.
 const SMART_HIGHLIGHT_DELAY: Duration = Duration::from_millis(350);
@@ -122,6 +124,10 @@ pub struct Editor {
     goals: Option<Vec<f32>>,
     preedit: String,
     composed: bool,
+    /// What the hidden text input holds: the caret's line (or the part around the caret) and the
+    /// caret's byte offset in it, so screen readers read the text and input methods see context.
+    mirror: (String, i32),
+    mirror_sync: i32,
     drag: Option<Drag>,
     /// A column selection in progress: the line and x where it started.
     column_drag: Option<(u64, f32)>,
@@ -240,6 +246,8 @@ impl Editor {
             goals: None,
             preedit: String::new(),
             composed: false,
+            mirror: (String::new(), -1),
+            mirror_sync: 0,
             drag: None,
             column_drag: None,
             text_drag: None,
@@ -1061,6 +1069,19 @@ impl Editor {
             put!(bridge, self.pane, set_a11y_label, set_a11y_label_2, label.into());
             put!(bridge, self.pane, set_a11y_line, set_a11y_line_2, line.into());
             put!(bridge, self.pane, set_a11y_position, set_a11y_position_2, position.into());
+            // The hidden text input holds the caret's line, so screen readers read it (and announce
+            // the caret moving through it) and input methods see the text around the caret. On a
+            // huge line, only the part around the caret.
+            let from = head.column.saturating_sub(MIRROR_COLUMNS);
+            let text = buffer.line_slice(head.line, from, head.column + MIRROR_COLUMNS);
+            let cursor = buffer.line_slice(head.line, from, head.column).len() as i32;
+            if self.mirror.0 != text || self.mirror.1 != cursor {
+                put!(bridge, self.pane, set_input_text, set_input_text_2, text.as_str().into());
+                put!(bridge, self.pane, set_input_cursor, set_input_cursor_2, cursor);
+                self.mirror_sync += 1;
+                put!(bridge, self.pane, set_input_sync, set_input_sync_2, self.mirror_sync);
+                self.mirror = (text, cursor);
+            }
         }
 
         // The minimap, and where the view is in it.

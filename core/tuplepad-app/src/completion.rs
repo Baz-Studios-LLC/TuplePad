@@ -42,12 +42,13 @@ pub struct WordIndex {
 }
 
 impl App {
-    /// Text typed into the editor: inserts it, then offers to finish the word being typed.
-    pub fn typed(&self, text: &str) {
-        if let Ok(mut editor) = self.editor.try_borrow_mut() {
-            editor.insert_text(text);
+    /// The editor's hidden text input changed (see `Editor::input_edited`): inserts what was typed,
+    /// then offers to finish the word being typed.
+    pub fn input_edited(&self, text: &str) {
+        let inserted = self.editor.try_borrow_mut().ok().and_then(|mut editor| editor.input_edited(text));
+        if let Some(inserted) = inserted {
+            self.update_completion(&inserted);
         }
-        self.update_completion(text);
         self.refresh();
     }
 

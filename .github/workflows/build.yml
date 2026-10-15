@@ -38,6 +38,9 @@ jobs:
           $app = Start-Process -FilePath core\target\release\tuplepad-app.exe -ArgumentList "--script", $steps, "--session-dir", (Join-Path $env:RUNNER_TEMP "session") -PassThru
           if (-not $app.WaitForExit(120000)) { $app.Kill(); throw "TuplePad didn't finish its script" }
           if (-not (Select-String -Path $dump -Pattern "hello from Windows" -Quiet)) { throw "the script's text isn't in the dump" }
+      - name: Screen reader tree (UI Automation, what Narrator reads)
+        shell: powershell
+        run: .\.github\a11y-windows.ps1 core\target\release\tuplepad-app.exe
       - name: Visual tour
         continue-on-error: true
         run: python .github/visual-tour.py core/target/release/tuplepad-app.exe screens
@@ -114,6 +117,10 @@ jobs:
           printf '[{"type": "hello from Linux"}, {"dump": "%s/dump.json"}, {"quit": true}]' "$RUNNER_TEMP" > "$RUNNER_TEMP/steps.json"
           APPIMAGE_EXTRACT_AND_RUN=1 timeout 120 xvfb-run -a dist/TuplePad-*.AppImage --script "$RUNNER_TEMP/steps.json" --session-dir "$RUNNER_TEMP/session"
           grep -q "hello from Linux" "$RUNNER_TEMP/dump.json"
+      - name: Screen reader tree (AT-SPI, what Orca reads)
+        run: |
+          sudo apt-get install -y at-spi2-core python3-pyatspi
+          dbus-run-session -- /usr/bin/python3 .github/a11y-linux.py core/target/release/tuplepad-app
       - name: Visual tour
         continue-on-error: true
         run: python3 .github/visual-tour.py core/target/release/tuplepad-app screens

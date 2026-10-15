@@ -639,6 +639,7 @@ export component AppWindow inherits Window {
 
                 editor := EditorView {
                     pane: 0;
+                    input-text <=> EditorBridge.input-text;
                     x: 0;
                     y: 0;
                     width: panes.first-width;
@@ -647,6 +648,7 @@ export component AppWindow inherits Window {
                 }
                 editor2 := EditorView {
                     pane: 1;
+                    input-text <=> EditorBridge.input-text-2;
                     visible: root.split != 0;
                     x: panes.side ? panes.first-width + 1px : 0;
                     y: panes.stacked ? panes.first-height + 1px : 0;

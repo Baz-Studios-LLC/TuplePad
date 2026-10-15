@@ -25,6 +25,8 @@ export struct PreviewBlock {
     alt: string,
     // The last item of a list or the last row of a table, which gets a paragraph's gap after it.
     last: bool,
+    // What a screen reader says for it (styled text isn't read on its own).
+    spoken: string,
 }
 
 export global PreviewBridge {
@@ -55,6 +57,7 @@ component CodeBlock inherits Rectangle {
             height: 19px;
             spacing: 0px;
             for part in line.parts: Text {
+                accessible-role: none;
                 text: part.text;
                 font-family: Theme.mono-family;
                 font-size: 12.5px;
@@ -104,6 +107,8 @@ export component MarkdownPreview inherits Rectangle {
             padding-top: 30px;
             padding-bottom: 60px;
             for block[index] in PreviewBridge.blocks: Rectangle {
+                accessible-role: text;
+                accessible-label: block.spoken;
                 changed y => { PreviewBridge.block-moved(index, self.y); }
                 init => { PreviewBridge.block-moved(index, self.y); }
                 // A quote's bar.
@@ -145,6 +150,7 @@ export component MarkdownPreview inherits Rectangle {
                     if block.kind == 3: HorizontalLayout {
                         spacing: 6px;
                         Text {
+                            accessible-role: none;
                             width: 20px;
                             text: block.marker;
                             font-size: 15px;
@@ -187,6 +193,7 @@ export component MarkdownPreview inherits Rectangle {
                         horizontal-alignment: left;
                     }
                     if block.kind == 6 && !block.has-image: Text {
+                        accessible-role: none;
                         text: "[" + block.alt + "]";
                         font-size: 13px;
                         font-italic: true;

@@ -109,6 +109,27 @@ impl Editor {
         self.apply(|buffer, cursors| buffer.type_text(cursors, text, kind, auto_close));
     }
 
+    /// The hidden text input changed (it holds the caret's line): typing at the caret, or an
+    /// input method replacing the characters just before it (an accent chosen for the letter
+    /// typed). Returns what was inserted; anything else is ignored, and the next sync puts the
+    /// line back.
+    pub fn input_edited(&mut self, text: &str) -> Option<String> {
+        let change = typed_change(&self.mirror.0, self.mirror.1.max(0) as usize, text);
+        self.mirror.1 = -1;
+        let (removed, inserted) = change?;
+        if removed > 0 {
+            // Select what's being replaced, so the insertion takes its place.
+            let buffer = self.buffer();
+            let mut cursors = self.doc().cursors.clone();
+            for _ in 0..removed {
+                cursors = buffer.move_cursors(&cursors, Motion::Left, true);
+            }
+            self.doc_mut().cursors = cursors;
+        }
+        self.insert_text(&inserted);
+        Some(inserted)
+    }
+
     /// Composing text from an input method, shown inline at the main caret until it's committed.
     pub fn set_preedit(&mut self, text: &str) {
         if !text.is_empty() {
@@ -514,5 +535,44 @@ impl Editor {
             3 => buffer.select_lines(&[TextSelection::caret(pos)]).first().copied().unwrap_or(TextSelection::caret(pos)),
             _ => TextSelection::caret(pos),
         }
+    }
+}
+
+/// How the hidden text input changed from `old` (its caret was at byte `cursor`) to `new`: the
+/// number of characters (grapheme clusters) it replaced just before the caret, and what it
+/// inserted. An insertion anywhere counts (the editor puts it at its own caret, in case the
+/// input's caret lagged behind); a replacement counts only just before the caret. None when
+/// nothing changed, or something away from the caret did.
+pub fn typed_change(old: &str, cursor: usize, new: &str) -> Option<(usize, String)> {
+    use unicode_segmentation::UnicodeSegmentation;
+    let prefix: usize = old.chars().zip(new.chars()).take_while(|(a, b)| a == b).map(|(a, _)| a.len_utf8()).sum();
+    let suffix: usize = old[prefix..].chars().rev().zip(new[prefix..].chars().rev()).take_while(|(a, b)| a == b).map(|(a, _)| a.len_utf8()).sum();
+    let removed = &old[prefix..old.len() - suffix];
+    let inserted = new[prefix..new.len() - suffix].to_string();
+    if removed.is_empty() {
+        return (!inserted.is_empty()).then_some((0, inserted));
+    }
+    (prefix + removed.len() == cursor).then(|| (removed.graphemes(true).count(), inserted))
+}
+
+#[cfg(test)]
+mod mirror_tests {
+    use super::typed_change;
+
+    #[test]
+    fn what_the_input_changed() {
+        // Typing at the caret, including a letter like the one before or after it.
+        assert_eq!(typed_change("let x", 5, "let xy"), Some((0, "y".into())));
+        assert_eq!(typed_change("ab", 1, "aab"), Some((0, "a".into())));
+        assert_eq!(typed_change("ab", 1, "abb"), Some((0, "b".into())));
+        assert_eq!(typed_change("", 0, "héllo"), Some((0, "héllo".into())));
+        // An input method swapping the letter before the caret for an accented one.
+        assert_eq!(typed_change("cafe", 4, "café"), Some((1, "é".into())));
+        assert_eq!(typed_change("e👍🏽x", 9, "e✅x"), Some((1, "✅".into())));
+        // Typing where the input's own caret had lagged still counts.
+        assert_eq!(typed_change("abc", 1, "abcd"), Some((0, "d".into())));
+        // Replacements away from the caret, or no change, are ignored.
+        assert_eq!(typed_change("abc", 1, "abd"), None);
+        assert_eq!(typed_change("abc", 3, "abc"), None);
     }
 }

@@ -151,7 +151,16 @@ export global EditorBridge {
     in property <length> completion-x-2;
 
     callback key(pane: int, event: KeyEvent) -> bool;
-    callback text(pane: int, text: string);
+    // The hidden text input's new text (it holds the caret's line; Rust works out what was typed).
+    callback input-edited(pane: int, text: string);
+    // What it holds, for each pane: the caret's line and the caret's byte offset in it.
+    in-out property <string> input-text;
+    in-out property <string> input-text-2;
+    in property <int> input-cursor;
+    in property <int> input-cursor-2;
+    // Bumped whenever Rust sets them, so the input puts its caret there.
+    in property <int> input-sync;
+    in property <int> input-sync-2;
     callback preedit(pane: int, text: string);
     callback pointer-down(pane: int, x: length, y: length, modifiers: KeyboardModifiers);
     callback pointer-drag(pane: int, x: length, y: length);
@@ -224,6 +233,11 @@ component Scrollbar inherits Rectangle {
 
 export component EditorView inherits Rectangle {
     in property <int> pane;
+    // The hidden text input's text (bound to EditorBridge's for this pane) and caret.
+    in-out property <string> input-text;
+    property <int> input-cursor: root.pane == 0 ? EditorBridge.input-cursor : EditorBridge.input-cursor-2;
+    property <int> input-sync: root.pane == 0 ? EditorBridge.input-sync : EditorBridge.input-sync-2;
+    changed input-sync => { input.set-selection-offsets(root.input-cursor, root.input-cursor); }
     property <[Row]> rows: root.pane == 0 ? EditorBridge.rows : EditorBridge.rows-2;
     property <[Caret]> carets: root.pane == 0 ? EditorBridge.carets : EditorBridge.carets-2;
     property <[Band]> selections: root.pane == 0 ? EditorBridge.selections : EditorBridge.selections-2;
@@ -484,11 +498,12 @@ export component EditorView inherits Rectangle {
         // Keyboard and input-method entry point. It sits at the main caret so the input method's
         // candidate window opens there; it draws nothing, and the editor shows composing text inline.
         input := TextInput {
-            // What screen readers get: the document, the line the caret is on, and where.
+            // What screen readers get: the document, the caret's line (the input holds it, with its
+            // own caret at the editor's, so moving the caret is announced), and where it is.
             accessible-role: text-input;
             accessible-label: root.pane == 0 ? EditorBridge.a11y-label : EditorBridge.a11y-label-2;
-            accessible-value: root.pane == 0 ? EditorBridge.a11y-line : EditorBridge.a11y-line-2;
             accessible-description: root.pane == 0 ? EditorBridge.a11y-position : EditorBridge.a11y-position-2;
+            text <=> root.input-text;
             x: root.ime-x - root.scroll-x;
             y: root.row-y(root.ime-row);
             width: 2px;
@@ -508,12 +523,7 @@ export component EditorView inherits Rectangle {
                 }
                 return EventResult.reject;
             }
-            edited => {
-                if self.text != "" {
-                    EditorBridge.text(root.pane, self.text);
-                    self.text = "";
-                }
-            }
+            edited => { EditorBridge.input-edited(root.pane, self.text); }
             changed preedit-text => {
                 EditorBridge.preedit(root.pane, self.preedit-text);
             }

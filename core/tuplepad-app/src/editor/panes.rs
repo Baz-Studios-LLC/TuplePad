@@ -76,6 +76,8 @@ pane_view! {
     goals: Option<Vec<f32>> = None,
     preedit: String = String::new(),
     composed: bool = false,
+    mirror: (String, i32) = (String::new(), -1),
+    mirror_sync: i32 = 0,
     drag: Option<super::Drag> = None,
     column_drag: Option<(u64, f32)> = None,
     text_drag: Option<super::TextDrag> = None,

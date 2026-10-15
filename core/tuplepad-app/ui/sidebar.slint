@@ -254,6 +254,7 @@ component FolderRowView inherits Rectangle {
     accessible-description: root.item.folder ? "Folder" : "";
     accessible-expandable: root.item.folder;
     accessible-expanded: root.item.expanded;
+    accessible-item-selectable: true;
     accessible-item-selected: root.item.current;
     accessible-action-default => { root.clicked(); }
     accessible-action-expand => { root.clicked(); }
@@ -394,6 +395,7 @@ export component Sidebar inherits Rectangle {
                 for label[index] in root.folder-name == "" ? ["DOCUMENTS"] : ["DOCUMENTS", "FOLDER"]: Text {
                     accessible-role: tab;
                     accessible-label: index == 0 ? "Documents" : "Folder";
+                    accessible-item-selectable: true;
                     accessible-item-selected: root.folder-name == "" || root.mode == index;
                     accessible-action-default => { if root.folder-name != "" { root.mode = index; } }
                     text: label;
