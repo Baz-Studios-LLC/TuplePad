@@ -29,11 +29,12 @@ try {
   } else {
     await voiceOver.perform(voiceOver.keyboardCommands.describeItemWithKeyboardFocus);
   }
-  await sleep(2000);
+  // Long descriptions take a few seconds to speak; a key pressed meanwhile cuts them off.
+  await sleep(5000);
   await reader.press("ArrowDown");
-  await sleep(2000);
+  await sleep(3000);
   await reader.press("ArrowDown");
-  await sleep(2000);
+  await sleep(3000);
   spoken = await reader.spokenPhraseLog();
 } finally {
   tuplepad.kill();
