@@ -545,7 +545,8 @@ fn search_folder(folder: &std::path::Path, pattern: &str, include: &str, exclude
 }
 
 fn names(results: &[FileMatches], root: &std::path::Path) -> Vec<String> {
-    results.iter().map(|r| r.path.strip_prefix(&*root.to_string_lossy()).unwrap().trim_start_matches('/').to_string()).collect()
+    // With / between folders on every system, to compare.
+    results.iter().map(|r| std::path::Path::new(&r.path).strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/")).collect()
 }
 
 #[test]
@@ -955,7 +956,8 @@ fn list_files_for_quick_open() {
     }
     std::fs::write(dir.path().join(".gitignore"), "target/\n").unwrap();
     let files = list_files(dir.path().to_string_lossy().into_owned(), 100).unwrap();
-    assert_eq!(files, ["README.md", "src/main.rs"]);
+    // Windows lists src\main.rs, as it writes paths.
+    assert_eq!(files.iter().map(|f| f.replace('\\', "/")).collect::<Vec<_>>(), ["README.md", "src/main.rs"]);
 }
 
 #[test]
