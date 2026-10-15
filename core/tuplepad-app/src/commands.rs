@@ -313,7 +313,10 @@ impl Command {
 
 /// The command a key press is the shortcut for.
 pub fn for_key(text: &str, control: bool, alt: bool, shift: bool, meta: bool) -> Option<&'static Command> {
-    COMMANDS.iter().filter(|c| !c.is_separator() && !c.is_submenu()).find(|c| c.matches(text, control, alt, shift, meta))
+    let found = COMMANDS.iter().filter(|c| !c.is_separator() && !c.is_submenu()).find(|c| c.matches(text, control, alt, shift, meta));
+    // Windows and Linux redo with Ctrl+Y, and also take Ctrl+Shift+Z, as most of their editors do.
+    let redo = !MAC && control && shift && !alt && !meta && text.eq_ignore_ascii_case("z");
+    found.or_else(|| redo.then(|| COMMANDS.iter().find(|c| c.id == "edit.redo")).flatten())
 }
 
 /// Slint's title for a separator entry (an internal placeholder it turns into a separator).
@@ -369,6 +372,9 @@ mod tests {
     fn shortcuts_match_key_presses() {
         assert_eq!(for_key("z", true, false, false, false).map(|c| c.id), Some("edit.undo"));
         assert_eq!(for_key("Z", true, false, true, false).map(|c| c.id), Some("edit.redo"));
+        if !MAC {
+            assert_eq!(for_key("y", true, false, false, false).map(|c| c.id), Some("edit.redo"));
+        }
         assert_eq!(for_key("+", true, false, true, false).map(|c| c.id), Some("view.zoom-in"));
         assert_eq!(for_key("=", true, false, false, false).map(|c| c.id), Some("view.zoom-in"));
         assert_eq!(for_key("z", false, false, false, false).map(|c| c.id), None);

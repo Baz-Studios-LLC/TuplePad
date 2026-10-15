@@ -230,6 +230,8 @@ fn refuses_to_save_unrepresentable_text() {
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "👋café crème");
 }
 
+// Symlinks and permission bits are Unix's.
+#[cfg(unix)]
 #[test]
 fn save_as_follows_symlinks_and_keeps_permissions() {
     use std::os::unix::fs::PermissionsExt;

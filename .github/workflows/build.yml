@@ -24,6 +24,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
+          cache-on-failure: true
       - name: Test
         run: cargo test --locked --manifest-path core/Cargo.toml --workspace
       - name: Build
@@ -66,6 +67,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
+          cache-on-failure: true
       - name: Test
         run: xvfb-run -a cargo test --locked --manifest-path core/Cargo.toml --workspace
       - name: Build
@@ -91,5 +93,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
+          cache-on-failure: true
       - name: Test
         run: cargo test --locked --manifest-path core/Cargo.toml --workspace
