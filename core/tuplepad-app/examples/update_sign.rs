@@ -2,6 +2,7 @@
 //!
 //!     cargo run --example update_sign -- keygen <secret key file>
 //!     cargo run --example update_sign -- sign <secret key file> <download> "<trusted comment>"
+//!     cargo run --example update_sign -- verify <public key> <download> <signature file>
 //!
 //! `keygen` writes a new secret key (keep it out of the repository) and prints the public key,
 //! which goes in `src/update.rs`. `sign` prints a minisign signature; the trusted comment names
@@ -33,11 +34,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let signature = minisign::sign(Some(&public), &secret, data, Some(comment), Some("TuplePad release signature"))?;
             print!("{}", signature.into_string());
         }
+        ["verify", public, file, signature] => {
+            let public = minisign::PublicKey::from_base64(public)?;
+            let signature = minisign::SignatureBox::from_string(&std::fs::read_to_string(signature)?)?;
+            minisign::verify(&public, &signature, BufReader::new(File::open(file)?), true, false, false)?;
+            println!("{}", signature.trusted_comment()?);
+        }
         ["public", key] => {
             let secret = minisign::SecretKeyBox::from_string(&std::fs::read_to_string(key)?)?.into_unencrypted_secret_key()?;
             println!("{}", minisign::PublicKey::from_secret_key(&secret)?.to_base64());
         }
-        _ => return Err("usage: update_sign keygen <key> | sign <key> <file> <trusted comment> | public <key>".into()),
+        _ => return Err("usage: update_sign keygen <key> | sign <key> <file> <trusted comment> | verify <public key> <file> <signature file> | public <key>".into()),
     }
     Ok(())
 }
