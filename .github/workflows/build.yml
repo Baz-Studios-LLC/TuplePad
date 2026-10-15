@@ -38,6 +38,15 @@ jobs:
           $app = Start-Process -FilePath core\target\release\tuplepad-app.exe -ArgumentList "--script", $steps, "--session-dir", (Join-Path $env:RUNNER_TEMP "session") -PassThru
           if (-not $app.WaitForExit(120000)) { $app.Kill(); throw "TuplePad didn't finish its script" }
           if (-not (Select-String -Path $dump -Pattern "hello from Windows" -Quiet)) { throw "the script's text isn't in the dump" }
+      - name: Visual tour
+        continue-on-error: true
+        run: python .github/visual-tour.py core/target/release/tuplepad-app.exe screens
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: screens-windows
+          path: screens/
+          if-no-files-found: ignore
       - name: Installer
         shell: pwsh
         run: |
@@ -105,6 +114,15 @@ jobs:
           printf '[{"type": "hello from Linux"}, {"dump": "%s/dump.json"}, {"quit": true}]' "$RUNNER_TEMP" > "$RUNNER_TEMP/steps.json"
           APPIMAGE_EXTRACT_AND_RUN=1 timeout 120 xvfb-run -a dist/TuplePad-*.AppImage --script "$RUNNER_TEMP/steps.json" --session-dir "$RUNNER_TEMP/session"
           grep -q "hello from Linux" "$RUNNER_TEMP/dump.json"
+      - name: Visual tour
+        continue-on-error: true
+        run: python3 .github/visual-tour.py core/target/release/tuplepad-app screens
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: screens-linux
+          path: screens/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v5
         with:
           name: linux-x64

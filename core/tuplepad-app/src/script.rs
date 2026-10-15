@@ -633,6 +633,21 @@ fn run_next(app: Rc<App>, runner: Shared) {
             let done = signal.with_extension("done");
             return wait_for(app, runner, done, Instant::now(), limit);
         }
+        // {"snapshot": "path.png"}: the window as Slint draws it (Settings when it's open), for
+        // systems without screencapture, like CI's Windows and Linux. No window frame or native menus.
+        "snapshot" => {
+            let settings = app.settings_window.borrow().as_ref().filter(|w| w.window().is_visible()).map(|w| w.clone_strong());
+            let target = match &settings {
+                Some(settings) => settings.window(),
+                None => ui.window(),
+            };
+            app.editor.borrow_mut().touch();
+            app.refresh();
+            let saved = target.take_snapshot().map_err(|e| e.to_string()).and_then(|image| save_png(arg.as_str().unwrap_or("snapshot.png"), &image));
+            if let Err(error) = saved {
+                eprintln!("snapshot: {error}");
+            }
+        }
         // The keyboard shortcuts sheet: {"shortcuts": "text to search for"} or {"shortcuts": null} to close it.
         "shortcuts" => match arg.as_str() {
             Some(filter) => {
@@ -688,6 +703,14 @@ fn run_next(app: Rc<App>, runner: Shared) {
     }
     app.refresh();
     later(app, runner, pause);
+}
+
+fn save_png(path: &str, image: &slint::SharedPixelBuffer<slint::Rgba8Pixel>) -> Result<(), String> {
+    let file = std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| e.to_string())?);
+    let mut encoder = png::Encoder::new(file, image.width(), image.height());
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.write_header().and_then(|mut writer| writer.write_image_data(image.as_bytes())).map_err(|e| e.to_string())
 }
 
 /// Carries on once `done` holds (or after 30 seconds).
