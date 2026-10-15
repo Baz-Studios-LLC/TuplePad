@@ -1,0 +1,32 @@
+# A real screen reader (Orca, on Linux) reads TuplePad while it's used with real key presses.
+name: Screen reader
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  orca:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1-dev libfreetype-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libx11-dev libx11-xcb-dev libxcursor-dev libxrandr-dev libxi-dev libxcb1-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgtk-3-dev libgl1-mesa-dev \
+            libegl1-mesa-dev xvfb xdotool orca at-spi2-core speech-dispatcher espeak-ng
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+          cache-on-failure: true
+      - name: Build
+        run: cargo build --locked --manifest-path core/Cargo.toml -p tuplepad-app
+      - name: Orca reads TuplePad
+        run: dbus-run-session -- bash .github/orca-linux.sh core/target/debug/tuplepad-app
