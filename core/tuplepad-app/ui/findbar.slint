@@ -99,7 +99,8 @@ export component InputField inherits FieldBox {
                 width: parent.width;
                 height: parent.height;
                 text <=> root.text;
-                font-size: 13px;
+                font-size: root.mono ? 12.5px : 13px;
+                font-family: root.mono ? Theme.mono-family : "";
                 color: Theme.primary-text;
                 vertical-alignment: center;
                 single-line: true;

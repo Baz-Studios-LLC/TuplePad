@@ -54,6 +54,9 @@ export component Toggle inherits Rectangle {
 export component Sheet inherits Rectangle {
     in property <string> title;
     in property <string> accept-title: "OK";
+    in property <length> card-width: 400px;
+    in property <bool> show-cancel: true;
+    in property <bool> accept-enabled: true;
     callback accept();
     callback cancel();
 
@@ -78,7 +81,7 @@ export component Sheet inherits Rectangle {
     }
 
     card := Rectangle {
-        width: 400px;
+        width: min(root.card-width, root.width - 40px);
         x: (parent.width - self.width) / 2;
         y: max(60px, (parent.height - self.height) / 3);
         height: content.preferred-height;
@@ -106,14 +109,17 @@ export component Sheet inherits Rectangle {
                 alignment: end;
                 spacing: 8px;
                 padding-top: 6px;
-                PillButton {
+                if root.show-cancel: PillButton {
                     text: "Cancel";
                     clicked => { root.cancel(); }
                 }
                 PillButton {
                     text: root.accept-title;
                     primary: true;
-                    clicked => { root.accept(); }
+                    opacity: root.accept-enabled ? 1 : 0.45;
+                    clicked => {
+                        if root.accept-enabled { root.accept(); }
+                    }
                 }
             }
         }

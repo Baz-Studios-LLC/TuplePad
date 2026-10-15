@@ -1,0 +1,281 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { PillButton } from "sidebar.slint";
+import { Sheet, Segmented, Dropdown, Toggle } from "controls.slint";
+import { InputField } from "findbar.slint";
+
+export struct HashRow {
+    name: string,
+    value: string,
+    // 1 when it equals the hash pasted to check against.
+    matches: bool,
+}
+
+export struct XPathRow {
+    kind: string,
+    name: string,
+    value: string,
+}
+
+// The tools that ask something first or show a result, as sheets over the window.
+export global ToolBridge {
+    // 0 none, 1 hashes, 2 XPath, 3 CSV sort, 4 shell command.
+    in-out property <int> sheet;
+
+    // Hashes of the selection, the document or a file.
+    in property <string> hash-source;
+    in property <[HashRow]> hashes;
+    in property <bool> hashing;
+    in-out property <string> hash-check;
+    callback hash-file();
+    callback hash-check-changed();
+
+    // XPath.
+    in-out property <string> xpath;
+    in property <[XPathRow]> xpath-results;
+    in property <string> xpath-status;
+    in property <bool> xpath-error;
+    callback xpath-run();
+
+    // Sort CSV by a column.
+    in property <[string]> csv-columns;
+    in-out property <int> csv-column;
+    in-out property <bool> csv-descending;
+    in-out property <bool> csv-numeric;
+    in-out property <bool> csv-header: true;
+
+    // Run a shell command on the selection (or document).
+    in-out property <string> shell-command;
+    // 0 replace the selection, 1 insert after it, 2 open in a new document.
+    in-out property <int> shell-mode;
+    in property <string> shell-input;
+    in property <bool> shell-running;
+
+    callback copy(text: string);
+    callback accept();
+    callback cancel();
+}
+
+component Caption inherits Text {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: Theme.secondary-text;
+}
+
+export component HashesSheet inherits Sheet {
+    title: "Hashes";
+    accept-title: "Done";
+    show-cancel: false;
+    card-width: 640px;
+    accept => { ToolBridge.accept(); }
+    cancel => { ToolBridge.cancel(); }
+
+    HorizontalLayout {
+        spacing: 10px;
+        Text {
+            text: ToolBridge.hashing ? "Working…" : ToolBridge.hash-source;
+            font-size: 12px;
+            color: Theme.secondary-text;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        PillButton {
+            text: "Hash a File…";
+            clicked => { ToolBridge.hash-file(); }
+        }
+    }
+    for row in ToolBridge.hashes: VerticalLayout {
+        spacing: 4px;
+        HorizontalLayout {
+            spacing: 8px;
+            Caption { text: row.name; vertical-alignment: center; }
+            if row.matches: Text {
+                text: "✓ Matches";
+                font-size: 11px;
+                font-weight: 600;
+                color: Theme.accent.mix(Theme.primary-text, 0.6);
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            copy-touch := TouchArea {
+                width: copy-label.preferred-width + 8px;
+                height: 18px;
+                clicked => { ToolBridge.copy(row.value); }
+                copy-label := Text {
+                    text: "Copy";
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: copy-touch.has-hover ? Theme.primary-text : Theme.accent.mix(Theme.secondary-text, 0.5);
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        Rectangle {
+            border-radius: 7px;
+            background: Theme.editor-background;
+            border-width: 1px;
+            border-color: row.matches ? Theme.accent.with-alpha(0.6) : Theme.separator;
+            height: value.preferred-height + 14px;
+            value := Text {
+                x: 10px;
+                width: parent.width - 20px;
+                text: row.value;
+                font-family: Theme.mono-family;
+                font-size: 12px;
+                color: Theme.primary-text;
+                wrap: char-wrap;
+                vertical-alignment: center;
+            }
+        }
+    }
+    InputField {
+        text <=> ToolBridge.hash-check;
+        placeholder: "Paste a hash to check it against these";
+        edited => { ToolBridge.hash-check-changed(); }
+        accepted => { ToolBridge.accept(); }
+        escaped => { ToolBridge.cancel(); }
+    }
+}
+
+export component XPathSheet inherits Sheet {
+    title: "XPath Query";
+    accept-title: "Done";
+    show-cancel: false;
+    card-width: 620px;
+    accept => { ToolBridge.accept(); }
+    cancel => { ToolBridge.cancel(); }
+
+    HorizontalLayout {
+        spacing: 8px;
+        InputField {
+            horizontal-stretch: 1;
+            text <=> ToolBridge.xpath;
+            placeholder: "Like //item[@id] or count(//item)";
+            mono: true;
+            accepted => { ToolBridge.xpath-run(); }
+            escaped => { ToolBridge.cancel(); }
+            init => { self.focus-field(); }
+        }
+        PillButton {
+            text: "Run";
+            primary: true;
+            clicked => { ToolBridge.xpath-run(); }
+        }
+    }
+    Text {
+        text: ToolBridge.xpath-status;
+        font-size: 12px;
+        color: ToolBridge.xpath-error ? (Theme.dark ? #FF8F8F : #C0392B) : Theme.secondary-text;
+        wrap: word-wrap;
+    }
+    if ToolBridge.xpath-results.length > 0: Rectangle {
+        height: min(300px, ToolBridge.xpath-results.length * 30px + 8px);
+        border-radius: 8px;
+        background: Theme.editor-background;
+        border-width: 1px;
+        border-color: Theme.separator;
+        clip: true;
+        ListView {
+            for row in ToolBridge.xpath-results: Rectangle {
+                height: 30px;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 10px;
+                    Text {
+                        width: 70px;
+                        text: row.kind;
+                        font-size: 11px;
+                        color: Theme.tertiary-text;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.name;
+                        font-family: Theme.mono-family;
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: Theme.primary-text;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.value;
+                        font-family: Theme.mono-family;
+                        font-size: 12px;
+                        color: Theme.primary-text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                }
+                touch := TouchArea {
+                    clicked => { ToolBridge.copy(row.value); }
+                }
+            }
+        }
+    }
+}
+
+export component CsvSortSheet inherits Sheet {
+    title: "Sort by Column";
+    accept-title: "Sort";
+    accept => { ToolBridge.accept(); }
+    cancel => { ToolBridge.cancel(); }
+
+    HorizontalLayout {
+        spacing: 12px;
+        Caption { text: "COLUMN"; vertical-alignment: center; }
+        Dropdown {
+            horizontal-stretch: 1;
+            options: ToolBridge.csv-columns;
+            selected: ToolBridge.csv-column;
+            chosen(index) => { ToolBridge.csv-column = index; }
+        }
+    }
+    Toggle {
+        text: "Largest first";
+        on: ToolBridge.csv-descending;
+        toggled(on) => { ToolBridge.csv-descending = on; }
+    }
+    Toggle {
+        text: "Compare as numbers";
+        on: ToolBridge.csv-numeric;
+        toggled(on) => { ToolBridge.csv-numeric = on; }
+    }
+    Toggle {
+        text: "The first line is a header";
+        on: ToolBridge.csv-header;
+        toggled(on) => { ToolBridge.csv-header = on; }
+    }
+}
+
+export component ShellSheet inherits Sheet {
+    title: "Run Shell Command";
+    accept-title: ToolBridge.shell-running ? "Running…" : "Run";
+    accept-enabled: !ToolBridge.shell-running && ToolBridge.shell-command != "";
+    card-width: 560px;
+    accept => { ToolBridge.accept(); }
+    cancel => { ToolBridge.cancel(); }
+
+    Text {
+        text: ToolBridge.shell-input;
+        font-size: 12px;
+        color: Theme.secondary-text;
+        wrap: word-wrap;
+    }
+    InputField {
+        text <=> ToolBridge.shell-command;
+        placeholder: "Like sort -u, or jq .";
+        mono: true;
+        accepted => { ToolBridge.accept(); }
+        escaped => { ToolBridge.cancel(); }
+        init => { self.focus-field(); }
+    }
+    Segmented {
+        options: ["Replace the text", "Insert after it", "New document"];
+        selected: ToolBridge.shell-mode;
+        chosen(index) => { ToolBridge.shell-mode = index; }
+    }
+}

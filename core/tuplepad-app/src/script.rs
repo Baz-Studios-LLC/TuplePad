@@ -28,7 +28,7 @@ use slint::platform::{Key, WindowEvent};
 use slint::{ComponentHandle, RenderingState};
 
 use crate::app::App;
-use crate::{AppWindow, ColumnBridge, FindBridge, SearchBridge, Theme};
+use crate::{AppWindow, ColumnBridge, FindBridge, SearchBridge, Theme, ToolBridge};
 
 #[derive(Default)]
 struct FrameClock {
@@ -467,6 +467,48 @@ fn run_next(app: Rc<App>, runner: Shared) {
             }
         }
         "outlineGo" => app.activate_outline_item(arg.as_u64().unwrap_or(0) as usize),
+        "sheet" => {
+            // {"sheet": {"hashCheck", "hashFile", "xpath", "csvColumn", "csvDescending", "csvNumeric",
+            //  "csvHeader", "shell", "shellMode", "action": "accept" | "cancel" | "xpath"}}
+            let bridge = ui.global::<ToolBridge>();
+            let text = |name: &str| arg.get(name).and_then(Value::as_str).map(str::to_string);
+            let flag = |name: &str| arg.get(name).and_then(Value::as_bool);
+            if let Some(t) = text("hashCheck") {
+                bridge.set_hash_check(t.into());
+                app.hash_check_changed();
+            }
+            if let Some(t) = text("xpath") {
+                bridge.set_xpath(t.into());
+            }
+            if let Some(n) = arg.get("csvColumn").and_then(Value::as_i64) {
+                bridge.set_csv_column(n as i32);
+            }
+            if let Some(on) = flag("csvDescending") {
+                bridge.set_csv_descending(on);
+            }
+            if let Some(on) = flag("csvNumeric") {
+                bridge.set_csv_numeric(on);
+            }
+            if let Some(on) = flag("csvHeader") {
+                bridge.set_csv_header(on);
+            }
+            if let Some(t) = text("shell") {
+                bridge.set_shell_command(t.into());
+            }
+            if let Some(n) = arg.get("shellMode").and_then(Value::as_i64) {
+                bridge.set_shell_mode(n as i32);
+            }
+            if let Some(path) = text("hashFile") {
+                app.hash_path(PathBuf::from(path));
+            }
+            match arg.get("action").and_then(Value::as_str) {
+                Some("accept") => app.accept_sheet(),
+                Some("cancel") => app.close_sheet(),
+                Some("xpath") => app.run_xpath(),
+                _ => {}
+            }
+            return later(app, runner, 250);
+        }
         "waitSearch" => return wait_until(app, runner, |app| !app.search_busy(), Instant::now()),
         "searchStatus" => {
             let state = app.search_dump();
@@ -550,6 +592,19 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         .iter()
         .map(|d| json!({"name": d.name(), "modified": d.buffer.is_modified(), "path": d.buffer.path(), "wrap": d.wrap}))
         .collect();
+    let sheet_state = {
+        use slint::Model;
+        let b = ui.global::<ToolBridge>();
+        json!({
+            "sheet": b.get_sheet(),
+            "hash_source": b.get_hash_source().as_str(),
+            "hashes": b.get_hashes().iter().map(|r| json!([r.name.as_str(), r.value.as_str(), r.matches])).collect::<Vec<_>>(),
+            "xpath": b.get_xpath_results().iter().map(|r| json!([r.kind.as_str(), r.name.as_str(), r.value.as_str()])).collect::<Vec<_>>(),
+            "xpath_status": b.get_xpath_status().as_str(),
+            "csv_columns": b.get_csv_columns().iter().map(|c| c.to_string()).collect::<Vec<_>>(),
+            "shell_input": b.get_shell_input().as_str(),
+        })
+    };
     let column_state = {
         let bridge = ui.global::<ColumnBridge>();
         json!({"open": bridge.get_open(), "preview": bridge.get_preview().as_str(), "target": bridge.get_target().as_str(), "valid": bridge.get_valid()})
@@ -609,8 +664,12 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "settings": serde_json::to_value(&*app.settings.borrow()).unwrap_or_default(),
         "find": find_state,
         "column": column_state,
+        "tool_sheet": sheet_state,
         "bookmarks": doc.buffer.bookmarks(),
         "completion": editor.completion.as_ref().map(|c| json!({"items": c.items, "selected": c.selected, "prefix": c.prefix})),
+        "toast": app.last_toast.borrow().clone(),
+        "tool_error": app.last_tool_error.borrow().clone(),
+        "copied_html": app.last_copied_html.borrow().clone(),
         "folds": doc.buffer.folds().iter().map(|f| [f.start, f.end]).collect::<Vec<_>>(),
     })
 }
@@ -652,6 +711,14 @@ fn dump_menus(ui: &AppWindow) -> Value {
         "Whitespace": menu(ui.get_whitespace_menu()),
         "View": view,
         "Code Folding": menu(ui.get_folding_menu()),
+        "Tools": menu(ui.get_tools_menu()),
+        "Compare": menu(ui.get_compare_menu()),
+        "Compare With": menu(ui.get_compare_documents_menu()),
+        "JSON": menu(ui.get_json_menu()),
+        "XML": menu(ui.get_xml_menu()),
+        "CSV": menu(ui.get_csv_menu()),
+        "Encode": menu(ui.get_encode_menu()),
+        "Decode": menu(ui.get_decode_menu()),
     })
 }
 

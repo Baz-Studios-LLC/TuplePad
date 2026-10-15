@@ -9,8 +9,9 @@ import { FindBar, FindBridge } from "findbar.slint";
 import { SearchPanel, SearchBridge, SearchRow, PlanRow, ReplacedRow, ReplacePlanSheet } from "searchpanel.slint";
 import { ColumnEditorSheet, ColumnBridge } from "columneditor.slint";
 import { OutlinePanel, OutlineBridge, OutlineRow } from "outline.slint";
+import { ToolBridge, HashRow, XPathRow, HashesSheet, XPathSheet, CsvSortSheet, ShellSheet } from "toolsheets.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, Palette, SettingsWindow, SettingsValues, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow }
+export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, Palette, SettingsWindow, SettingsValues, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
@@ -43,6 +44,9 @@ export component AppWindow inherits Window {
     in property <string> status-right;
     in-out property <bool> sidebar-visible: true;
     in property <bool> outline-visible;
+    // A short message at the bottom of the window.
+    in property <string> toast;
+    in property <bool> toast-shown;
     // Split view: 0 off, 1 side by side, 2 top and bottom; which pane has the keyboard; where
     // the divider is, as a fraction.
     in property <int> split;
@@ -82,6 +86,14 @@ export component AppWindow inherits Window {
     in property <[MenuEntry]> lines-menu;
     in property <[MenuEntry]> case-menu;
     in property <[MenuEntry]> whitespace-menu;
+    in property <[MenuEntry]> tools-menu;
+    in property <[MenuEntry]> compare-menu;
+    in property <[MenuEntry]> compare-documents-menu;
+    in property <[MenuEntry]> json-menu;
+    in property <[MenuEntry]> xml-menu;
+    in property <[MenuEntry]> csv-menu;
+    in property <[MenuEntry]> encode-menu;
+    in property <[MenuEntry]> decode-menu;
     in property <[MenuEntry]> view-menu;
     in property <[MenuEntry]> view-menu-2;
     in property <[MenuEntry]> view-menu-3;
@@ -260,6 +272,90 @@ export component AppWindow inherits Window {
                     checked: item.checked;
                     activated => { root.command(item.id); }
                 }
+            }
+        }
+        Menu {
+            title: "Tools";
+            Menu {
+                title: "Compare";
+                for item in root.compare-menu: MenuItem {
+                    title: item.title;
+                    enabled: item.enabled;
+                    activated => { root.command(item.id); }
+                }
+                Menu {
+                    title: "With Document";
+                    enabled: root.compare-documents-menu.length > 0;
+                    for item in root.compare-documents-menu: MenuItem {
+                        title: item.title;
+                        activated => { root.command(item.id); }
+                    }
+                }
+            }
+            MenuSeparator { }
+            Menu {
+                title: "JSON";
+                for item in root.json-menu: MenuItem {
+                    title: item.title;
+                    shortcut: item.shortcut;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            Menu {
+                title: "XML";
+                for item in root.xml-menu: MenuItem {
+                    title: item.title;
+                    shortcut: item.shortcut;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            Menu {
+                title: "CSV";
+                for item in root.csv-menu: MenuItem {
+                    title: item.title;
+                    shortcut: item.shortcut;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            MenuSeparator { }
+            Menu {
+                title: "Encode";
+                for item in root.encode-menu: MenuItem {
+                    title: item.title;
+                    shortcut: item.shortcut;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            Menu {
+                title: "Decode";
+                for item in root.decode-menu: MenuItem {
+                    title: item.title;
+                    shortcut: item.shortcut;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            for item in root.tools-menu: MenuItem {
+                title: item.title;
+                shortcut: item.shortcut;
+                enabled: item.enabled;
+                checkable: item.checkable;
+                checked: item.checked;
+                activated => { root.command(item.id); }
             }
         }
         Menu {
@@ -565,6 +661,30 @@ export component AppWindow inherits Window {
         }
     }
 
+    // The toast: a short message that goes away by itself.
+    Rectangle {
+        property <bool> shown: root.toast-shown && root.toast != "";
+        x: (parent.width - self.width) / 2 + (root.sidebar-visible ? root.sidebar-width / 2 : 0);
+        y: parent.height - 27px - self.height - (shown ? 18px : 6px);
+        width: label.preferred-width + 32px;
+        height: 34px;
+        border-radius: 17px;
+        background: Theme.dark ? #3A3A3E : #1D1D1F;
+        opacity: shown ? 0.96 : 0;
+        drop-shadow-blur: 16px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-color: #00000040;
+        animate opacity, y { duration: 180ms; easing: ease-out; }
+        label := Text {
+            text: root.toast;
+            font-size: 12.5px;
+            font-weight: 500;
+            color: #FFFFFF;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
     // Files dragged over the window.
     if root.dropping: Rectangle {
         background: Theme.drop-tint;
@@ -609,6 +729,10 @@ export component AppWindow inherits Window {
     if SearchBridge.plan-open: ReplacePlanSheet { }
 
     if ColumnBridge.open: ColumnEditorSheet { }
+    if ToolBridge.sheet == 1: HashesSheet { }
+    if ToolBridge.sheet == 2: XPathSheet { }
+    if ToolBridge.sheet == 3: CsvSortSheet { }
+    if ToolBridge.sheet == 4: ShellSheet { }
 
     if root.palette-open: CommandPalette {
         items: root.palette-items;

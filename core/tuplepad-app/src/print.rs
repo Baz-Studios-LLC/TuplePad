@@ -71,6 +71,34 @@ pub fn document_html(buffer: &TextBuffer, title: &str, line_numbers: bool, color
     html
 }
 
+/// Part of a document (from `start` to `end`) as colored HTML, for copying with syntax colors.
+pub fn range_html(buffer: &TextBuffer, start: tuplepad_core::TextPos, end: tuplepad_core::TextPos, tab_width: usize) -> String {
+    let mut html = String::from(
+        "<meta charset=\"utf-8\"><pre style=\"font-family: 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace; font-size: 12px; color: #1B2A4A;\">",
+    );
+    let last = end.line.min(buffer.line_count().saturating_sub(1));
+    for index in start.line..=last {
+        let line = buffer.line(index);
+        let length = line.encode_utf16().count() as u64;
+        let from = if index == start.line { start.column.min(length) } else { 0 };
+        let to = if index == end.line { end.column.min(length) } else { length };
+        let units: Vec<u16> = line.encode_utf16().collect();
+        let part = String::from_utf16_lossy(&units[from as usize..to.max(from) as usize]);
+        let spans: Vec<HighlightSpan> = buffer
+            .highlights(index, 1)
+            .into_iter()
+            .filter(|s| s.end > from && s.start < to)
+            .map(|s| HighlightSpan { start: s.start.max(from) - from, end: s.end.min(to) - from, ..s })
+            .collect();
+        write_line(&mut html, &part, &spans, tab_width);
+        if index < last {
+            html.push('\n');
+        }
+    }
+    html.push_str("</pre>");
+    html
+}
+
 /// One line with its colored runs. Columns are UTF-16 units of the original line (before tabs
 /// are expanded).
 fn write_line(html: &mut String, line: &str, spans: &[HighlightSpan], tab_width: usize) {

@@ -9,6 +9,7 @@
 slint::include_modules!();
 
 mod app;
+mod builtin;
 mod column;
 mod commands;
 mod completion;
@@ -22,6 +23,7 @@ mod platform;
 mod print;
 mod script;
 mod search_panel;
+mod sheets;
 mod session;
 mod settings;
 mod settings_window;
@@ -337,6 +339,21 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
     {
         let app = app.clone();
         ui.global::<OutlineBridge>().on_activate(move |index| app.activate_outline_item(index.max(0) as usize));
+    }
+    {
+        let tools = ui.global::<ToolBridge>();
+        let a = app.clone();
+        tools.on_accept(move || a.accept_sheet());
+        let a = app.clone();
+        tools.on_cancel(move || a.close_sheet());
+        let a = app.clone();
+        tools.on_copy(move |text| a.copy_text(&text));
+        let a = app.clone();
+        tools.on_hash_file(move || a.hash_file());
+        let a = app.clone();
+        tools.on_hash_check_changed(move || a.hash_check_changed());
+        let a = app.clone();
+        tools.on_xpath_run(move || a.run_xpath());
     }
     {
         let column = ui.global::<ColumnBridge>();

@@ -34,6 +34,11 @@ pub struct App {
     /// Each open document's words, for word completion.
     pub word_index: RefCell<crate::completion::WordIndex>,
     pub outline: RefCell<crate::outline::OutlineState>,
+    pub toast_timer: slint::Timer,
+    /// For scripted runs: the last toast, tool error and HTML copied.
+    pub last_toast: RefCell<Option<String>>,
+    pub last_tool_error: RefCell<Option<String>>,
+    pub last_copied_html: RefCell<Option<String>>,
     /// The font choices the Settings window offers (worked out when it first opens).
     pub font_choices: RefCell<Vec<(String, String)>>,
     pub editor: RefCell<Editor>,
@@ -87,7 +92,7 @@ impl App {
         ui.set_docs(ModelRc::from(docs_model.clone()));
         let names = [
             "file", "file-2", "file-3", "recent", "reopen", "convert", "line-ending", "edit", "selection", "find", "text", "lines", "case", "whitespace", "view",
-            "view-2", "view-3", "folding", "theme",
+            "view-2", "view-3", "folding", "theme", "tools", "compare", "compare-documents", "json", "xml", "csv", "encode", "decode",
         ];
         let menus: HashMap<&'static str, Rc<VecModel<MenuEntry>>> = names.into_iter().map(|n| (n, Rc::new(VecModel::default()))).collect();
         for (name, model) in &menus {
@@ -110,6 +115,14 @@ impl App {
                 "view-2" => ui.set_view_menu_2(model),
                 "view-3" => ui.set_view_menu_3(model),
                 "folding" => ui.set_folding_menu(model),
+                "tools" => ui.set_tools_menu(model),
+                "compare" => ui.set_compare_menu(model),
+                "compare-documents" => ui.set_compare_documents_menu(model),
+                "json" => ui.set_json_menu(model),
+                "xml" => ui.set_xml_menu(model),
+                "csv" => ui.set_csv_menu(model),
+                "encode" => ui.set_encode_menu(model),
+                "decode" => ui.set_decode_menu(model),
                 "theme" => ui.set_theme_menu(model),
                 _ => ui.set_view_menu(model),
             }
@@ -126,6 +139,10 @@ impl App {
             palette_target: RefCell::new(None),
             word_index: RefCell::new(Default::default()),
             outline: RefCell::new(Default::default()),
+            toast_timer: slint::Timer::default(),
+            last_toast: RefCell::new(None),
+            last_tool_error: RefCell::new(None),
+            last_copied_html: RefCell::new(None),
             editor: RefCell::new(editor),
             settings: RefCell::new(settings),
             settings_path,
@@ -200,7 +217,7 @@ impl App {
         }
     }
 
-    fn change_settings(&self, change: impl FnOnce(&mut Settings)) {
+    pub fn change_settings(&self, change: impl FnOnce(&mut Settings)) {
         change(&mut self.settings.borrow_mut());
         self.apply_settings(true);
     }
@@ -299,17 +316,22 @@ impl App {
         let (can_undo, can_redo, wrap, follow, modified) = (doc.buffer.can_undo(), doc.buffer.can_redo(), doc.wrap, doc.follow, doc.buffer.is_modified());
         let several = editor.docs.len() > 1;
         let split = editor.split();
+        let delimiter = doc.buffer.csv_delimiter();
         let enabled = |id: &str| match id {
             "edit.undo" => can_undo,
             "edit.redo" => can_redo,
             "file.revert" => has_path && modified,
-            "file.move" | "file.show" | "view.follow" => has_path,
+            "file.move" | "file.show" | "view.follow" | "compare.saved" | "tools.hex" => has_path,
             "file.close-others" => several,
             _ => true,
         };
         let checked = |id: &str| match id {
             "view.sidebar" => settings.sidebar_visible,
             "view.minimap" => settings.show_minimap,
+            "csv.delimiter-comma" => delimiter.as_deref() == Some(","),
+            "csv.delimiter-tab" => delimiter.as_deref() == Some("\t"),
+            "csv.delimiter-semicolon" => delimiter.as_deref() == Some(";"),
+            "csv.delimiter-pipe" => delimiter.as_deref() == Some("|"),
             "view.split-side" => split == crate::editor::panes::Split::SideBySide,
             "view.split-stacked" => split == crate::editor::panes::Split::Stacked,
             "view.outline" => settings.show_outline,
@@ -337,6 +359,13 @@ impl App {
             ("case", Menu::Case),
             ("whitespace", Menu::Whitespace),
             ("folding", Menu::Folding),
+            ("tools", Menu::Tools),
+            ("compare", Menu::Compare),
+            ("json", Menu::Json),
+            ("xml", Menu::Xml),
+            ("csv", Menu::Csv),
+            ("encode", Menu::Encode),
+            ("decode", Menu::Decode),
         ] {
             self.set_menu(name, commands::menu_sections(menu, enabled, checked).concat());
         }
@@ -350,6 +379,14 @@ impl App {
             .map(|(id, name)| commands::item_entry(format!("theme:{id}"), name.into(), true, Some(settings.theme == *id)))
             .collect();
         self.set_menu("theme", themes);
+        let others: Vec<MenuEntry> = editor
+            .docs
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != editor.current)
+            .map(|(i, d)| commands::item_entry(format!("compare-doc:{i}"), d.name(), true, None))
+            .collect();
+        self.set_menu("compare-documents", others);
 
         // Open Recent, and the encodings and line endings.
         let mut recent: Vec<MenuEntry> = settings
@@ -498,7 +535,10 @@ impl App {
                 _ => {}
             }
         }
-        if self.run_text_tool(id) {
+        if self.run_sheet_command(id) {
+            return;
+        }
+        if self.run_text_tool(id) || self.run_builtin(id) {
             self.refresh();
             return;
         }
@@ -1295,7 +1335,7 @@ pub fn tilde(path: &Path) -> String {
     }
 }
 
-fn format_size(bytes: u64) -> String {
+pub fn format_size(bytes: u64) -> String {
     match bytes {
         0..1_000 => format!("{bytes} bytes"),
         1_000..1_000_000 => format!("{:.0} KB", bytes as f64 / 1e3),
