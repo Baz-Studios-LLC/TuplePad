@@ -33,6 +33,7 @@ mod session;
 mod settings;
 mod settings_window;
 mod tools;
+mod toolviews;
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -359,6 +360,17 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
     {
         let app = app.clone();
         ui.global::<OutlineBridge>().on_activate(move |index| app.activate_outline_item(index.max(0) as usize));
+    }
+    {
+        let views = ui.global::<ToolViewBridge>();
+        let a = app.clone();
+        views.on_close(move || a.close_tool_view());
+        let a = app.clone();
+        views.on_next_change(move || a.step_change(true));
+        let a = app.clone();
+        views.on_previous_change(move || a.step_change(false));
+        let a = app.clone();
+        views.on_options_changed(move || a.recompare());
     }
     {
         let tools = ui.global::<ToolBridge>();

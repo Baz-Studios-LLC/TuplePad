@@ -339,6 +339,11 @@ impl Editor {
         }
     }
 
+    /// What's on the clipboard (the private one in scripted runs).
+    pub fn clipboard_text(&mut self) -> Option<String> {
+        self.read_clipboard()
+    }
+
     fn read_clipboard(&mut self) -> Option<String> {
         match &self.private_clipboard {
             Some(text) => Some(text.clone()),

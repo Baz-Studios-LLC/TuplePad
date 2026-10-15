@@ -539,6 +539,24 @@ fn run_next(app: Rc<App>, runner: Shared) {
                 let _ = std::fs::write(path, serde_json::to_string_pretty(&app.folder_dump()).unwrap_or_default());
             }
         }
+        "toolView" => {
+            // {"toolView": path} dumps the hex view or Compare; {"toolView": {"action": …}}.
+            match arg.as_str() {
+                Some(path) => {
+                    let _ = std::fs::write(path, serde_json::to_string_pretty(&app.tool_view_dump()).unwrap_or_default());
+                }
+                None => match arg.get("action").and_then(Value::as_str) {
+                    Some("next") => app.step_change(true),
+                    Some("previous") => app.step_change(false),
+                    Some("close") => app.close_tool_view(),
+                    Some("ignoreWhitespace") => {
+                        ui.global::<crate::ToolViewBridge>().set_ignore_whitespace(true);
+                        app.recompare();
+                    }
+                    _ => {}
+                },
+            }
+        }
         "waitSearch" => return wait_until(app, runner, |app| !app.search_busy(), Instant::now()),
         "searchStatus" => {
             let state = app.search_dump();

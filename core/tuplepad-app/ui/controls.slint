@@ -9,6 +9,7 @@ export component Toggle inherits Rectangle {
     height: 28px;
     // Just the switch when there's no label.
     max-width: root.text == "" ? 34px : 100000px;
+    horizontal-stretch: 0;
 
     HorizontalLayout {
         spacing: root.text == "" ? 0px : 11px;

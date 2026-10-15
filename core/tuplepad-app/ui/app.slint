@@ -10,8 +10,9 @@ import { SearchPanel, SearchBridge, SearchRow, PlanRow, ReplacedRow, ReplacePlan
 import { ColumnEditorSheet, ColumnBridge } from "columneditor.slint";
 import { OutlinePanel, OutlineBridge, OutlineRow } from "outline.slint";
 import { ToolBridge, HashRow, XPathRow, HashesSheet, XPathSheet, CsvSortSheet, ShellSheet } from "toolsheets.slint";
+import { ToolViewBridge, HexLine, CompareLine, HexView, CompareView } from "toolviews.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, FolderRow, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow }
+export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, FolderRow, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow, ToolViewBridge, HexLine, CompareLine }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
@@ -646,6 +647,10 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
+
+                // Hex View and Compare cover the editors while they're open.
+                if ToolViewBridge.view == 1: HexView { }
+                if ToolViewBridge.view == 2: CompareView { }
             }
 
             if SearchBridge.open: SearchPanel {

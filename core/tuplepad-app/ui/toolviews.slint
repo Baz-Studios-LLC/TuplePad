@@ -1,0 +1,330 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { PillButton } from "sidebar.slint";
+import { Toggle } from "controls.slint";
+import { SmallButton } from "findbar.slint";
+import { TitlePart } from "palette.slint";
+
+export struct HexLine {
+    offset: string,
+    hex: string,
+    ascii: string,
+}
+
+// One row of the side-by-side comparison.
+export struct CompareLine {
+    // 0 same, 1 changed, 2 added (right only), 3 removed (left only).
+    kind: int,
+    left-number: string,
+    right-number: string,
+    left: [TitlePart],
+    right: [TitlePart],
+}
+
+// Views that take the editor's place for a while: the hex view and Compare.
+export global ToolViewBridge {
+    // 0 none, 1 hex, 2 compare.
+    in property <int> view;
+    in property <string> title;
+    in property <string> subtitle;
+    in property <[HexLine]> hex-lines;
+    in property <[CompareLine]> compare-lines;
+    in property <string> left-title;
+    in property <string> right-title;
+    in property <string> summary;
+    // Which change is current, and the row to scroll to.
+    in property <int> change-row: -1;
+    in property <int> scroll-request;
+    in-out property <bool> ignore-whitespace;
+    in-out property <bool> ignore-case;
+    callback close();
+    callback next-change();
+    callback previous-change();
+    callback options-changed();
+}
+
+component ViewHeader inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    height: 52px;
+    background: Theme.header-background;
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 12px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text {
+                text: root.title;
+                font-size: 14px;
+                font-weight: 650;
+                color: Theme.primary-text;
+                overflow: elide;
+            }
+            Text {
+                text: root.subtitle;
+                font-size: 11.5px;
+                color: Theme.secondary-text;
+                overflow: elide;
+            }
+        }
+        @children
+        VerticalLayout {
+            alignment: center;
+            PillButton {
+                text: "Done";
+                clicked => { ToolViewBridge.close(); }
+            }
+        }
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.separator;
+    }
+}
+
+export component HexView inherits Rectangle {
+    background: Theme.editor-background;
+    keys := FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                ToolViewBridge.close();
+                return EventResult.accept;
+            }
+            return EventResult.reject;
+        }
+    }
+    VerticalLayout {
+        ViewHeader {
+            title: ToolViewBridge.title;
+            subtitle: ToolViewBridge.subtitle;
+        }
+        Rectangle {
+            height: 30px;
+            background: Theme.editor-background;
+            HorizontalLayout {
+                padding-left: 22px;
+                spacing: 24px;
+                Text { width: 90px; text: "OFFSET"; font-size: 10.5px; font-weight: 650; color: Theme.tertiary-text; vertical-alignment: center; }
+                Text { width: 420px; text: "BYTES"; font-size: 10.5px; font-weight: 650; color: Theme.tertiary-text; vertical-alignment: center; }
+                Text { text: "TEXT"; font-size: 10.5px; font-weight: 650; color: Theme.tertiary-text; vertical-alignment: center; }
+            }
+        }
+        ListView {
+            vertical-stretch: 1;
+            for line[index] in ToolViewBridge.hex-lines: Rectangle {
+                height: 22px;
+                background: mod(index, 2) == 1 ? (Theme.dark ? #FFFFFF06 : #00000005) : transparent;
+                HorizontalLayout {
+                    padding-left: 22px;
+                    spacing: 24px;
+                    Text {
+                        width: 90px;
+                        text: line.offset;
+                        font-family: Theme.mono-family;
+                        font-size: 12px;
+                        color: Theme.tertiary-text;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        width: 420px;
+                        text: line.hex;
+                        font-family: Theme.mono-family;
+                        font-size: 12px;
+                        color: Theme.primary-text;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: line.ascii;
+                        font-family: Theme.mono-family;
+                        font-size: 12px;
+                        color: Theme.secondary-text;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// A line with the changed parts marked.
+component DiffText inherits HorizontalLayout {
+    in property <[TitlePart]> parts;
+    in property <color> mark;
+    spacing: 0px;
+    for part in root.parts: Rectangle {
+        width: label.preferred-width;
+        border-radius: 3px;
+        background: part.matched ? root.mark : transparent;
+        label := Text {
+            text: part.text;
+            font-family: Theme.mono-family;
+            font-size: 12.5px;
+            color: Theme.primary-text;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component DiffSide inherits Rectangle {
+    in property <string> number;
+    in property <[TitlePart]> parts;
+    // 0 same, 1 changed, 2 added, 3 removed, 4 nothing on this side.
+    in property <int> kind;
+    property <color> tint: root.kind == 2 ? Theme.syntax[22] : root.kind == 3 ? Theme.syntax[23] : Theme.find-match;
+    background: root.kind == 0 ? transparent : root.kind == 4 ? (Theme.dark ? #FFFFFF05 : #00000006) : root.tint.with-alpha(Theme.dark ? 0.14 : 0.08);
+    clip: true;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 12px;
+        Text {
+            width: 44px;
+            text: root.number;
+            font-family: Theme.mono-family;
+            font-size: 11px;
+            color: Theme.tertiary-text;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+        DiffText {
+            parts: root.parts;
+            mark: root.tint.with-alpha(Theme.dark ? 0.42 : 0.28);
+        }
+        Rectangle { horizontal-stretch: 1; }
+    }
+}
+
+export component CompareView inherits Rectangle {
+    background: Theme.editor-background;
+    property <length> row-height: 22px;
+    property <int> scroll-request: ToolViewBridge.scroll-request;
+    changed scroll-request => {
+        if ToolViewBridge.change-row >= 0 {
+            list.content-y = -max(0px, ToolViewBridge.change-row * root.row-height - list.visible-height / 3);
+        }
+    }
+
+    keys := FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                ToolViewBridge.close();
+                return EventResult.accept;
+            }
+            if event.text == Key.DownArrow && event.modifiers.alt {
+                ToolViewBridge.next-change();
+                return EventResult.accept;
+            }
+            if event.text == Key.UpArrow && event.modifiers.alt {
+                ToolViewBridge.previous-change();
+                return EventResult.accept;
+            }
+            return EventResult.reject;
+        }
+    }
+
+    VerticalLayout {
+        ViewHeader {
+            title: ToolViewBridge.title;
+            subtitle: ToolViewBridge.summary;
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                Toggle {
+                    text: "Ignore spaces";
+                    on: ToolViewBridge.ignore-whitespace;
+                    toggled(on) => {
+                        ToolViewBridge.ignore-whitespace = on;
+                        ToolViewBridge.options-changed();
+                    }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                Toggle {
+                    text: "Ignore case";
+                    on: ToolViewBridge.ignore-case;
+                    toggled(on) => {
+                        ToolViewBridge.ignore-case = on;
+                        ToolViewBridge.options-changed();
+                    }
+                }
+            }
+            Rectangle { width: 6px; }
+            VerticalLayout {
+                alignment: center;
+                SmallButton {
+                    icon: "M6 15l6-6 6 6";
+                    clicked => { ToolViewBridge.previous-change(); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                SmallButton {
+                    icon: "M6 9l6 6 6-6";
+                    clicked => { ToolViewBridge.next-change(); }
+                }
+            }
+        }
+        // Which side is which.
+        Rectangle {
+            height: 28px;
+            HorizontalLayout {
+                Text {
+                    width: (parent.width - 1px) / 2;
+                    text: "    " + ToolViewBridge.left-title;
+                    font-size: 11.5px;
+                    font-weight: 600;
+                    color: Theme.secondary-text;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Rectangle { width: 1px; background: Theme.separator; }
+                Text {
+                    text: "    " + ToolViewBridge.right-title;
+                    font-size: 11.5px;
+                    font-weight: 600;
+                    color: Theme.secondary-text;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.separator;
+            }
+        }
+        list := ListView {
+            vertical-stretch: 1;
+            for line[index] in ToolViewBridge.compare-lines: Rectangle {
+                height: root.row-height;
+                HorizontalLayout {
+                    DiffSide {
+                        width: (parent.width - 1px) / 2;
+                        number: line.left-number;
+                        parts: line.left;
+                        kind: line.kind == 2 ? 4 : line.kind;
+                    }
+                    Rectangle { width: 1px; background: Theme.separator; }
+                    DiffSide {
+                        number: line.right-number;
+                        parts: line.right;
+                        kind: line.kind == 3 ? 4 : line.kind;
+                    }
+                }
+                // The current change.
+                if index == ToolViewBridge.change-row: Rectangle {
+                    x: 0;
+                    width: 3px;
+                    background: Theme.accent;
+                }
+            }
+        }
+    }
+}

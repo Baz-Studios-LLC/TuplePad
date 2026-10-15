@@ -36,6 +36,7 @@ pub struct App {
     pub outline: RefCell<crate::outline::OutlineState>,
     /// The folder in the sidebar, and the document path its tree last marked.
     pub folder: RefCell<Option<crate::folder::FolderState>>,
+    pub compare_state: RefCell<crate::toolviews::CompareState>,
     folder_marked: RefCell<Option<PathBuf>>,
     pub toast_timer: slint::Timer,
     pub snippets: RefCell<crate::snippets::SnippetStore>,
@@ -153,6 +154,7 @@ impl App {
             word_index: RefCell::new(Default::default()),
             outline: RefCell::new(Default::default()),
             folder: RefCell::new(None),
+            compare_state: RefCell::new(Default::default()),
             folder_marked: RefCell::new(None),
             toast_timer: slint::Timer::default(),
             snippets: RefCell::new(crate::snippets::SnippetStore::load(
@@ -662,6 +664,9 @@ impl App {
             "file.open-folder" => self.open_folder_dialog(),
             "file.quick-open" => self.open_quick_open(),
             "folder.close" => self.close_folder(),
+            "tools.hex" => self.show_hex(),
+            "compare.saved" => self.compare(crate::toolviews::CompareWith::Saved),
+            "compare.clipboard" => self.compare(crate::toolviews::CompareWith::Clipboard),
             "text.language" | "status.language" => self.open_language_list(),
             "status.indentation" => self.open_indentation_list(),
             "status.encoding" => self.open_encoding_list(),
@@ -722,6 +727,11 @@ impl App {
             return;
         }
         match kind {
+            "compare-doc" => {
+                if let Ok(index) = value.parse::<usize>() {
+                    self.compare(crate::toolviews::CompareWith::Document(index));
+                }
+            }
             "folder-row" => {
                 if let Ok(index) = value.parse::<usize>() {
                     self.activate_folder_row(index);
