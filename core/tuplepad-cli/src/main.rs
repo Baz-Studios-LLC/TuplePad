@@ -215,9 +215,15 @@ fn start_app(urls: &[String], background: bool) -> ExitCode {
             Err(e) => fail(&format!("couldn't run /usr/bin/open: {e}")),
         };
     }
-    // Windows and Linux: start the TuplePad next to this command.
-    let name = if cfg!(windows) { "tuplepad-app.exe" } else { "tuplepad-app" };
-    let Some(app) = exe.as_deref().and_then(Path::parent).map(|folder| folder.join(name)).filter(|p| p.exists()) else {
+    // Windows and Linux: start the TuplePad next to this command (or, as the Windows installer
+    // lays it out, the TuplePad.exe above its bin folder).
+    let folder = exe.as_deref().and_then(Path::parent);
+    let candidates = match folder {
+        Some(folder) if cfg!(windows) => vec![folder.join("tuplepad-app.exe"), folder.join("..").join("TuplePad.exe")],
+        Some(folder) => vec![folder.join("tuplepad-app")],
+        None => Vec::new(),
+    };
+    let Some(app) = candidates.into_iter().find(|p| p.exists()) else {
         return fail("couldn't find TuplePad next to this command.");
     };
     match Command::new(app).args(urls).spawn() {

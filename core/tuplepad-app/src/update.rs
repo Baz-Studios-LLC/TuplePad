@@ -401,7 +401,7 @@ fn relaunch_after_exit(relaunch: &Relaunch) -> std::io::Result<()> {
         Relaunch::Installer(setup) => {
             let quoted = setup.to_string_lossy().replace('\'', "''");
             let script = format!(
-                "Wait-Process -Id {pid} -ErrorAction SilentlyContinue; Start-Process -FilePath '{quoted}' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'"
+                "Wait-Process -Id {pid} -ErrorAction SilentlyContinue; Start-Process -FilePath '{quoted}' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/relaunch=1'"
             );
             std::process::Command::new("powershell").args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script]).spawn()?;
         }

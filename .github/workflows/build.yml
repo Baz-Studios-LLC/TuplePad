@@ -1,0 +1,95 @@
+# Tests TuplePad on every system, and builds the Windows installer and the Linux AppImage.
+# scripts/release.py takes these builds (with the Mac app it makes itself), signs them and
+# publishes the release; the signing key never leaves the release machine.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: Test
+        run: cargo test --locked --manifest-path core/Cargo.toml --workspace
+      - name: Build
+        run: cargo build --locked --release --manifest-path core/Cargo.toml -p tuplepad-app -p tuplepad-cli
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $dump = Join-Path $env:RUNNER_TEMP "dump.json"
+          $steps = Join-Path $env:RUNNER_TEMP "steps.json"
+          ConvertTo-Json @(@{ type = "hello from Windows" }, @{ dump = $dump }, @{ quit = $true }) | Set-Content $steps
+          $app = Start-Process -FilePath core\target\release\tuplepad-app.exe -ArgumentList "--script", $steps, "--session-dir", (Join-Path $env:RUNNER_TEMP "session") -PassThru
+          if (-not $app.WaitForExit(120000)) { $app.Kill(); throw "TuplePad didn't finish its script" }
+          if (-not (Select-String -Path $dump -Pattern "hello from Windows" -Quiet)) { throw "the script's text isn't in the dump" }
+      - name: Installer
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y; }
+          & $iscc /DAppVersion=$version /DSourceDir="$PWD\core\target\release" packaging\windows\tuplepad.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows-x64
+          path: dist/*
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1-dev libfreetype-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libx11-dev libx11-xcb-dev libxcursor-dev libxrandr-dev libxi-dev libxcb1-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgtk-3-dev libgl1-mesa-dev \
+            libegl1-mesa-dev xvfb file
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: Test
+        run: xvfb-run -a cargo test --locked --manifest-path core/Cargo.toml --workspace
+      - name: Build
+        run: cargo build --locked --release --manifest-path core/Cargo.toml -p tuplepad-app -p tuplepad-cli
+      - name: AppImage
+        run: packaging/linux/build-appimage.sh "$(tr -d '[:space:]' < VERSION)"
+      - name: Smoke test
+        run: |
+          printf '[{"type": "hello from Linux"}, {"dump": "%s/dump.json"}, {"quit": true}]' "$RUNNER_TEMP" > "$RUNNER_TEMP/steps.json"
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 120 xvfb-run -a dist/TuplePad-*.AppImage --script "$RUNNER_TEMP/steps.json" --session-dir "$RUNNER_TEMP/session"
+          grep -q "hello from Linux" "$RUNNER_TEMP/dump.json"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: linux-x64
+          path: dist/*
+          if-no-files-found: error
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: Test
+        run: cargo test --locked --manifest-path core/Cargo.toml --workspace
