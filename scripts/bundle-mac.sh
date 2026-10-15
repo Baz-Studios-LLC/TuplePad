@@ -1,8 +1,10 @@
 #!/bin/bash
 # Builds TuplePad (the Slint app) and wraps it in a Mac app bundle: build/TuplePad.app.
 #
-#   scripts/bundle-mac.sh [release|launch|debug]
+#   scripts/bundle-mac.sh [release|launch|debug] [universal]
 #
+# `universal` builds for Apple silicon and Intel and joins them (needs
+# `rustup target add x86_64-apple-darwin aarch64-apple-darwin`).
 # `launch` (what the launcher uses) is optimized like `release` but rebuilds much faster.
 # Cargo's progress shows on stderr; the bundle's path is the only thing on stdout.
 #
@@ -13,15 +15,27 @@ set -euo pipefail
 export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE="${1:-release}"
+UNIVERSAL=$([ "${2:-}" = "universal" ] && echo 1 || echo 0)
 # Rust's default deployment target for Apple silicon. (Not exported: changing it would make
 # Cargo rebuild every C dependency.)
 MINIMUM_MACOS=11.0
 
 CARGO_PROFILE="$PROFILE"
 [ "$PROFILE" = "debug" ] && CARGO_PROFILE=dev
-cargo build --profile "$CARGO_PROFILE" --manifest-path "$ROOT/core/Cargo.toml" -p tuplepad-app -p tuplepad-cli 1>&2
-BINARY="$ROOT/core/target/$PROFILE/tuplepad-app"
-TOOL="$ROOT/core/target/$PROFILE/tuplepad"
+if [ "$UNIVERSAL" = 1 ]; then
+    for TARGET in aarch64-apple-darwin x86_64-apple-darwin; do
+        cargo build --profile "$CARGO_PROFILE" --target "$TARGET" --manifest-path "$ROOT/core/Cargo.toml" -p tuplepad-app -p tuplepad-cli 1>&2
+    done
+    mkdir -p "$ROOT/core/target/universal/$PROFILE"
+    BINARY="$ROOT/core/target/universal/$PROFILE/tuplepad-app"
+    TOOL="$ROOT/core/target/universal/$PROFILE/tuplepad"
+    lipo -create -output "$BINARY" "$ROOT/core/target/aarch64-apple-darwin/$PROFILE/tuplepad-app" "$ROOT/core/target/x86_64-apple-darwin/$PROFILE/tuplepad-app"
+    lipo -create -output "$TOOL" "$ROOT/core/target/aarch64-apple-darwin/$PROFILE/tuplepad" "$ROOT/core/target/x86_64-apple-darwin/$PROFILE/tuplepad"
+else
+    cargo build --profile "$CARGO_PROFILE" --manifest-path "$ROOT/core/Cargo.toml" -p tuplepad-app -p tuplepad-cli 1>&2
+    BINARY="$ROOT/core/target/$PROFILE/tuplepad-app"
+    TOOL="$ROOT/core/target/$PROFILE/tuplepad"
+fi
 
 APP="$ROOT/build/TuplePad.app"
 STAGE="$ROOT/build/TuplePad.app.tmp"
