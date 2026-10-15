@@ -41,7 +41,8 @@ try {
 console.log(`What ${name} said:`);
 for (const phrase of spoken) console.log(`  ${phrase}`);
 const said = spoken.join(" | ");
-const missing = ["notes.md", "Second line here"].filter((expected) => !said.includes(expected));
+// (NVDA says "notes dot md".)
+const missing = ["Editor, notes", "Second line here"].filter((expected) => !said.includes(expected));
 if (missing.length > 0) {
   console.error(`${name} never said: ${missing.join(", ")}`);
   process.exit(1);

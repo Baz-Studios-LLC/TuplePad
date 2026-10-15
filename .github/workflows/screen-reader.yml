@@ -67,6 +67,9 @@ jobs:
       - name: NVDA
         if: runner.os == 'Windows'
         run: npx guidepup install nvda
+      - name: VoiceOver's portable preferences
+        if: runner.os == 'macOS'
+        run: npx guidepup install voiceover
       - name: The screen reader reads TuplePad
         shell: bash
         run: node .github/screen-reader.mjs core/target/debug/tuplepad-app${{ runner.os == 'Windows' && '.exe' || '' }}
