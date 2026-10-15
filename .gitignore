@@ -1,8 +1,4 @@
 .DS_Store
 /build/
-/Generated/
 /core/target/
-xcuserdata/
-DerivedData/
-*.xcuserstate
-*.af~lock~
+/dist/
