@@ -844,6 +844,8 @@ export component AppWindow inherits Window {
         border-radius: 17px;
         background: Theme.dark ? #3A3A3E : #1D1D1F;
         opacity: shown ? 0.96 : 0;
+        // Out of the accessibility tree too once it has faded (screen readers would find an empty text).
+        visible: shown || self.opacity > 0.01;
         drop-shadow-blur: 16px;
         drop-shadow-offset-y: 4px;
         drop-shadow-color: #00000040;

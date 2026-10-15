@@ -271,7 +271,8 @@ fn agent() -> ureq::Agent {
         .timeout_connect(Some(Duration::from_secs(15)))
         .timeout_recv_response(Some(Duration::from_secs(30)))
         .timeout_recv_body(Some(Duration::from_secs(120)))
-        .https_only(!cfg!(debug_assertions))
+        // Plain HTTP only for tests: debug builds, or a feed overridden to this computer.
+        .https_only(!(cfg!(debug_assertions) || feed().starts_with("http://127.0.0.1:")))
         .user_agent(format!("TuplePad/{}", current_version()))
         .build()
         .into()
