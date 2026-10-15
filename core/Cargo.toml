@@ -21,6 +21,18 @@ codegen-units = 1
 [profile.release.build-override]
 strip = false
 
+# What `Launch TuplePad.command` builds: fully optimized code, but without whole-program
+# (LTO) optimization and with incremental compiling, so rebuilding after a change takes
+# seconds rather than minutes. `release` stays the one to ship.
+[profile.launch]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
+
+[profile.launch.build-override]
+strip = false
+
 # Debug builds still need to open huge files quickly: optimize dependencies
 # (ropey, encoding_rs) fully and our own code lightly.
 [profile.dev]

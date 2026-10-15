@@ -1,7 +1,10 @@
 #!/bin/bash
 # Builds TuplePad (the Slint app) and wraps it in a Mac app bundle: build/TuplePad.app.
 #
-#   scripts/bundle-mac.sh [release|debug]
+#   scripts/bundle-mac.sh [release|launch|debug]
+#
+# `launch` (what the launcher uses) is optimized like `release` but rebuilds much faster.
+# Cargo's progress shows on stderr; the bundle's path is the only thing on stdout.
 #
 # The icon is compiled from TuplePad/AppIcon.icon with actool (as Xcode would), and the
 # document types come from Config/Info.plist. Signing is ad hoc until the Developer ID is ready.
@@ -14,11 +17,9 @@ PROFILE="${1:-release}"
 # Cargo rebuild every C dependency.)
 MINIMUM_MACOS=11.0
 
-if [ "$PROFILE" = "release" ]; then
-    cargo build --release --quiet --manifest-path "$ROOT/core/Cargo.toml" -p tuplepad-app -p tuplepad-cli
-else
-    cargo build --quiet --manifest-path "$ROOT/core/Cargo.toml" -p tuplepad-app -p tuplepad-cli
-fi
+CARGO_PROFILE="$PROFILE"
+[ "$PROFILE" = "debug" ] && CARGO_PROFILE=dev
+cargo build --profile "$CARGO_PROFILE" --manifest-path "$ROOT/core/Cargo.toml" -p tuplepad-app -p tuplepad-cli 1>&2
 BINARY="$ROOT/core/target/$PROFILE/tuplepad-app"
 TOOL="$ROOT/core/target/$PROFILE/tuplepad"
 
