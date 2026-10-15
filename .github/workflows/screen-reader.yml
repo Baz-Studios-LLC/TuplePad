@@ -45,7 +45,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, windows-latest]
+        # macOS 14: Guidepup's setup turns on Do Not Disturb through Control Center, which it can't on 15's image.
+        os: [macos-14, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
