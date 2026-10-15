@@ -23,18 +23,18 @@ const tuplepad = spawn(app, [note], { env: { ...process.env, TUPLEPAD_DATA_DIR: 
 let spoken = [];
 try {
   await sleep(10000);
-  // "Where am I?": each screen reader's command to describe what has the keyboard focus.
+  // Down twice: the empty line, then "Second line here".
+  await reader.press("ArrowDown");
+  await sleep(3000);
+  await reader.press("ArrowDown");
+  await sleep(3000);
+  // Then "where am I?": each screen reader's command to describe what has the keyboard focus.
   if (reader === nvda) {
     await nvda.perform(nvda.keyboardCommands.reportCurrentFocus);
   } else {
     await voiceOver.perform(voiceOver.keyboardCommands.describeItemWithKeyboardFocus);
   }
-  // Long descriptions take a few seconds to speak; a key pressed meanwhile cuts them off.
   await sleep(5000);
-  await reader.press("ArrowDown");
-  await sleep(3000);
-  await reader.press("ArrowDown");
-  await sleep(3000);
   spoken = await reader.spokenPhraseLog();
 } finally {
   tuplepad.kill();
