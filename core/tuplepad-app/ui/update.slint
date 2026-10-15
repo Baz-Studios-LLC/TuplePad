@@ -27,7 +27,8 @@ export global UpdateBridge {
 export component UpdateSheet inherits Sheet {
     title: UpdateBridge.title;
     card-width: 480px;
-    show-cancel: UpdateBridge.kind != 4;
+    // "Up to date" needs only OK, and installing can't be stopped.
+    show-cancel: UpdateBridge.kind != 1 && UpdateBridge.kind != 4;
     cancel-title: UpdateBridge.kind == 2 ? "Later" : (UpdateBridge.kind == 0 || UpdateBridge.kind == 3) ? "Cancel" : "Close";
     show-accept: UpdateBridge.kind == 1 || UpdateBridge.kind == 2 || UpdateBridge.kind == 5;
     accept-title: UpdateBridge.kind == 1 ? "OK" : UpdateBridge.kind == 5 ? "Open Releases Page" : UpdateBridge.installable ? "Install and Relaunch" : "Download";
