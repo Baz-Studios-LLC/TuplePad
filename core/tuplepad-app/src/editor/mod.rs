@@ -648,6 +648,16 @@ impl Editor {
         }
     }
 
+    /// The line at the top of the view.
+    pub fn top_line(&self) -> u64 {
+        let row = (self.doc().scroll_y / self.line_height as f64).floor().max(0.0) as u64;
+        if self.rows.is_wrapped() {
+            // Without &mut access to refresh the map, the stale map is close enough here.
+            return self.rows.line_at_stale(row);
+        }
+        row.min(self.doc().buffer.line_count().saturating_sub(1))
+    }
+
     /// The line shown on a visual row.
     pub fn line_at_row(&mut self, row: u64) -> u64 {
         self.ensure_rows();
@@ -1165,7 +1175,7 @@ fn replace_if_changed<T: Clone + PartialEq + 'static>(model: &VecModel<T>, items
 }
 
 /// The index of a highlight style in `Theme.syntax`.
-fn style_index(style: HighlightStyle) -> i32 {
+pub fn style_index(style: HighlightStyle) -> i32 {
     match style {
         HighlightStyle::Keyword => 1,
         HighlightStyle::String => 2,

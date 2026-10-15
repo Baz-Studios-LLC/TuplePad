@@ -11,8 +11,9 @@ import { ColumnEditorSheet, ColumnBridge } from "columneditor.slint";
 import { OutlinePanel, OutlineBridge, OutlineRow } from "outline.slint";
 import { ToolBridge, HashRow, XPathRow, HashesSheet, XPathSheet, CsvSortSheet, ShellSheet } from "toolsheets.slint";
 import { ToolViewBridge, HexLine, CompareLine, HexView, CompareView } from "toolviews.slint";
+import { PreviewBridge, PreviewBlock, CodeLine, CodePart, MarkdownPreview } from "preview.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, FolderRow, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow, ToolViewBridge, HexLine, CompareLine }
+export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, FolderRow, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow, ToolViewBridge, HexLine, CompareLine, PreviewBridge, PreviewBlock, CodeLine, CodePart }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
@@ -603,7 +604,9 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 property <bool> side: root.split == 1;
                 property <bool> stacked: root.split == 2;
-                property <length> first-width: self.side ? round((self.width - 1px) * root.split-ratio / 1px) * 1px : self.width;
+                // The Markdown preview takes the right half when it's open.
+                property <length> editors-width: PreviewBridge.open ? round(self.width / 2 / 1px) * 1px : self.width;
+                property <length> first-width: self.side ? round((self.editors-width - 1px) * root.split-ratio / 1px) * 1px : self.editors-width;
                 property <length> first-height: self.stacked ? round((self.height - 1px) * root.split-ratio / 1px) * 1px : self.height;
 
                 editor := EditorView {
@@ -619,7 +622,7 @@ export component AppWindow inherits Window {
                     visible: root.split != 0;
                     x: panes.side ? panes.first-width + 1px : 0;
                     y: panes.stacked ? panes.first-height + 1px : 0;
-                    width: root.split == 0 ? 0 : panes.side ? panes.width - panes.first-width - 1px : panes.width;
+                    width: root.split == 0 ? 0 : panes.side ? panes.editors-width - panes.first-width - 1px : panes.editors-width;
                     height: root.split == 0 ? 0 : panes.stacked ? panes.height - panes.first-height - 1px : panes.height;
                     font-family: Theme.mono-family;
                 }
@@ -627,7 +630,7 @@ export component AppWindow inherits Window {
                 if root.split != 0: Rectangle {
                     x: panes.side ? panes.first-width : 0;
                     y: panes.stacked ? panes.first-height : 0;
-                    width: panes.side ? 1px : panes.width;
+                    width: panes.side ? 1px : panes.editors-width;
                     height: panes.stacked ? 1px : panes.height;
                     background: Theme.separator;
                     TouchArea {
@@ -646,6 +649,11 @@ export component AppWindow inherits Window {
                             }
                         }
                     }
+                }
+
+                if PreviewBridge.open: MarkdownPreview {
+                    x: panes.editors-width;
+                    width: panes.width - panes.editors-width;
                 }
 
                 // Hex View and Compare cover the editors while they're open.

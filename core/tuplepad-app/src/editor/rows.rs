@@ -97,6 +97,14 @@ impl RowMap {
         self.rows.get(line as usize).copied().unwrap_or(1)
     }
 
+    /// The line holding a visual row, from the table as it is (it may be a moment out of date).
+    pub fn line_at_stale(&self, row: u64) -> u64 {
+        if !self.is_wrapped() || self.starts.is_empty() {
+            return row.min(self.line_count.saturating_sub(1));
+        }
+        (self.starts.partition_point(|&start| start <= row).saturating_sub(1) as u64).min(self.line_count.saturating_sub(1))
+    }
+
     /// The line holding a visual row, and which of its rows it is.
     pub fn line_at(&mut self, row: u64) -> (u64, u32) {
         if !self.is_wrapped() {

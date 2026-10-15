@@ -557,6 +557,11 @@ fn run_next(app: Rc<App>, runner: Shared) {
                 },
             }
         }
+        "preview" => {
+            if let Some(path) = arg.as_str() {
+                let _ = std::fs::write(path, serde_json::to_string_pretty(&app.preview_dump()).unwrap_or_default());
+            }
+        }
         "waitSearch" => return wait_until(app, runner, |app| !app.search_busy(), Instant::now()),
         "searchStatus" => {
             let state = app.search_dump();
@@ -653,6 +658,10 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
             "shell_input": b.get_shell_input().as_str(),
         })
     };
+    let sidebar_rows: Vec<Value> = {
+        use slint::Model;
+        ui.get_docs().iter().map(|d| json!([d.name.as_str(), d.badge.as_str()])).collect()
+    };
     let column_state = {
         let bridge = ui.global::<ColumnBridge>();
         json!({"open": bridge.get_open(), "preview": bridge.get_preview().as_str(), "target": bridge.get_target().as_str(), "valid": bridge.get_valid()})
@@ -694,6 +703,7 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "palette": palette_titles(&ui),
         "palette_selected": ui.get_palette_selected(),
         "sidebar": ui.get_sidebar_visible(),
+        "sidebar_rows": sidebar_rows,
         "sidebar_mode": ui.get_sidebar_mode(),
         "outline_visible": ui.get_outline_visible(),
         "minimap": ui.global::<crate::EditorBridge>().get_minimap_width() > 0.0,

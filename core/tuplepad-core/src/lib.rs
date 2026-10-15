@@ -31,7 +31,7 @@ pub use editing::{Indentation, Motion, normalize_cursors, rank_completions};
 pub use diff::{DiffKind, DiffOptions, DiffResult, DiffRow, diff_texts};
 pub use error::CoreError;
 pub use hex::{HexRow, file_size, hex_rows};
-pub use markdown::markdown_html;
+pub use markdown::{MarkdownBlock, MarkdownBlockKind, highlight_code, markdown_blocks, markdown_html};
 pub use json_tools::{JsonKind, JsonTreeItem, json_format, json_minify, json_path_at, json_tree, json_validate};
 pub use xml_tools::{XPathItem, xml_format, xml_linearize, xml_validate, xml_xpath};
 pub use folder_search::{FileMatches, FolderSearch, FolderSearchOptions, FolderSearchProgress, list_files, preview_file_replacements, replace_in_file};

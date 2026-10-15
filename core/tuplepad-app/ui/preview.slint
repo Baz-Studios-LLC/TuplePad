@@ -1,0 +1,196 @@
+import { Theme } from "theme.slint";
+
+export struct CodePart {
+    text: string,
+    style: int,
+}
+
+export struct CodeLine {
+    parts: [CodePart],
+}
+
+// One block of the Markdown preview.
+export struct PreviewBlock {
+    // 0 heading, 1 paragraph, 2 code, 3 list item, 4 rule, 5 table row, 6 image.
+    kind: int,
+    level: int,
+    quote: int,
+    text: styled-text,
+    marker: string,
+    code: [CodeLine],
+    cells: [styled-text],
+    header: bool,
+    image: image,
+    has-image: bool,
+    alt: string,
+}
+
+export global PreviewBridge {
+    in property <bool> open;
+    // Why there's nothing to show (not a Markdown document).
+    in property <string> empty-text;
+    in property <[PreviewBlock]> blocks;
+    // Where to scroll, asked for again whenever `scroll-request` changes.
+    in property <length> scroll-y;
+    in property <int> scroll-request;
+    callback block-moved(index: int, y: length);
+    callback link-clicked(link: string);
+}
+
+component CodeBlock inherits Rectangle {
+    in property <[CodeLine]> lines;
+    border-radius: 8px;
+    background: Theme.dark ? #FFFFFF0B : #00000008;
+    border-width: 1px;
+    border-color: Theme.separator;
+    clip: true;
+    height: lines-layout.preferred-height;
+    lines-layout := VerticalLayout {
+        padding: 14px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        for line in root.lines: HorizontalLayout {
+            height: 19px;
+            spacing: 0px;
+            for part in line.parts: Text {
+                text: part.text;
+                font-family: Theme.mono-family;
+                font-size: 12.5px;
+                color: Theme.syntax[part.style];
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+    }
+}
+
+export component MarkdownPreview inherits Rectangle {
+    background: Theme.editor-background;
+    clip: true;
+
+    property <int> scroll-request: PreviewBridge.scroll-request;
+    changed scroll-request => {
+        flick.content-y = -max(0px, min(PreviewBridge.scroll-y, flick.content-height - flick.height));
+    }
+
+    Rectangle {
+        x: 0;
+        width: 1px;
+        background: Theme.separator;
+    }
+
+    if PreviewBridge.blocks.length == 0: Text {
+        x: 24px;
+        width: parent.width - 48px;
+        text: PreviewBridge.empty-text;
+        font-size: 13px;
+        color: Theme.tertiary-text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        wrap: word-wrap;
+    }
+
+    flick := Flickable {
+        x: 1px;
+        width: parent.width - 1px;
+        content-height: content.preferred-height;
+        content := VerticalLayout {
+            x: max(0px, (flick.width - self.width) / 2);
+            width: min(flick.width, 760px);
+            padding-left: 36px;
+            padding-right: 36px;
+            padding-top: 30px;
+            padding-bottom: 60px;
+            for block[index] in PreviewBridge.blocks: Rectangle {
+                changed y => { PreviewBridge.block-moved(index, self.y); }
+                init => { PreviewBridge.block-moved(index, self.y); }
+                // A quote's bar.
+                if block.quote > 0: Rectangle {
+                    x: (block.quote - 1) * 16px;
+                    width: 3px;
+                    border-radius: 1.5px;
+                    background: Theme.accent.with-alpha(Theme.dark ? 0.55 : 0.3);
+                }
+                VerticalLayout {
+                    padding-left: block.quote * 16px + (block.kind == 3 ? block.level * 22px : 0px);
+                    padding-top: block.kind == 0 ? (index == 0 ? 0px : (block.level <= 2 ? 22px : 16px)) : block.kind == 4 ? 14px : 0px;
+                    padding-bottom: block.kind == 3 ? 5px : block.kind == 5 ? 0px : block.kind == 4 ? 14px : 12px;
+
+                    if block.kind == 0: VerticalLayout {
+                        spacing: 8px;
+                        StyledText {
+                            text: block.text;
+                            default-font-size: block.level == 1 ? 27px : block.level == 2 ? 21px : block.level == 3 ? 17.5px : 15.5px;
+                            default-color: Theme.primary-text;
+                            link-color: Theme.dark ? Theme.accent.mix(#FFFFFF, 0.45) : Theme.accent;
+                            link-clicked(link) => { PreviewBridge.link-clicked(link); }
+                        }
+                        if block.level <= 2: Rectangle {
+                            height: 1px;
+                            background: Theme.separator;
+                        }
+                    }
+                    if block.kind == 1: StyledText {
+                        text: block.text;
+                        default-font-size: 15px;
+                        default-color: block.quote > 0 ? Theme.secondary-text : Theme.primary-text;
+                        link-color: Theme.dark ? Theme.accent.mix(#FFFFFF, 0.45) : Theme.accent;
+                        link-clicked(link) => { PreviewBridge.link-clicked(link); }
+                    }
+                    if block.kind == 2: CodeBlock {
+                        lines: block.code;
+                    }
+                    if block.kind == 3: HorizontalLayout {
+                        spacing: 6px;
+                        Text {
+                            width: 20px;
+                            text: block.marker;
+                            font-size: 15px;
+                            color: Theme.secondary-text;
+                            horizontal-alignment: right;
+                        }
+                        StyledText {
+                            text: block.text;
+                            default-font-size: 15px;
+                            default-color: block.quote > 0 ? Theme.secondary-text : Theme.primary-text;
+                            link-color: Theme.dark ? Theme.accent.mix(#FFFFFF, 0.45) : Theme.accent;
+                            link-clicked(link) => { PreviewBridge.link-clicked(link); }
+                        }
+                    }
+                    if block.kind == 4: Rectangle {
+                        height: 1px;
+                        background: Theme.separator;
+                    }
+                    if block.kind == 5: Rectangle {
+                        background: block.header ? (Theme.dark ? #FFFFFF0A : #00000007) : transparent;
+                        border-width: 1px;
+                        border-color: Theme.separator;
+                        HorizontalLayout {
+                            padding: 8px;
+                            padding-left: 12px;
+                            spacing: 12px;
+                            for cell in block.cells: StyledText {
+                                horizontal-stretch: 1;
+                                text: cell;
+                                default-font-size: 13.5px;
+                                default-color: Theme.primary-text;
+                            }
+                        }
+                    }
+                    if block.kind == 6 && block.has-image: Image {
+                        source: block.image;
+                        width: min(self.source.width * 1px, parent.width);
+                        image-fit: contain;
+                        horizontal-alignment: left;
+                    }
+                    if block.kind == 6 && !block.has-image: Text {
+                        text: "[" + block.alt + "]";
+                        font-size: 13px;
+                        font-italic: true;
+                        color: Theme.tertiary-text;
+                    }
+                }
+            }
+        }
+    }
+}

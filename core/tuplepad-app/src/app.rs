@@ -37,6 +37,7 @@ pub struct App {
     /// The folder in the sidebar, and the document path its tree last marked.
     pub folder: RefCell<Option<crate::folder::FolderState>>,
     pub compare_state: RefCell<crate::toolviews::CompareState>,
+    pub preview: RefCell<crate::preview::PreviewState>,
     folder_marked: RefCell<Option<PathBuf>>,
     pub toast_timer: slint::Timer,
     pub snippets: RefCell<crate::snippets::SnippetStore>,
@@ -61,7 +62,8 @@ pub struct App {
     palette_pinned: Cell<bool>,
     shut_down: Cell<bool>,
     /// Sidebar items by document, with the version they show.
-    doc_items: RefCell<HashMap<String, (u64, bool, DocItem)>>,
+    /// Each document's sidebar row, with what it was made from (version, unsaved, path, language).
+    doc_items: RefCell<HashMap<String, ((u64, bool, Option<PathBuf>, Option<String>), DocItem)>>,
     /// The menu models, by name: "file", "file-2", "file-3" (the File menu's sections around its
     /// submenus), "recent", "reopen", "convert", "line-ending", "edit", "selection" and "view".
     menus: HashMap<&'static str, Rc<VecModel<MenuEntry>>>,
@@ -155,6 +157,7 @@ impl App {
             outline: RefCell::new(Default::default()),
             folder: RefCell::new(None),
             compare_state: RefCell::new(Default::default()),
+            preview: RefCell::new(Default::default()),
             folder_marked: RefCell::new(None),
             toast_timer: slint::Timer::default(),
             snippets: RefCell::new(crate::snippets::SnippetStore::load(
@@ -274,12 +277,13 @@ impl App {
                 .docs
                 .iter()
                 .map(|doc| {
-                    let stamp = (doc.buffer.version(), doc.buffer.is_modified());
+                    // A rename (Save As) or a new language changes the row too.
+                    let stamp = (doc.buffer.version(), doc.buffer.is_modified(), doc.path(), doc.buffer.language());
                     match cache.get(&doc.id) {
-                        Some((version, modified, item)) if (*version, *modified) == stamp && doc.path().is_some() == !item.folder.starts_with("Not saved") => item.clone(),
+                        Some((made_from, item)) if *made_from == stamp => item.clone(),
                         _ => {
                             let item = self.doc_item(doc);
-                            cache.insert(doc.id.clone(), (stamp.0, stamp.1, item.clone()));
+                            cache.insert(doc.id.clone(), (stamp, item.clone()));
                             item
                         }
                     }
@@ -356,6 +360,7 @@ impl App {
         let several = editor.docs.len() > 1;
         let split = editor.split();
         let delimiter = doc.buffer.csv_delimiter();
+        let preview_open = ui.global::<crate::PreviewBridge>().get_open();
         let enabled = |id: &str| match id {
             "edit.undo" => can_undo,
             "edit.redo" => can_redo,
@@ -367,6 +372,7 @@ impl App {
         let checked = |id: &str| match id {
             "view.sidebar" => settings.sidebar_visible,
             "view.minimap" => settings.show_minimap,
+            "tools.markdown-preview" => preview_open,
             "csv.delimiter-comma" => delimiter.as_deref() == Some(","),
             "csv.delimiter-tab" => delimiter.as_deref() == Some("\t"),
             "csv.delimiter-semicolon" => delimiter.as_deref() == Some(";"),
@@ -500,6 +506,7 @@ impl App {
         self.refresh_find();
         self.prime_word_index();
         self.refresh_outline();
+        self.refresh_preview();
     }
 
     fn language_name(&self, doc: &Document) -> String {
@@ -508,9 +515,13 @@ impl App {
 
     fn doc_item(&self, doc: &Document) -> DocItem {
         let name = doc.name();
+        // The badge: the file's extension, or else its language's name, or TXT.
         let extension = match Path::new(&name).extension() {
             Some(e) if doc.path().is_some() => e.to_string_lossy().to_uppercase(),
-            _ => "TXT".into(),
+            _ => match doc.buffer.language().and_then(|id| self.language_names.get(&id).cloned()) {
+                Some(language) => language.chars().filter(|c| c.is_alphanumeric()).take(4).collect::<String>().to_uppercase(),
+                None => "TXT".into(),
+            },
         };
         let folder = doc.path().and_then(|p| p.parent().map(|f| tilde(f))).unwrap_or_else(|| "Not saved".into());
         let size = if doc.path().is_some() { format!("  ·  {}", format_size(doc.size)) } else { String::new() };
@@ -665,6 +676,7 @@ impl App {
             "file.quick-open" => self.open_quick_open(),
             "folder.close" => self.close_folder(),
             "tools.hex" => self.show_hex(),
+            "tools.markdown-preview" => self.toggle_preview(),
             "compare.saved" => self.compare(crate::toolviews::CompareWith::Saved),
             "compare.clipboard" => self.compare(crate::toolviews::CompareWith::Clipboard),
             "text.language" | "status.language" => self.open_language_list(),

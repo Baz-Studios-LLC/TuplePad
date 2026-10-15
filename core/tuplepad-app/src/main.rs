@@ -24,6 +24,7 @@ mod fonts;
 mod outline;
 mod palette;
 mod platform;
+mod preview;
 mod print;
 mod script;
 mod search_panel;
@@ -360,6 +361,13 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
     {
         let app = app.clone();
         ui.global::<OutlineBridge>().on_activate(move |index| app.activate_outline_item(index.max(0) as usize));
+    }
+    {
+        let preview = ui.global::<PreviewBridge>();
+        let a = app.clone();
+        preview.on_block_moved(move |index, y| a.preview_block_moved(index.max(0) as usize, y));
+        let a = app.clone();
+        preview.on_link_clicked(move |link| a.preview_link(&link));
     }
     {
         let views = ui.global::<ToolViewBridge>();

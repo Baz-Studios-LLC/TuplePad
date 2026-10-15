@@ -332,3 +332,18 @@ mod tests {
         assert!(request_for("tuplepad://nonsense").is_none());
     }
 }
+
+/// Opens a web link in the browser.
+pub fn open_url(url: &str) {
+    use std::process::Command;
+    let result = if cfg!(target_os = "macos") {
+        Command::new("open").arg(url).spawn()
+    } else if cfg!(windows) {
+        Command::new("explorer").arg(url).spawn()
+    } else {
+        Command::new("xdg-open").arg(url).spawn()
+    };
+    if let Err(error) = result {
+        eprintln!("couldn't open {url}: {error}");
+    }
+}

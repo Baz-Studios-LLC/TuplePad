@@ -811,6 +811,15 @@ fn fold_of(node: Node, rope: &Rope) -> Option<(usize, usize)> {
 
 /// Code as HTML with `<span class="tp-…">` around each colored run, for the Markdown preview.
 /// Nil if the language isn't known.
+/// Highlight spans for a snippet of code in a named language.
+pub(crate) fn highlight_spans(language_name: &str, code: &str) -> Option<Vec<crate::HighlightSpan>> {
+    let id = language_for_name(language_name)?;
+    let mut syntax = Syntax::new(id)?;
+    let rope = Rope::from_str(code);
+    syntax.parse(&rope);
+    Some(syntax.highlights(&rope, 0, rope.len_lines()))
+}
+
 pub(crate) fn highlight_html(language_name: &str, code: &str) -> Option<std::string::String> {
     let id = language_for_name(language_name)?;
     let mut syntax = Syntax::new(id)?;
