@@ -12,6 +12,11 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 printf '# Notes\n\nSecond line here\n' > "$WORK/notes.md"
 
+# A silent sound device: the speech server waits for audio to finish playing, and CI has none.
+pulseaudio --start --exit-idle-time=-1 > /dev/null 2>&1 || true
+pactl load-module module-null-sink sink_name=silent > /dev/null 2>&1 || true
+pactl set-default-sink silent > /dev/null 2>&1 || true
+
 Xvfb :99 -screen 0 1600x1000x24 &
 export DISPLAY=:99
 sleep 2
