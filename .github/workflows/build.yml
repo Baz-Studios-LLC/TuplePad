@@ -26,7 +26,7 @@ jobs:
           workspaces: core
           cache-on-failure: true
       - name: Test
-        run: cargo test --locked --manifest-path core/Cargo.toml --workspace
+        run: cargo test --locked --no-fail-fast --manifest-path core/Cargo.toml --workspace
       - name: Build
         run: cargo build --locked --release --manifest-path core/Cargo.toml -p tuplepad-app -p tuplepad-cli
       - name: Smoke test
@@ -69,7 +69,7 @@ jobs:
           workspaces: core
           cache-on-failure: true
       - name: Test
-        run: xvfb-run -a cargo test --locked --manifest-path core/Cargo.toml --workspace
+        run: xvfb-run -a cargo test --locked --no-fail-fast --manifest-path core/Cargo.toml --workspace
       - name: Build
         run: cargo build --locked --release --manifest-path core/Cargo.toml -p tuplepad-app -p tuplepad-cli
       - name: AppImage
@@ -95,4 +95,4 @@ jobs:
           workspaces: core
           cache-on-failure: true
       - name: Test
-        run: cargo test --locked --manifest-path core/Cargo.toml --workspace
+        run: cargo test --locked --no-fail-fast --manifest-path core/Cargo.toml --workspace

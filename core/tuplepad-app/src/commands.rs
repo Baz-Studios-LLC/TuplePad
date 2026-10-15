@@ -134,7 +134,7 @@ pub static COMMANDS: &[Command] = &[
     command("find.use-selection", "Use Selection for Find", Menu::Find, &["Control", "e"]),
     separator(Menu::Find),
     command("find.count", "Count Matches", Menu::Find, &[]),
-    Command { other_keys: Some(&["Control", "Shift", "m"]), ..command("find.mark-all", "Mark All", Menu::Find, &["Control", "Meta", "m"]) },
+    Command { other_keys: Some(&["Control", "Shift", "a"]), ..command("find.mark-all", "Mark All", Menu::Find, &["Control", "Meta", "m"]) },
     command("find.clear-marks", "Clear Marks", Menu::Find, &[]),
     separator(Menu::Find),
     command("search.open-documents", "Find in Open Documents…", Menu::Find, &[]),
@@ -229,7 +229,7 @@ pub static COMMANDS: &[Command] = &[
     command("view.palette", "Command Palette…", Menu::View, &["Control", "Shift", "p"]),
     separator(Menu::View),
     Command { other_keys: Some(&["Control", "b"]), ..toggle("view.sidebar", "Show Sidebar", Menu::View, &["Control", "Meta", "s"]) },
-    Command { other_keys: Some(&["Control", "Shift", "o"]), ..toggle("view.outline", "Show Outline", Menu::View, &["Control", "Meta", "o"]) },
+    Command { other_keys: Some(&["Control", "Shift", "e"]), ..toggle("view.outline", "Show Outline", Menu::View, &["Control", "Meta", "o"]) },
     toggle("view.minimap", "Show Minimap", Menu::View, &[]),
     toggle("view.split-side", "Split Side by Side", Menu::View, &["Control", "\\"]),
     Command { other_keys: Some(&["Control", "Alt", "\\"]), ..toggle("view.split-stacked", "Split Top and Bottom", Menu::View, &["Control", "Meta", "\\"]) },
@@ -381,11 +381,17 @@ mod tests {
         assert_eq!(for_key("\u{F705}", false, false, false, false).map(|c| c.id), Some("bookmark.next"));
         assert_eq!(for_key("\u{F705}", false, false, true, false).map(|c| c.id), Some("bookmark.previous"));
         assert!(COMMANDS.iter().filter(|c| !c.is_separator()).all(|c| c.shortcut().is_empty() || Keys::from_parts(c.shortcut().iter().copied()).is_ok()));
-        // No two commands share a shortcut.
-        let shortcuts: Vec<_> = COMMANDS.iter().filter(|c| !c.shortcut().is_empty()).map(|c| c.shortcut()).collect();
         assert_eq!(menu_sections(Menu::File, |_| true, |_| false).len(), 3);
-        for (i, a) in shortcuts.iter().enumerate() {
-            assert!(!shortcuts[i + 1..].contains(a), "{a:?} is used twice");
+        // No two commands share a shortcut, on a Mac or elsewhere (checked on every system), and
+        // nothing elsewhere takes Ctrl+Shift+Z, which also redoes there.
+        for mac in [true, false] {
+            let shortcuts: Vec<_> =
+                COMMANDS.iter().map(|c| if mac { c.keys } else { c.other_keys.unwrap_or(c.keys) }).filter(|k| !k.is_empty()).collect();
+            let repeated: Vec<_> = shortcuts.iter().enumerate().filter(|(i, a)| shortcuts[i + 1..].contains(a)).map(|(_, a)| a).collect();
+            assert!(repeated.is_empty(), "used twice {}: {repeated:?}", if mac { "on a Mac" } else { "on Windows and Linux" });
+            if !mac {
+                assert!(!shortcuts.contains(&&["Control", "Shift", "z"][..]));
+            }
         }
     }
 }
