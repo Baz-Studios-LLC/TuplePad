@@ -1,0 +1,124 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+// One symbol in the outline.
+export struct OutlineRow {
+    name: string,
+    // 0 function, 1 method, 2 type, 3 namespace, 4 heading, 5 constant, 6 property.
+    kind: int,
+    depth: int,
+}
+
+export global OutlineBridge {
+    in property <[OutlineRow]> items;
+    // The item around the main caret.
+    in property <int> current: -1;
+    in property <string> empty-text;
+    callback activate(index: int);
+}
+
+// A letter for each kind of symbol, tinted with the theme's syntax colors.
+component KindBadge inherits Rectangle {
+    in property <int> kind;
+    property <color> tint: Theme.syntax[[7, 7, 8, 16, 17, 6, 10][root.kind]];
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    background: root.tint.with-alpha(Theme.dark ? 0.2 : 0.12);
+    Text {
+        text: ["ƒ", "m", "T", "N", "#", "C", "P"][root.kind];
+        font-size: 11px;
+        font-weight: 700;
+        color: root.tint;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// The document's functions, types and headings, at the right of the window.
+export component OutlinePanel inherits Rectangle {
+    in property <length> header-height: 44px;
+    background: Theme.sidebar-background;
+
+    // Keeps the item around the caret in view.
+    property <int> current: OutlineBridge.current;
+    changed current => {
+        if root.current < 0 {
+            return;
+        }
+        let top = root.current * 28px;
+        if top < -list.content-y {
+            list.content-y = -max(0px, top - 56px);
+        } else if top + 28px > -list.content-y + list.visible-height {
+            list.content-y = -(top + 28px + 56px - list.visible-height);
+        }
+    }
+
+    Rectangle {
+        x: 0;
+        width: 1px;
+        background: Theme.separator;
+    }
+
+    VerticalLayout {
+        Rectangle {
+            height: root.header-height;
+            HorizontalLayout {
+                padding-left: 18px;
+                padding-right: 14px;
+                Text {
+                    text: "OUTLINE";
+                    font-size: 11px;
+                    font-weight: 650;
+                    letter-spacing: 0.6px;
+                    color: Theme.secondary-text;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            if OutlineBridge.items.length == 0: Text {
+                x: 18px;
+                y: 8px;
+                width: parent.width - 36px;
+                text: OutlineBridge.empty-text;
+                font-size: 12px;
+                color: Theme.tertiary-text;
+                wrap: word-wrap;
+            }
+            list := ListView {
+                for item[index] in OutlineBridge.items: Rectangle {
+                    height: 28px;
+                    Rectangle {
+                        x: 8px;
+                        width: parent.width - 16px;
+                        border-radius: 6px;
+                        background: index == OutlineBridge.current ? Theme.selected-row : touch.has-hover ? Theme.sidebar-hover : transparent;
+                    }
+                    HorizontalLayout {
+                        padding-left: 16px + min(item.depth, 6) * 14px;
+                        padding-right: 14px;
+                        spacing: 8px;
+                        VerticalLayout {
+                            alignment: center;
+                            KindBadge { kind: item.kind; }
+                        }
+                        Text {
+                            text: item.name;
+                            font-size: 12.5px;
+                            font-weight: index == OutlineBridge.current ? 600 : 400;
+                            color: index == OutlineBridge.current ? Theme.selected-row-text : Theme.primary-text;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    touch := TouchArea {
+                        clicked => { OutlineBridge.activate(index); }
+                    }
+                }
+            }
+        }
+    }
+}

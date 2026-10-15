@@ -19,6 +19,8 @@ export component CommandPalette inherits Rectangle {
     in property <[PaletteItem]> items;
     in-out property <int> selected;
     in property <string> placeholder: "Search commands, documents and recent files";
+    // What's typed (set from Rust to start with ":" for Go to Line).
+    in-out property <string> text;
     callback query-changed(query: string);
     callback run(index: int);
     callback close();
@@ -75,7 +77,11 @@ export component CommandPalette inherits Rectangle {
                         vertical-alignment: center;
                         single-line: true;
                         selection-background-color: Theme.selection;
-                        init => { self.focus(); }
+                        text <=> root.text;
+                        init => {
+                            self.focus();
+                            self.set-selection-offsets(self.text.character-count, self.text.character-count);
+                        }
                         edited => {
                             root.selected = 0;
                             root.query-changed(self.text);

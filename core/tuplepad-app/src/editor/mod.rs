@@ -3,6 +3,8 @@
 //! (`tuplepad_core::editing`); keys and the mouse are in `input`.
 
 pub mod display;
+pub mod folding;
+pub mod minimap;
 pub mod geometry;
 pub mod input;
 pub mod layout;
@@ -14,10 +16,10 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
-use tuplepad_core::{HighlightStyle, Indentation, SearchQuery, TextBuffer, TextPos, TextSelection, WrappedLine};
+use tuplepad_core::{FoldRange, HighlightStyle, Indentation, SearchQuery, TextBuffer, TextPos, TextSelection, WrappedLine};
 
 use crate::document::Document;
-use crate::{AppWindow, Band, Caret, EditorBridge, Row};
+use crate::{AppWindow, Band, Caret, CompletionItem, EditorBridge, Row};
 use display::DisplayLine;
 use geometry::{LONG_LINE, LineGeometry};
 use layout::Layouter;
@@ -38,6 +40,7 @@ pub struct ViewOptions {
     pub auto_close: bool,
     pub tab_width: u32,
     pub default_indentation: Indentation,
+    pub minimap: bool,
 }
 
 /// What a mouse drag extends: the caret, word or line first clicked.
@@ -89,6 +92,10 @@ pub struct Editor {
     rows: RowMap,
     rows_key: Option<RowsKey>,
     rows_version: u64,
+    /// The folds the row map hides.
+    rows_folds: Vec<FoldRange>,
+    /// Lines on screen where a region could fold, for the gutter's controls.
+    foldable: Option<((String, u64, u64, u64, usize), Vec<u64>)>,
     dirty: Option<Dirty>,
     /// Bumped whenever every row must be rebuilt (another document, font or options).
     epoch: u64,
@@ -119,6 +126,13 @@ pub struct Editor {
     wrap_cache: std::collections::HashMap<u64, (u64, u32, u32, WrappedLine)>,
     /// The find bar's search, highlighted on screen while the bar is open.
     pub find_query: Option<SearchQuery>,
+    /// Word completion's list, while it's showing.
+    pub completion: Option<crate::completion::Completion>,
+    minimap: minimap::Minimap,
+    /// The first line the minimap shows.
+    minimap_first: u64,
+    /// The list as last shown, with its row and x.
+    completion_shown: Option<(crate::completion::Completion, i32, f32)>,
     find_model: Rc<VecModel<Band>>,
     /// The find bar's match that is selected, drawn stronger than the others.
     current_match_model: Rc<VecModel<Band>>,
@@ -174,6 +188,8 @@ impl Editor {
             gutter: 64.0,
             cell,
             rows: RowMap::plain(1),
+            rows_folds: Vec::new(),
+            foldable: None,
             rows_key: None,
             rows_version: 0,
             dirty: None,
@@ -199,6 +215,10 @@ impl Editor {
             caret_shown: true,
             wrap_cache: std::collections::HashMap::new(),
             find_query: None,
+            completion: None,
+            completion_shown: None,
+            minimap: Default::default(),
+            minimap_first: 0,
             find_model,
             current_match_model,
             mark_model,
@@ -223,6 +243,11 @@ impl Editor {
 
     pub fn indentation(&self) -> Indentation {
         self.doc().indentation.unwrap_or(self.options.default_indentation)
+    }
+
+    /// Whether an input method is composing text.
+    pub fn composing(&self) -> bool {
+        !self.preedit.is_empty()
     }
 
     pub fn touch(&mut self) {
@@ -269,6 +294,7 @@ impl Editor {
     pub fn select_document(&mut self, index: usize) {
         if index < self.docs.len() && index != self.current {
             self.current = index;
+            self.completion = None;
             self.preedit.clear();
             self.goals = None;
             self.drag = None;
@@ -342,11 +368,27 @@ impl Editor {
     }
 
     fn text_width(&self) -> f32 {
-        (self.width - self.gutter).max(1.0)
+        (self.width - self.gutter - self.minimap_width()).max(1.0)
+    }
+
+    /// Room the minimap (and the scrollbar strip beside it) takes, when it's on.
+    fn minimap_width(&self) -> f32 {
+        if self.options.minimap && self.width > 500.0 { minimap::WIDTH + minimap::SCROLLBAR } else { 0.0 }
+    }
+
+    /// A click or drag on the minimap: centers the line under the pointer.
+    pub fn minimap_scroll(&mut self, y: f32) {
+        self.ensure_rows();
+        let line = (self.minimap_first + (y.max(0.0) / minimap::LINE) as u64).min(self.doc().buffer.line_count().saturating_sub(1));
+        let row = self.rows.first_row(line) as f64;
+        let lh = self.line_height as f64;
+        self.doc_mut().scroll_y = row * lh - (self.height as f64 - lh) / 2.0;
+        self.clamp_scroll();
+        self.touch();
     }
 
     /// How many cells fit on a row when wrapping.
-    fn wrap_cells(&self) -> u32 {
+    pub fn wrap_cells(&self) -> u32 {
         (((self.text_width() - 28.0) / self.cell).floor() as u32).max(20)
     }
 
@@ -359,14 +401,17 @@ impl Editor {
         let key = RowsKey { doc: doc.id.clone(), wrap: doc.wrap, cells: if doc.wrap { self.wrap_cells() } else { 0 }, tab_width: self.options.tab_width };
         let version = buffer.version();
         let line_count = buffer.line_count();
+        let folds = buffer.folds();
         let rebuild = |key: &RowsKey| {
-            if key.wrap {
+            let mut map = if key.wrap {
                 RowMap::wrapped(buffer.wrap_rows(key.cells, key.tab_width, 0, line_count))
             } else {
                 RowMap::plain(line_count)
-            }
+            };
+            map.hide(&folds);
+            map
         };
-        if self.rows_key.as_ref() != Some(&key) {
+        if self.rows_key.as_ref() != Some(&key) || self.rows_folds != folds {
             // Keep the same line at the top when the wrapping changes.
             let top_line = if self.rows_key.as_ref().is_some_and(|k| k.doc == key.doc) {
                 let row = (self.doc().scroll_y / self.line_height as f64).floor() as u64;
@@ -381,6 +426,7 @@ impl Editor {
             }
             self.rows_key = Some(key);
             self.rows_version = version;
+            self.rows_folds = folds;
             self.dirty = None;
             return;
         }
@@ -389,8 +435,8 @@ impl Editor {
         }
         self.rows_version = version;
         let dirty = self.dirty.take();
-        if !key.wrap {
-            self.rows = RowMap::plain(line_count);
+        if !key.wrap || !folds.is_empty() {
+            self.rows = rebuild(&key);
             return;
         }
         match dirty {
@@ -428,7 +474,7 @@ impl Editor {
 
     // MARK: Geometry
 
-    fn tab_width(&self) -> usize {
+    pub fn tab_width(&self) -> usize {
         self.options.tab_width as usize
     }
 
@@ -615,6 +661,7 @@ impl Editor {
     pub fn sync(&mut self, ui: &AppWindow) {
         let started = Instant::now();
         self.update_smart_highlight(started.duration_since(self.last_activity));
+        self.reveal_folded_carets();
         self.ensure_rows();
         self.clamp_scroll();
         let bridge = ui.global::<EditorBridge>();
@@ -642,8 +689,12 @@ impl Editor {
         let mut covered: i64 = -(first_sub as i64);
         let mut line = first_line;
         while covered < slots as i64 && line < line_count {
-            lines.push(line);
-            covered += self.rows.rows_of(line) as i64;
+            let rows = self.rows.rows_of(line);
+            // Lines inside a fold have no rows.
+            if rows > 0 {
+                lines.push(line);
+                covered += rows as i64;
+            }
             line += 1;
         }
         let count = lines.len() as u64;
@@ -672,8 +723,8 @@ impl Editor {
         let mut colors: Vec<Vec<(usize, usize, i32)>> = vec![Vec::new(); lines.len()];
         let mut add = |spans: Vec<tuplepad_core::HighlightSpan>| {
             for span in spans {
-                if let Some(line) = colors.get_mut((span.line - first_line) as usize) {
-                    line.push((span.start as usize, span.end as usize, style_index(span.style)));
+                if let Ok(i) = lines.binary_search(&span.line) {
+                    colors[i].push((span.start as usize, span.end as usize, style_index(span.style)));
                 }
             }
         };
@@ -683,8 +734,28 @@ impl Editor {
                 add(if long[i] { buffer.highlights_in_line(line, from as u64, to.saturating_sub(from) as u64) } else { buffer.highlights(line, 1) });
             }
         } else {
-            add(buffer.highlights(first_line, count));
+            // Runs of consecutive lines (folds leave gaps).
+            let mut i = 0;
+            while i < lines.len() {
+                let start = i;
+                while i + 1 < lines.len() && lines[i + 1] == lines[i] + 1 {
+                    i += 1;
+                }
+                add(buffer.highlights(lines[start], (i - start + 1) as u64));
+                i += 1;
+            }
         }
+        let _ = count;
+
+        // Where regions can fold (in the gutter), and which are folded.
+        let last_line = lines.last().copied().unwrap_or(first_line);
+        let fold_key = (self.doc().id.clone(), buffer.version(), first_line, last_line, self.tab_width());
+        if self.foldable.as_ref().is_none_or(|(key, _)| *key != fold_key) {
+            let starts = buffer.fold_ranges(first_line, last_line - first_line + 1, self.tab_width() as u32).into_iter().map(|f| f.start).collect();
+            self.foldable = Some((fold_key, starts));
+        }
+        let foldable = self.foldable.as_ref().map(|(_, starts)| starts.clone()).unwrap_or_default();
+        let folded: Vec<u64> = self.rows_folds.iter().map(|f| f.start).collect();
 
         // Indent guides: blank lines take the indentation of the lines around them.
         let unit_cells = match self.indentation() {
@@ -731,7 +802,15 @@ impl Editor {
             let guides = display::guides(guide_cells[index], unit_cells, self.cell);
             let line_break = line + 1 < line_count;
             let bookmarked = sub == 0 && bookmarks.binary_search(&line).is_ok();
-            let key = hash_of(&(self.epoch, r, line, sub, geometry.content_key(), &colors[index], current, row_start, row_end, guide_cells[index], line_break, bookmarked));
+            let is_folded = folded.contains(&line);
+            let fold = if sub > 0 { 0 } else if is_folded { 2 } else if foldable.contains(&line) { 1 } else { 0 };
+            // A folded line ends with a pill standing for what's hidden.
+            let folded_end = is_folded && sub + 1 == geometry.rows();
+            let folded_x = if folded_end { geometry.locate(buffer.line_length(line) as usize).1 } else { 0.0 };
+            let key = hash_of(&(
+                (self.epoch, r, line, sub, geometry.content_key(), &colors[index], current, row_start, row_end),
+                (guide_cells[index], line_break, bookmarked, fold, folded_end, folded_x.to_bits()),
+            ));
             if self.slot_keys[slot] != key {
                 self.slot_keys[slot] = key;
                 let spans = geometry.row_spans(sub, &colors[index], invisibles, line_break);
@@ -744,6 +823,9 @@ impl Editor {
                         spans: ModelRc::new(VecModel::from(spans)),
                         current,
                         bookmarked,
+                        fold,
+                        folded_end,
+                        folded_x,
                         guides: ModelRc::new(VecModel::from(guides)),
                     },
                 );
@@ -864,6 +946,68 @@ impl Editor {
         replace_if_changed(&self.bracket_model, brackets);
         replace_if_changed(&self.underline_model, underlines);
         replace_if_changed(&self.active_model, active_rows);
+
+        // The minimap, and where the view is in it.
+        let minimap_width = self.minimap_width();
+        bridge.set_minimap_width(minimap_width);
+        if minimap_width > 0.0 {
+            let fits = (self.height / minimap::LINE).floor() as u64;
+            let max_y = self.max_scroll_y();
+            let fraction = if max_y > 0.0 { self.doc().scroll_y / max_y } else { 0.0 };
+            let first = minimap::first_line(line_count, fits, fraction);
+            self.minimap_first = first;
+            let theme = ui.global::<crate::Theme>();
+            let colors: Vec<slint::Color> = theme.get_syntax().iter().collect();
+            let request = minimap::Request {
+                buffer: &buffer,
+                doc: &self.docs[self.current].id,
+                first_line: first,
+                lines: fits,
+                height: self.height,
+                scale: self.scale,
+                tab_width: self.tab_width(),
+                colors: &colors,
+                dark: theme.get_dark(),
+            };
+            if self.minimap.update(&request) {
+                bridge.set_minimap(self.minimap.image.clone());
+            }
+            let last_visible = lines.last().copied().unwrap_or(first_line);
+            bridge.set_minimap_view_y((first_line as f32 - first as f32) * minimap::LINE);
+            bridge.set_minimap_view_height(((last_visible + 1 - first_line) as f32 * minimap::LINE).max(minimap::LINE * 4.0));
+        }
+
+        // Word completion's list, under the start of the word being completed.
+        let placed = self.completion.as_ref().and_then(|c| {
+            let i = position_of(c.range.start().line)?;
+            let (sub, x) = geometries[i].locate(c.range.start().column as usize);
+            let row = first_rows[i] + sub as u64;
+            visible.contains(&row).then(|| (c.clone(), row as i32, x))
+        });
+        if placed.is_none() {
+            self.completion = None;
+        }
+        if placed != self.completion_shown {
+            match &placed {
+                Some((c, row, x)) => {
+                    let chars = c.prefix.chars().count();
+                    let items: Vec<CompletionItem> = c
+                        .items
+                        .iter()
+                        .map(|word| {
+                            let split = word.char_indices().nth(chars).map_or(word.len(), |(b, _)| b);
+                            CompletionItem { head: word[..split].into(), tail: word[split..].into() }
+                        })
+                        .collect();
+                    bridge.set_completions(ModelRc::new(VecModel::from(items)));
+                    bridge.set_completion_selected(c.selected as i32);
+                    bridge.set_completion_row(*row);
+                    bridge.set_completion_x(*x);
+                }
+                None => bridge.set_completions(ModelRc::default()),
+            }
+            self.completion_shown = placed;
+        }
 
         let max_y = self.max_scroll_y();
         let content = max_y + self.height as f64;

@@ -27,7 +27,7 @@ mod xml_tools;
 pub use buffer::{AppendResult, BracketMatch, ColumnInsert, DiskStatus, FoldRange, LineResults, NumberBase, NumberPadding, SearchResults, TextBuffer, column_values};
 pub use encoding::{TextEncoding, supported_encodings};
 pub use codec::{Codec, HashAlgorithm, decode_text, encode_text, hash_file, hash_text};
-pub use editing::{Indentation, Motion, normalize_cursors};
+pub use editing::{Indentation, Motion, normalize_cursors, rank_completions};
 pub use diff::{DiffKind, DiffOptions, DiffResult, DiffRow, diff_texts};
 pub use error::CoreError;
 pub use hex::{HexRow, file_size, hex_rows};

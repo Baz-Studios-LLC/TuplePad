@@ -20,6 +20,24 @@ impl RowMap {
         RowMap { line_count: rows.len() as u64, rows, starts: Vec::new(), stale: true }
     }
 
+    /// Hides the lines inside folds (each fold's `start` stays visible): they get no rows.
+    pub fn hide(&mut self, folds: &[tuplepad_core::FoldRange]) {
+        if folds.is_empty() {
+            return;
+        }
+        if self.rows.is_empty() {
+            self.rows = vec![1; self.line_count as usize];
+        }
+        let last = self.rows.len().saturating_sub(1);
+        for fold in folds {
+            let (start, end) = ((fold.start as usize + 1).min(last + 1), (fold.end as usize).min(last));
+            if start <= end {
+                self.rows[start..=end].fill(0);
+            }
+        }
+        self.stale = true;
+    }
+
     pub fn is_wrapped(&self) -> bool {
         !self.rows.is_empty()
     }
@@ -112,6 +130,15 @@ mod tests {
         map.splice(1, 1, vec![1, 1]);
         assert_eq!(map.total_rows(), 6);
         assert_eq!(map.line_at(2), (2, 0));
+        // Folded lines have no rows; their rows belong to the next line that shows.
+        let mut folded = RowMap::plain(6);
+        folded.hide(&[tuplepad_core::FoldRange { start: 1, end: 3 }]);
+        assert_eq!(folded.total_rows(), 4);
+        assert_eq!(folded.rows_of(2), 0);
+        assert_eq!(folded.first_row(4), 2);
+        assert_eq!(folded.line_at(1), (1, 0));
+        assert_eq!(folded.line_at(2), (4, 0));
+        assert_eq!(folded.first_row(3), 2);
         let mut plain = RowMap::plain(10);
         assert_eq!(plain.line_at(4), (4, 0));
         plain.splice(2, 1, vec![1, 1, 1]);

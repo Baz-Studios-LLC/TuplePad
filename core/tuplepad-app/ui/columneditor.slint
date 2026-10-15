@@ -1,0 +1,144 @@
+import { Theme } from "theme.slint";
+import { Sheet, Segmented, Dropdown } from "controls.slint";
+import { InputField } from "findbar.slint";
+
+// The Column Editor's fields, shared with Rust.
+export global ColumnBridge {
+    in-out property <bool> open;
+    // 0 text, 1 numbers.
+    in-out property <int> mode;
+    in-out property <string> text;
+    in-out property <string> start: "1";
+    in-out property <string> step: "1";
+    in-out property <string> repeat: "1";
+    in-out property <int> base;
+    in-out property <int> padding;
+    in property <string> preview;
+    in property <string> target;
+    in property <bool> valid: true;
+    callback changed();
+    callback accept();
+    callback cancel();
+}
+
+component Labeled inherits VerticalLayout {
+    in property <string> label;
+    spacing: 5px;
+    Text {
+        text: root.label;
+        font-size: 11px;
+        font-weight: 600;
+        color: Theme.secondary-text;
+    }
+    @children
+}
+
+// Inserts text, or a run of numbers, down a column or at every caret.
+export component ColumnEditorSheet inherits Sheet {
+    title: "Column Editor";
+    accept-title: "Insert";
+    accept => { ColumnBridge.accept(); }
+    cancel => { ColumnBridge.cancel(); }
+
+    Text {
+        text: ColumnBridge.target;
+        font-size: 12px;
+        color: Theme.secondary-text;
+        wrap: word-wrap;
+    }
+    Segmented {
+        options: ["Text", "Numbers"];
+        selected: ColumnBridge.mode;
+        chosen(index) => {
+            ColumnBridge.mode = index;
+            ColumnBridge.changed();
+        }
+    }
+    if ColumnBridge.mode == 0: InputField {
+        text <=> ColumnBridge.text;
+        placeholder: "Text to insert on each line";
+        edited => { ColumnBridge.changed(); }
+        accepted => { ColumnBridge.accept(); }
+        escaped => { ColumnBridge.cancel(); }
+        init => { self.focus-field(); }
+    }
+    if ColumnBridge.mode == 1: VerticalLayout {
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 10px;
+            Labeled {
+                label: "START";
+                InputField {
+                    text <=> ColumnBridge.start;
+                    edited => { ColumnBridge.changed(); }
+                    accepted => { ColumnBridge.accept(); }
+                    escaped => { ColumnBridge.cancel(); }
+                    init => { self.focus-field(); }
+                }
+            }
+            Labeled {
+                label: "STEP";
+                InputField {
+                    text <=> ColumnBridge.step;
+                    edited => { ColumnBridge.changed(); }
+                    accepted => { ColumnBridge.accept(); }
+                    escaped => { ColumnBridge.cancel(); }
+                }
+            }
+            Labeled {
+                label: "REPEAT";
+                InputField {
+                    text <=> ColumnBridge.repeat;
+                    edited => { ColumnBridge.changed(); }
+                    accepted => { ColumnBridge.accept(); }
+                    escaped => { ColumnBridge.cancel(); }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            Labeled {
+                label: "FORMAT";
+                Dropdown {
+                    min-width: 150px;
+                    options: ["Decimal", "Hex (ff)", "Hex (FF)", "Octal", "Binary"];
+                    selected: ColumnBridge.base;
+                    list-height: 160px;
+                    chosen(index) => {
+                        ColumnBridge.base = index;
+                        ColumnBridge.changed();
+                    }
+                }
+            }
+            Labeled {
+                label: "PADDING";
+                Segmented {
+                    options: ["None", "Zeros", "Spaces"];
+                    selected: ColumnBridge.padding;
+                    chosen(index) => {
+                        ColumnBridge.padding = index;
+                        ColumnBridge.changed();
+                    }
+                }
+            }
+        }
+    }
+    Rectangle {
+        height: 30px;
+        border-radius: 7px;
+        background: Theme.editor-background;
+        border-width: 1px;
+        border-color: Theme.separator;
+        clip: true;
+        Text {
+            x: 10px;
+            width: parent.width - 20px;
+            text: ColumnBridge.preview;
+            font-family: Theme.mono-family;
+            font-size: 12px;
+            color: ColumnBridge.valid ? Theme.primary-text : (Theme.dark ? #FF8F8F : #C0392B);
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}

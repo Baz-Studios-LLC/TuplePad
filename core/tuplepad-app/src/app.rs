@@ -29,6 +29,11 @@ pub struct App {
     /// What the command palette searches, and which of it is showing.
     pub palette_entries: RefCell<Vec<crate::palette::Entry>>,
     pub palette_shown: RefCell<Vec<usize>>,
+    /// Where Go to Line goes, while the palette is in that mode (1-based line and column).
+    pub palette_target: RefCell<Option<(u64, Option<u64>)>>,
+    /// Each open document's words, for word completion.
+    pub word_index: RefCell<crate::completion::WordIndex>,
+    pub outline: RefCell<crate::outline::OutlineState>,
     /// The font choices the Settings window offers (worked out when it first opens).
     pub font_choices: RefCell<Vec<(String, String)>>,
     pub editor: RefCell<Editor>,
@@ -65,6 +70,7 @@ pub fn view_options(settings: &Settings) -> ViewOptions {
         auto_close: settings.auto_close_brackets,
         tab_width: settings.tab_width.max(1),
         default_indentation: settings.indentation(),
+        minimap: settings.show_minimap,
     }
 }
 
@@ -79,7 +85,10 @@ impl App {
         }
         let docs_model = Rc::new(VecModel::default());
         ui.set_docs(ModelRc::from(docs_model.clone()));
-        let names = ["file", "file-2", "file-3", "recent", "reopen", "convert", "line-ending", "edit", "selection", "find", "view", "view-2", "theme"];
+        let names = [
+            "file", "file-2", "file-3", "recent", "reopen", "convert", "line-ending", "edit", "selection", "find", "text", "lines", "case", "whitespace", "view",
+            "view-2", "view-3", "folding", "theme",
+        ];
         let menus: HashMap<&'static str, Rc<VecModel<MenuEntry>>> = names.into_iter().map(|n| (n, Rc::new(VecModel::default()))).collect();
         for (name, model) in &menus {
             let model = ModelRc::from(model.clone());
@@ -94,7 +103,13 @@ impl App {
                 "edit" => ui.set_edit_menu(model),
                 "selection" => ui.set_selection_menu(model),
                 "find" => ui.set_find_menu(model),
+                "text" => ui.set_text_menu(model),
+                "lines" => ui.set_lines_menu(model),
+                "case" => ui.set_case_menu(model),
+                "whitespace" => ui.set_whitespace_menu(model),
                 "view-2" => ui.set_view_menu_2(model),
+                "view-3" => ui.set_view_menu_3(model),
+                "folding" => ui.set_folding_menu(model),
                 "theme" => ui.set_theme_menu(model),
                 _ => ui.set_view_menu(model),
             }
@@ -108,6 +123,9 @@ impl App {
             search: RefCell::new(Default::default()),
             palette_entries: RefCell::new(Vec::new()),
             palette_shown: RefCell::new(Vec::new()),
+            palette_target: RefCell::new(None),
+            word_index: RefCell::new(Default::default()),
+            outline: RefCell::new(Default::default()),
             editor: RefCell::new(editor),
             settings: RefCell::new(settings),
             settings_path,
@@ -163,6 +181,7 @@ impl App {
                 }
             }
             ui.set_sidebar_visible(settings.sidebar_visible);
+            ui.set_outline_visible(settings.show_outline);
             ui.set_sidebar_width(settings.sidebar_width);
         }
         if let Ok(mut editor) = self.editor.try_borrow_mut() {
@@ -283,6 +302,8 @@ impl App {
         };
         let checked = |id: &str| match id {
             "view.sidebar" => settings.sidebar_visible,
+            "view.minimap" => settings.show_minimap,
+            "view.outline" => settings.show_outline,
             "view.wrap" => wrap,
             "view.follow" => follow,
             "view.invisibles" => settings.show_invisibles,
@@ -298,12 +319,22 @@ impl App {
         self.set_menu("file", file.next().unwrap_or_default());
         self.set_menu("file-2", file.next().unwrap_or_default());
         self.set_menu("file-3", file.next().unwrap_or_default());
-        for (name, menu) in [("edit", Menu::Edit), ("selection", Menu::Selection), ("find", Menu::Find)] {
+        for (name, menu) in [
+            ("edit", Menu::Edit),
+            ("selection", Menu::Selection),
+            ("find", Menu::Find),
+            ("text", Menu::Text),
+            ("lines", Menu::Lines),
+            ("case", Menu::Case),
+            ("whitespace", Menu::Whitespace),
+            ("folding", Menu::Folding),
+        ] {
             self.set_menu(name, commands::menu_sections(menu, enabled, checked).concat());
         }
         let mut view = commands::menu_sections(Menu::View, enabled, checked).into_iter();
         self.set_menu("view", view.next().unwrap_or_default());
         self.set_menu("view-2", view.next().unwrap_or_default());
+        self.set_menu("view-3", view.next().unwrap_or_default());
         let themes = crate::settings_window::THEME_IDS
             .iter()
             .zip(["TuplePad", "Midnight", "Graphite", "Sepia", "High Contrast"])
@@ -376,6 +407,8 @@ impl App {
             self.refresh();
         }
         self.refresh_find();
+        self.prime_word_index();
+        self.refresh_outline();
     }
 
     fn language_name(&self, doc: &Document) -> String {
@@ -405,6 +438,10 @@ impl App {
 
     /// A key press in the editor: a command's shortcut, or an editing key.
     pub fn key(&self, text: &str, control: bool, alt: bool, shift: bool, meta: bool) -> bool {
+        if !(control || alt || meta || shift) && self.completion_key(text) {
+            return true;
+        }
+        self.editor.borrow_mut().completion = None;
         if let Some(command) = commands::for_key(text, control, alt, shift, meta) {
             self.run_command(command.id);
             return true;
@@ -423,6 +460,7 @@ impl App {
         {
             let mut editor = self.editor.borrow_mut();
             editor.touch();
+            editor.completion = None;
             let indentation = editor.indentation();
             match id {
                 "edit.undo" => editor.undo(),
@@ -438,6 +476,10 @@ impl App {
                 "selection.caret-above" => editor.add_caret_vertically(false),
                 "selection.caret-below" => editor.add_caret_vertically(true),
                 "selection.single" => editor.single_cursor(),
+                "fold.fold" => editor.fold_at_carets(),
+                "fold.unfold" => editor.unfold_at_carets(),
+                "fold.all" => editor.fold_all(),
+                "fold.unfold-all" => editor.unfold_all(),
                 "view.wrap" => {
                     let doc = editor.doc_mut();
                     doc.wrap = !doc.wrap;
@@ -446,6 +488,10 @@ impl App {
                 }
                 _ => {}
             }
+        }
+        if self.run_text_tool(id) {
+            self.refresh();
+            return;
         }
         if let Some((kind, value)) = id.split_once(':') {
             self.run_item(kind, value);
@@ -515,6 +561,8 @@ impl App {
             "file.close" => self.close_document(None),
             "app.settings" => self.show_settings(None),
             "view.palette" => self.open_palette(),
+            "text.goto" => self.open_palette_with(":"),
+            "text.column" => self.open_column_editor(),
             "find.show" => self.open_find(false),
             "find.replace" => self.open_find(true),
             "find.next" => self.find_step(true),
@@ -535,6 +583,8 @@ impl App {
             "bookmark.copy" => self.copy_bookmarked_lines(),
             "bookmark.delete" => self.delete_bookmarked_lines(),
             "bookmark.clear" => self.clear_bookmarks(),
+            "view.minimap" => self.change_settings(|s| s.show_minimap = !s.show_minimap),
+            "view.outline" => self.change_settings(|s| s.show_outline = !s.show_outline),
             "view.sidebar" => self.change_settings(|s| s.sidebar_visible = !s.sidebar_visible),
             "view.invisibles" => self.change_settings(|s| s.show_invisibles = !s.show_invisibles),
             "view.indent-guides" => self.change_settings(|s| s.show_indent_guides = !s.show_indent_guides),
@@ -729,15 +779,20 @@ impl App {
                 self.drop_unused_untitled();
             }
             if let Some(line) = line {
-                let mut editor = self.editor.borrow_mut();
-                let target = tuplepad_core::TextPos::new(line.saturating_sub(1), column.unwrap_or(1).saturating_sub(1));
-                editor.go_to_line(target.line);
-                let pos = editor.buffer().clamp(target);
-                editor.doc_mut().cursors = vec![tuplepad_core::TextSelection::caret(pos)];
-                editor.reveal();
+                self.go_to(line, column);
             }
         }
         self.refresh();
+    }
+
+    /// Puts the caret on a line (and column), 1-based, with the line near the top third.
+    pub fn go_to(&self, line: u64, column: Option<u64>) {
+        let mut editor = self.editor.borrow_mut();
+        let target = tuplepad_core::TextPos::new(line.saturating_sub(1), column.unwrap_or(1).saturating_sub(1));
+        editor.go_to_line(target.line);
+        let pos = editor.buffer().clamp(target);
+        editor.doc_mut().cursors = vec![tuplepad_core::TextSelection::caret(pos)];
+        editor.reveal();
     }
 
     /// A new untitled document holding `text` (standard input, from the `tuplepad` command).

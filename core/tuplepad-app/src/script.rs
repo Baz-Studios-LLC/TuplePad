@@ -28,7 +28,7 @@ use slint::platform::{Key, WindowEvent};
 use slint::{ComponentHandle, RenderingState};
 
 use crate::app::App;
-use crate::{AppWindow, FindBridge, SearchBridge, Theme};
+use crate::{AppWindow, ColumnBridge, FindBridge, SearchBridge, Theme};
 
 #[derive(Default)]
 struct FrameClock {
@@ -227,6 +227,13 @@ fn run_next(app: Rc<App>, runner: Shared) {
                 window.dispatch_event(WindowEvent::PointerReleased { position: *last, button: PointerEventButton::Left });
             }
         }
+        "move" => {
+            // The pointer moving (no button) to a point in window coordinates, for hover states.
+            if let Some(p) = arg.as_array().filter(|a| a.len() == 2) {
+                let position = slint::LogicalPosition::new(p[0].as_f64().unwrap_or(0.0) as f32, p[1].as_f64().unwrap_or(0.0) as f32);
+                ui.window().dispatch_event(WindowEvent::PointerMoved { position });
+            }
+        }
         "scroll" => app.editor.borrow_mut().scroll_by(0.0, -(arg.as_f64().unwrap_or(0.0) as f32)),
         "goto" => app.editor.borrow_mut().go_to_line(arg.as_u64().unwrap_or(0)),
         "select" => app.select_document(arg.as_u64().unwrap_or(0) as usize),
@@ -328,6 +335,8 @@ fn run_next(app: Rc<App>, runner: Shared) {
             return later(app, runner, 150);
         }
         "gutterClick" => app.toggle_bookmark_at_row(arg.as_u64().unwrap_or(0)),
+        "minimapClick" => app.editor.borrow_mut().minimap_scroll(arg.as_f64().unwrap_or(0.0) as f32),
+        "foldClick" => app.editor.borrow_mut().toggle_fold_at_row(arg.as_u64().unwrap_or(0)),
         "search" => {
             // {"search": {"scope": "documents" | "folder", "replace": bool, "folder": …, "query": …,
             //  "replacement": …, "include": …, "exclude": …, "case"/"word"/"regex"/"everything": bool,
@@ -393,6 +402,48 @@ fn run_next(app: Rc<App>, runner: Shared) {
                 _ => {}
             }
         }
+        "column" => {
+            // {"column": {"mode": "text" | "numbers", "text", "start", "step", "repeat", "base": n,
+            //  "padding": n, "action": "accept" | "cancel"}}; opens the Column Editor first.
+            let bridge = ui.global::<ColumnBridge>();
+            if !bridge.get_open() {
+                app.open_column_editor();
+            }
+            if let Some(mode) = arg.get("mode").and_then(Value::as_str) {
+                bridge.set_mode(if mode == "numbers" { 1 } else { 0 });
+            }
+            let text = |name: &str| arg.get(name).and_then(Value::as_str).map(slint::SharedString::from);
+            if let Some(t) = text("text") {
+                bridge.set_text(t);
+            }
+            if let Some(t) = text("start") {
+                bridge.set_start(t);
+            }
+            if let Some(t) = text("step") {
+                bridge.set_step(t);
+            }
+            if let Some(t) = text("repeat") {
+                bridge.set_repeat(t);
+            }
+            if let Some(n) = arg.get("base").and_then(Value::as_i64) {
+                bridge.set_base(n as i32);
+            }
+            if let Some(n) = arg.get("padding").and_then(Value::as_i64) {
+                bridge.set_padding(n as i32);
+            }
+            app.column_changed();
+            match arg.get("action").and_then(Value::as_str) {
+                Some("accept") => app.accept_column_editor(),
+                Some("cancel") => app.close_column_editor(),
+                _ => {}
+            }
+        }
+        "outline" => {
+            if let Some(path) = arg.as_str() {
+                let _ = std::fs::write(path, serde_json::to_string_pretty(&app.outline_dump()).unwrap_or_default());
+            }
+        }
+        "outlineGo" => app.activate_outline_item(arg.as_u64().unwrap_or(0) as usize),
         "waitSearch" => return wait_until(app, runner, |app| !app.search_busy(), Instant::now()),
         "searchStatus" => {
             let state = app.search_dump();
@@ -414,6 +465,12 @@ fn run_next(app: Rc<App>, runner: Shared) {
             }
         }
         "shot" | "signal" => {
+            // In front, so the system draws it (macOS stops redrawing windows behind others).
+            if kind == "shot" {
+                use slint::winit_030::WinitWindowAccessor;
+                ui.window().with_winit_window(|window| window.focus_window());
+                ui.window().request_redraw();
+            }
             // A solid caret, not one caught mid-blink.
             app.editor.borrow_mut().touch();
             app.refresh();
@@ -470,6 +527,10 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         .iter()
         .map(|d| json!({"name": d.name(), "modified": d.buffer.is_modified(), "path": d.buffer.path(), "wrap": d.wrap}))
         .collect();
+    let column_state = {
+        let bridge = ui.global::<ColumnBridge>();
+        json!({"open": bridge.get_open(), "preview": bridge.get_preview().as_str(), "target": bridge.get_target().as_str(), "valid": bridge.get_valid()})
+    };
     let find_state = {
         use slint::Model;
         let bridge = ui.global::<FindBridge>();
@@ -507,6 +568,9 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "palette": palette_titles(&ui),
         "palette_selected": ui.get_palette_selected(),
         "sidebar": ui.get_sidebar_visible(),
+        "outline_visible": ui.get_outline_visible(),
+        "minimap": ui.global::<crate::EditorBridge>().get_minimap_width() > 0.0,
+        "minimap_view": [ui.global::<crate::EditorBridge>().get_minimap_view_y(), ui.global::<crate::EditorBridge>().get_minimap_view_height()],
         "banner": ui.get_banner(),
         "dropping": ui.get_dropping(),
         "follow": doc.follow,
@@ -521,7 +585,10 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "clipboard": editor.private_clipboard,
         "settings": serde_json::to_value(&*app.settings.borrow()).unwrap_or_default(),
         "find": find_state,
+        "column": column_state,
         "bookmarks": doc.buffer.bookmarks(),
+        "completion": editor.completion.as_ref().map(|c| json!({"items": c.items, "selected": c.selected, "prefix": c.prefix})),
+        "folds": doc.buffer.folds().iter().map(|f| [f.start, f.end]).collect::<Vec<_>>(),
     })
 }
 
@@ -546,6 +613,7 @@ fn dump_menus(ui: &AppWindow) -> Value {
             .collect()
     };
     let file: Vec<Value> = [ui.get_file_menu(), ui.get_file_menu_2(), ui.get_file_menu_3()].into_iter().flat_map(menu).collect();
+    let view: Vec<Value> = [ui.get_view_menu(), ui.get_view_menu_2(), ui.get_view_menu_3()].into_iter().flat_map(menu).collect();
     json!({
         "File": file,
         "Open Recent": menu(ui.get_recent_menu()),
@@ -555,7 +623,12 @@ fn dump_menus(ui: &AppWindow) -> Value {
         "Edit": menu(ui.get_edit_menu()),
         "Selection": menu(ui.get_selection_menu()),
         "Find": menu(ui.get_find_menu()),
-        "View": menu(ui.get_view_menu()),
+        "Text": menu(ui.get_text_menu()),
+        "Lines": menu(ui.get_lines_menu()),
+        "Case": menu(ui.get_case_menu()),
+        "Whitespace": menu(ui.get_whitespace_menu()),
+        "View": view,
+        "Code Folding": menu(ui.get_folding_menu()),
     })
 }
 

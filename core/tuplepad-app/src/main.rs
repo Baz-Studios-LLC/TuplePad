@@ -3,14 +3,20 @@
 //! `tuplepad-app [files…] [--dark|--light] [--renderer skia|femtovg] [--size WxH]
 //!           [--script steps.json] [--session-dir DIR] [--set key=value]…`
 
+// The scripted runs' state dump is one large `json!`.
+#![recursion_limit = "256"]
+
 slint::include_modules!();
 
 mod app;
+mod column;
 mod commands;
+mod completion;
 mod document;
 mod editor;
 mod find;
 mod fonts;
+mod outline;
 mod palette;
 mod platform;
 mod print;
@@ -19,6 +25,7 @@ mod search_panel;
 mod session;
 mod settings;
 mod settings_window;
+mod tools;
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -203,8 +210,16 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
         });
     }
     {
+        let app = app.clone();
+        bridge.on_text(move |text: SharedString| app.typed(&text));
+    }
+    {
         let edit = edit.clone();
-        bridge.on_text(move |text: SharedString| edit(&|e| e.insert_text(&text)));
+        bridge.on_minimap_pointer(move |y| edit(&|e| e.minimap_scroll(y)));
+    }
+    {
+        let app = app.clone();
+        bridge.on_completion_chosen(move |index| app.accept_completion(index.max(0) as usize));
     }
     {
         let edit = edit.clone();
@@ -212,7 +227,12 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
     }
     {
         let edit = edit.clone();
-        bridge.on_pointer_down(move |x, y, m| edit(&|e| e.pointer_down(x, y, m.control, m.alt, m.shift)));
+        bridge.on_pointer_down(move |x, y, m| {
+            edit(&|e| {
+                e.completion = None;
+                e.pointer_down(x, y, m.control, m.alt, m.shift)
+            })
+        });
     }
     {
         let edit = edit.clone();
@@ -286,6 +306,26 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
     {
         let app = app.clone();
         bridge.on_gutter_clicked(move |row| app.toggle_bookmark_at_row(row.max(0) as u64));
+    }
+    {
+        let app = app.clone();
+        bridge.on_fold_clicked(move |row| {
+            app.editor.borrow_mut().toggle_fold_at_row(row.max(0) as u64);
+            app.refresh();
+        });
+    }
+    {
+        let app = app.clone();
+        ui.global::<OutlineBridge>().on_activate(move |index| app.activate_outline_item(index.max(0) as usize));
+    }
+    {
+        let column = ui.global::<ColumnBridge>();
+        let a = app.clone();
+        column.on_changed(move || a.column_changed());
+        let a = app.clone();
+        column.on_accept(move || a.accept_column_editor());
+        let a = app.clone();
+        column.on_cancel(move || a.close_column_editor());
     }
     {
         let search = ui.global::<SearchBridge>();

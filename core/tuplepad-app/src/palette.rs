@@ -59,7 +59,12 @@ fn menu_name(menu: Menu) -> &'static str {
         Menu::Edit => "Edit",
         Menu::Selection => "Selection",
         Menu::Find => "Find",
+        Menu::Text => "Text",
+        Menu::Lines => "Text ▸ Lines",
+        Menu::Case => "Text ▸ Case",
+        Menu::Whitespace => "Text ▸ Whitespace",
         Menu::View => "View",
+        Menu::Folding => "View ▸ Code Folding",
         Menu::None => "",
     }
 }
@@ -118,13 +123,54 @@ pub fn title_parts(title: &str, positions: &[u32]) -> Vec<TitlePart> {
     parts
 }
 
+/// Where `:line` or `:line:column` (as typed in the palette after a colon) points, 1-based.
+pub fn parse_line_target(text: &str) -> Option<(u64, Option<u64>)> {
+    let mut parts = text.trim().splitn(2, [':', ',']);
+    let line = parts.next()?.trim().parse::<u64>().ok()?;
+    let column = parts.next().and_then(|c| c.trim().parse::<u64>().ok());
+    Some((line, column))
+}
+
 impl App {
     pub fn open_palette(&self) {
+        self.open_palette_with("");
+    }
+
+    /// Opens the palette with some text already typed (":" for Go to Line).
+    pub fn open_palette_with(&self, text: &str) {
         *self.palette_entries.borrow_mut() = entries(self);
         if let Some(ui) = self.ui.upgrade() {
+            ui.set_palette_text(text.into());
             ui.set_palette_open(true);
         }
-        self.palette_query("");
+        self.palette_query(text);
+    }
+
+    /// Go to Line: the palette with a colon typed.
+    fn palette_go_to(&self, text: &str) {
+        let lines = self.editor.borrow().buffer().line_count();
+        let target = parse_line_target(text).filter(|&(line, _)| line >= 1);
+        let item = match target {
+            Some((line, column)) => {
+                let line = line.min(lines);
+                let title = match column {
+                    Some(column) => format!("Go to line {}, column {column}", crate::editor::group(line)),
+                    None => format!("Go to line {}", crate::editor::group(line)),
+                };
+                PaletteItem { parts: ModelRc::new(VecModel::from(title_parts(&title, &[]))), detail: format!("of {}", crate::editor::group(lines)).into(), trailing: SharedString::default() }
+            }
+            None => PaletteItem {
+                parts: ModelRc::new(VecModel::from(title_parts("Type a line number", &[]))),
+                detail: format!("1 to {}, and :column if you like", crate::editor::group(lines)).into(),
+                trailing: SharedString::default(),
+            },
+        };
+        *self.palette_target.borrow_mut() = target;
+        self.palette_shown.borrow_mut().clear();
+        if let Some(ui) = self.ui.upgrade() {
+            ui.set_palette_items(ModelRc::new(VecModel::from(vec![item])));
+            ui.set_palette_selected(0);
+        }
     }
 
     pub fn close_palette(&self) {
@@ -136,6 +182,11 @@ impl App {
 
     /// Ranks everything against what's typed and shows the best.
     pub fn palette_query(&self, query: &str) {
+        if let Some(rest) = query.strip_prefix(':') {
+            self.palette_go_to(rest);
+            return;
+        }
+        *self.palette_target.borrow_mut() = None;
         let entries = self.palette_entries.borrow();
         let titles: Vec<String> = entries.iter().map(|e| e.title.clone()).collect();
         let hits = tuplepad_core::fuzzy_rank(query.to_string(), titles, SHOWN);
@@ -165,7 +216,12 @@ impl App {
             let entries = self.palette_entries.borrow();
             shown.get(index).and_then(|&i| entries.get(i)).map(|e| e.id.clone())
         };
+        let target = self.palette_target.borrow_mut().take();
         self.close_palette();
+        if let Some((line, column)) = target {
+            self.go_to(line, column);
+            return;
+        }
         let Some(id) = id else { return };
         if let Some(index) = id.strip_prefix("doc:") {
             self.select_document(index.parse().unwrap_or(0));
@@ -188,6 +244,10 @@ mod tests {
         } else {
             assert_eq!(shown, "Ctrl+Shift+P");
         }
+        assert_eq!(parse_line_target("42"), Some((42, None)));
+        assert_eq!(parse_line_target(" 42:7 "), Some((42, Some(7))));
+        assert_eq!(parse_line_target("12,3"), Some((12, Some(3))));
+        assert_eq!(parse_line_target("x"), None);
         let parts = title_parts("Word Wrap", &[0, 5]);
         let runs: Vec<(String, bool)> = parts.iter().map(|p| (p.text.to_string(), p.matched)).collect();
         assert_eq!(runs, vec![("W".into(), true), ("ord ".into(), false), ("W".into(), true), ("rap".into(), false)]);

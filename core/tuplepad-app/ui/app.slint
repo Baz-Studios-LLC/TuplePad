@@ -1,14 +1,16 @@
 import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { EditorView, EditorBridge, Span, Row, Caret, Band } from "editor.slint";
+import { EditorView, EditorBridge, Span, Row, Caret, Band, CompletionItem } from "editor.slint";
 import { Sidebar, DocItem, IconButton, Icons, PillButton } from "sidebar.slint";
 import { Sheet, Toggle } from "controls.slint";
 import { SettingsWindow, SettingsValues } from "settings.slint";
 import { CommandPalette, PaletteItem, TitlePart } from "palette.slint";
 import { FindBar, FindBridge } from "findbar.slint";
 import { SearchPanel, SearchBridge, SearchRow, PlanRow, ReplacedRow, ReplacePlanSheet } from "searchpanel.slint";
+import { ColumnEditorSheet, ColumnBridge } from "columneditor.slint";
+import { OutlinePanel, OutlineBridge, OutlineRow } from "outline.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, DocItem, Palette, SettingsWindow, SettingsValues, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow }
+export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, Palette, SettingsWindow, SettingsValues, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
@@ -40,6 +42,7 @@ export component AppWindow inherits Window {
     in property <string> status-left;
     in property <string> status-right;
     in-out property <bool> sidebar-visible: true;
+    in property <bool> outline-visible;
     in-out property <length> sidebar-width: 264px;
     in property <bool> wraps;
     // A note above the editor: 0 none, 1 the file changed on disk, 2 the file is gone.
@@ -51,6 +54,7 @@ export component AppWindow inherits Window {
     in property <bool> palette-open;
     in property <[PaletteItem]> palette-items;
     in-out property <int> palette-selected;
+    in-out property <string> palette-text;
     callback palette-query(query: string);
     callback palette-run(index: int);
     callback palette-close();
@@ -69,8 +73,14 @@ export component AppWindow inherits Window {
     in property <[MenuEntry]> edit-menu;
     in property <[MenuEntry]> selection-menu;
     in property <[MenuEntry]> find-menu;
+    in property <[MenuEntry]> text-menu;
+    in property <[MenuEntry]> lines-menu;
+    in property <[MenuEntry]> case-menu;
+    in property <[MenuEntry]> whitespace-menu;
     in property <[MenuEntry]> view-menu;
     in property <[MenuEntry]> view-menu-2;
+    in property <[MenuEntry]> view-menu-3;
+    in property <[MenuEntry]> folding-menu;
     in property <[MenuEntry]> theme-menu;
 
     callback command(id: string);
@@ -199,8 +209,72 @@ export component AppWindow inherits Window {
             }
         }
         Menu {
+            title: "Text";
+            for item in root.text-menu: MenuItem {
+                title: item.title;
+                shortcut: item.shortcut;
+                enabled: item.enabled;
+                checkable: item.checkable;
+                checked: item.checked;
+                activated => { root.command(item.id); }
+            }
+            MenuSeparator { }
+            Menu {
+                title: "Lines";
+                for item in root.lines-menu: MenuItem {
+                    title: item.title;
+                    shortcut: item.shortcut;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            Menu {
+                title: "Case";
+                for item in root.case-menu: MenuItem {
+                    title: item.title;
+                    shortcut: item.shortcut;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            Menu {
+                title: "Whitespace";
+                for item in root.whitespace-menu: MenuItem {
+                    title: item.title;
+                    shortcut: item.shortcut;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+        }
+        Menu {
             title: "View";
             for item in root.view-menu: MenuItem {
+                title: item.title;
+                shortcut: item.shortcut;
+                enabled: item.enabled;
+                checkable: item.checkable;
+                checked: item.checked;
+                activated => { root.command(item.id); }
+            }
+            Menu {
+                title: "Code Folding";
+                for item in root.folding-menu: MenuItem {
+                    title: item.title;
+                    shortcut: item.shortcut;
+                    enabled: item.enabled;
+                    checkable: item.checkable;
+                    checked: item.checked;
+                    activated => { root.command(item.id); }
+                }
+            }
+            for item in root.view-menu-2: MenuItem {
                 title: item.title;
                 shortcut: item.shortcut;
                 enabled: item.enabled;
@@ -217,7 +291,7 @@ export component AppWindow inherits Window {
                     activated => { root.command(item.id); }
                 }
             }
-            for item in root.view-menu-2: MenuItem {
+            for item in root.view-menu-3: MenuItem {
                 title: item.title;
                 shortcut: item.shortcut;
                 enabled: item.enabled;
@@ -430,6 +504,11 @@ export component AppWindow inherits Window {
                 }
             }
         }
+
+        if root.outline-visible: OutlinePanel {
+            width: 250px;
+            header-height: root.titlebar-height > 0 ? 52px : 44px;
+        }
     }
 
     // Files dragged over the window.
@@ -475,8 +554,11 @@ export component AppWindow inherits Window {
 
     if SearchBridge.plan-open: ReplacePlanSheet { }
 
+    if ColumnBridge.open: ColumnEditorSheet { }
+
     if root.palette-open: CommandPalette {
         items: root.palette-items;
+        text <=> root.palette-text;
         selected <=> root.palette-selected;
         query-changed(query) => { root.palette-query(query); }
         run(index) => { root.palette-run(index); }

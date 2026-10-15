@@ -41,6 +41,9 @@ pub struct Settings {
     pub search_include: String,
     pub search_exclude: String,
     pub search_panel_height: f32,
+    pub show_minimap: bool,
+    pub show_outline: bool,
+    pub word_completion: bool,
 }
 
 impl Default for Settings {
@@ -72,6 +75,9 @@ impl Default for Settings {
             search_include: String::new(),
             search_exclude: String::new(),
             search_panel_height: 340.0,
+            show_minimap: true,
+            show_outline: false,
+            word_completion: true,
         }
     }
 }

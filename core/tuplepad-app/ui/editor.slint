@@ -20,6 +20,11 @@ export struct Row {
     spans: [Span],
     current: bool,
     bookmarked: bool,
+    // On a line's first row: 1 where a region can fold, 2 where it's folded.
+    fold: int,
+    // A folded line's last row ends with a "⋯", at `folded-x`.
+    folded-end: bool,
+    folded-x: length,
     // Where indent guides go.
     guides: [length],
 }
@@ -27,6 +32,12 @@ export struct Row {
 export struct Caret {
     row: int,
     x: length,
+}
+
+// A word completion: the part already typed, and the rest.
+export struct CompletionItem {
+    head: string,
+    tail: string,
 }
 
 // A horizontal band on one visual row: part of a selection, a highlighted occurrence, a matched
@@ -67,6 +78,16 @@ export global EditorBridge {
     in property <float> thumb-start;
     in property <float> thumb-size: 1;
     in property <bool> scrollbar-shown;
+    // The minimap (0 wide when it's off), and the view's place in it.
+    in property <length> minimap-width;
+    in property <image> minimap;
+    in property <length> minimap-view-y;
+    in property <length> minimap-view-height;
+    // Word completion's list, under the word at (completion-row, completion-x).
+    in property <[CompletionItem]> completions;
+    in property <int> completion-selected;
+    in property <int> completion-row;
+    in property <length> completion-x;
 
     callback key(event: KeyEvent) -> bool;
     callback text(text: string);
@@ -81,6 +102,10 @@ export global EditorBridge {
     callback focus-changed(focused: bool);
     // A click in the gutter, on a visual row.
     callback gutter-clicked(row: int);
+    // A click on a fold control or a folded line's "⋯".
+    callback fold-clicked(row: int);
+    callback completion-chosen(index: int);
+    callback minimap-pointer(y: length);
 }
 
 component Scrollbar inherits Rectangle {
@@ -162,7 +187,7 @@ export component EditorView inherits Rectangle {
 
     text-area := Rectangle {
         x: EditorBridge.gutter-width;
-        width: root.width - self.x;
+        width: root.width - self.x - EditorBridge.minimap-width;
         clip: true;
 
         for band in EditorBridge.occurrences: Rectangle {
@@ -273,6 +298,30 @@ export component EditorView inherits Rectangle {
             background: Theme.caret.with-alpha(0.6);
         }
 
+        // What a fold hides, shown after its first line; a click unfolds it.
+        for row in EditorBridge.rows: Rectangle {
+            visible: row.folded-end;
+            x: row.folded-x + 8px - EditorBridge.scroll-x;
+            y: root.row-y(row.row) + 3px;
+            width: 28px;
+            height: root.lh - 6px;
+            border-radius: (root.lh - 6px) / 2;
+            background: pill-touch.has-hover ? Theme.control-pressed : Theme.control-hover;
+            border-width: 1px;
+            border-color: Theme.control-border;
+            Text {
+                text: "⋯";
+                font-size: 12px;
+                color: Theme.secondary-text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            pill-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { EditorBridge.fold-clicked(row.row); }
+            }
+        }
+
         // Keyboard and input-method entry point. It sits at the main caret so the input method's
         // candidate window opens there; it draws nothing, and the editor shows composing text inline.
         input := TextInput {
@@ -349,15 +398,31 @@ export component EditorView inherits Rectangle {
         for row in EditorBridge.rows: Rectangle {
             x: 4px;
             y: root.row-y(row.row) + 2px;
-            width: EditorBridge.gutter-width - 14px;
+            width: EditorBridge.gutter-width - 22px;
             height: root.lh - 4px;
             visible: row.bookmarked;
             border-radius: 4px;
             background: Theme.accent.with-alpha(Theme.dark ? 0.55 : 0.16);
         }
+        // Fold controls: always for folded regions, on hover for the rest.
+        for row in EditorBridge.rows: Path {
+            visible: row.fold == 2 || (row.fold == 1 && gutter-touch.has-hover);
+            x: EditorBridge.gutter-width - 17px;
+            y: root.row-y(row.row) + (root.lh - 10px) / 2;
+            width: 10px;
+            height: 10px;
+            viewbox-width: 10;
+            viewbox-height: 10;
+            commands: row.fold == 2 ? "M3.5 2l3 3-3 3" : "M2 3.5l3 3 3-3";
+            fill: transparent;
+            stroke: row.fold == 2 ? Theme.accent.mix(Theme.secondary-text, 0.5) : Theme.tertiary-text;
+            stroke-width: 1.6px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+        }
         for row in EditorBridge.rows: Text {
             x: 0;
-            width: EditorBridge.gutter-width - 20px;
+            width: EditorBridge.gutter-width - 24px;
             y: root.row-y(row.row);
             height: root.lh;
             text: row.number;
@@ -370,16 +435,104 @@ export component EditorView inherits Rectangle {
         }
     }
 
-    // Clicking a line number bookmarks the line.
-    TouchArea {
+    // Clicking a line number bookmarks the line; the strip beside the numbers folds.
+    gutter-touch := TouchArea {
         x: 0;
-        width: EditorBridge.gutter-width - 8px;
+        width: EditorBridge.gutter-width - 2px;
         clicked => {
-            EditorBridge.gutter-clicked(EditorBridge.top-row + floor((self.pressed-y + EditorBridge.scroll-offset) / root.lh));
+            let row = EditorBridge.top-row + floor((self.pressed-y + EditorBridge.scroll-offset) / root.lh);
+            if self.pressed-x >= EditorBridge.gutter-width - 21px {
+                EditorBridge.fold-clicked(row);
+            } else {
+                EditorBridge.gutter-clicked(row);
+            }
         }
         scroll-event(event) => {
             EditorBridge.scrolled(event.delta-x, event.delta-y);
             return EventResult.accept;
+        }
+    }
+
+    if EditorBridge.minimap-width > 0: Rectangle {
+        x: root.width - EditorBridge.minimap-width;
+        width: EditorBridge.minimap-width - 14px;
+        Image {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: root.height;
+            source: EditorBridge.minimap;
+            image-rendering: pixelated;
+        }
+        // Where the view is.
+        Rectangle {
+            y: EditorBridge.minimap-view-y;
+            height: EditorBridge.minimap-view-height;
+            background: Theme.dark ? #FFFFFF : #000000;
+            opacity: minimap-touch.has-hover || minimap-touch.pressed ? (Theme.dark ? 0.12 : 0.08) : (Theme.dark ? 0.07 : 0.045);
+            animate opacity { duration: 120ms; }
+        }
+        minimap-touch := TouchArea {
+            mouse-cursor: default;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down {
+                    EditorBridge.minimap-pointer(self.mouse-y);
+                }
+            }
+            moved => {
+                if self.pressed { EditorBridge.minimap-pointer(self.mouse-y); }
+            }
+            scroll-event(event) => {
+                EditorBridge.scrolled(event.delta-x, event.delta-y);
+                return EventResult.accept;
+            }
+        }
+    }
+
+    // Word completion's list: under the word, or above it near the bottom.
+    if EditorBridge.completions.length > 0: Rectangle {
+        property <length> below: root.row-y(EditorBridge.completion-row + 1) + 3px;
+        x: max(4px, min(root.width - self.width - 4px, EditorBridge.gutter-width + EditorBridge.completion-x - EditorBridge.scroll-x - 9px));
+        y: below + self.height <= root.height - 4px ? below : root.row-y(EditorBridge.completion-row) - self.height - 3px;
+        width: max(150px, list.preferred-width);
+        height: list.preferred-height;
+        border-radius: 8px;
+        background: Theme.header-background;
+        border-width: 1px;
+        border-color: Theme.separator;
+        drop-shadow-blur: 14px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-color: #00000038;
+        list := VerticalLayout {
+            padding: 4px;
+            for item[index] in EditorBridge.completions: Rectangle {
+                height: max(22px, root.lh - 2px);
+                border-radius: 5px;
+                background: index == EditorBridge.completion-selected ? Theme.accent : transparent;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 12px;
+                    Text {
+                        text: item.head;
+                        font-family: root.font-family;
+                        font-size: EditorBridge.font-size;
+                        font-weight: 700;
+                        color: index == EditorBridge.completion-selected ? Theme.accent-text : Theme.primary-text;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: item.tail;
+                        font-family: root.font-family;
+                        font-size: EditorBridge.font-size;
+                        color: index == EditorBridge.completion-selected ? Theme.accent-text : Theme.primary-text;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                TouchArea {
+                    clicked => { EditorBridge.completion-chosen(index); }
+                }
+            }
         }
     }
 

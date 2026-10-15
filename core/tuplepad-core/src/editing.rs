@@ -161,7 +161,50 @@ fn is_quote(c: char) -> bool {
     matches!(c, '"' | '\'' | '`')
 }
 
+/// Word completions for `prefix`: words from `lists` (the current document's first, each list
+/// most frequent first) that start with it, ignoring case, the ones that match its case first.
+/// The prefix itself, and words already offered, are left out.
+pub fn rank_completions(prefix: &str, lists: &[&[String]], limit: usize) -> Vec<String> {
+    let starts_ignoring_case = |word: &str| {
+        let mut word = word.chars().flat_map(char::to_lowercase);
+        prefix.chars().flat_map(char::to_lowercase).all(|p| word.next() == Some(p))
+    };
+    let mut seen = std::collections::HashSet::new();
+    let (mut exact, mut loose) = (Vec::new(), Vec::new());
+    for list in lists {
+        for word in list.iter() {
+            if word.len() <= prefix.len() || !starts_ignoring_case(word) || !seen.insert(word.as_str()) {
+                continue;
+            }
+            if word.starts_with(prefix) { exact.push(word.clone()) } else { loose.push(word.clone()) }
+        }
+        if exact.len() >= limit {
+            break;
+        }
+    }
+    exact.extend(loose);
+    exact.truncate(limit);
+    exact
+}
+
 impl TextBuffer {
+    /// The word fragment just before `pos`, if it's worth completing: at least `min_length`
+    /// letters, digits or underscores, not starting with a digit, and not in the middle of a word.
+    pub fn completion_prefix(&self, pos: TextPos, min_length: usize) -> Option<(TextSelection, String)> {
+        let text = self.line(pos.line);
+        let byte = byte_of(&text, pos.column);
+        if is_word_char(text[byte..].chars().next()) {
+            return None;
+        }
+        let start = text[..byte].char_indices().rev().take_while(|&(_, c)| is_word_char(Some(c))).last().map_or(byte, |(i, _)| i);
+        let word = &text[start..byte];
+        if word.chars().count() < min_length || word.starts_with(|c: char| c.is_ascii_digit()) {
+            return None;
+        }
+        let range = TextSelection { anchor: TextPos::new(pos.line, col_of(&text, start)), head: pos };
+        Some((range, word.to_string()))
+    }
+
     fn line_end(&self, line: u64) -> TextPos {
         TextPos::new(line, self.line_length(line))
     }
@@ -713,6 +756,22 @@ mod tests {
 
     fn buffer(text: &str) -> std::sync::Arc<TextBuffer> {
         TextBuffer::with_text(text.to_string())
+    }
+
+    #[test]
+    fn completion_prefixes_and_ranking() {
+        let b = buffer("let résumé_2 = foo\n  9ab x\nab");
+        assert_eq!(b.completion_prefix(TextPos::new(0, 12), 3), Some((sel((0, 4), (0, 12)), "résumé_2".to_string())));
+        // Too short, mid-word, or starting with a digit: nothing.
+        assert_eq!(b.completion_prefix(TextPos::new(0, 17), 3), None);
+        assert_eq!(b.completion_prefix(TextPos::new(0, 6), 3), None);
+        assert_eq!(b.completion_prefix(TextPos::new(1, 5), 3), None);
+        assert_eq!(b.completion_prefix(TextPos::new(2, 2), 2), Some((sel((2, 0), (2, 2)), "ab".to_string())));
+        let current: Vec<String> = ["Apple", "apply", "app", "banana"].iter().map(|s| s.to_string()).collect();
+        let other: Vec<String> = ["application", "apply", "APPEND"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(rank_completions("app", &[&current, &other], 8), ["apply", "application", "Apple", "APPEND"]);
+        assert_eq!(rank_completions("App", &[&current, &other], 2), ["Apple", "apply"]);
+        assert!(rank_completions("zzz", &[&current], 8).is_empty());
     }
 
     #[test]
