@@ -192,10 +192,8 @@ impl TextBuffer {
         for line in st.rope.lines().take(200) {
             // Only the start of each line matters (it may be megabytes long).
             let text: String = line.chars().take(max_chars as usize * 2).collect();
-            let text = text.trim();
-            if text.is_empty() {
-                continue;
-            }
+            // Words only: comment markers and banners of ===== or ----- say nothing.
+            let Some(text) = preview_words(&text) else { continue };
             if !preview.is_empty() {
                 preview.push(' ');
             }
@@ -850,4 +848,19 @@ fn scan_lines(text: &str) -> LineScan {
         LineEnding::Lf
     };
     LineScan { line_ending, max_line_bytes: max_line as u64 }
+}
+
+/// A line as the preview shows it: without comment markers and decorative runs of `=`, `-`
+/// or `*` around it, or None when no words are left.
+fn preview_words(line: &str) -> Option<&str> {
+    const DECORATION: &str = "-/#*=;!<>[~|%'";
+    let trimmed = line.trim();
+    // A list item keeps its bullet.
+    let bullet = ["- ", "* ", "+ "].iter().any(|b| trimmed.starts_with(b)) && !trimmed[2..].starts_with(|c: char| DECORATION.contains(c));
+    let text = if bullet { trimmed } else { trimmed.trim_start_matches(|c: char| c.is_whitespace() || DECORATION.contains(c)).trim_end() };
+    // A trailing run of two or more decoration characters ("*/", "-->", "=====").
+    let run: usize = text.chars().rev().take_while(|&c| c.is_whitespace() || "-=*/#~<>|]".contains(c)).map(char::len_utf8).sum();
+    let ending = text.chars().rev().take_while(|&c| c.is_whitespace() || "-=*/#~<>|]".contains(c)).filter(|c| !c.is_whitespace()).count();
+    let text = if ending >= 2 { text[..text.len() - run].trim_end() } else { text };
+    (text.chars().filter(|c| c.is_alphabetic()).count() >= 2).then_some(text)
 }

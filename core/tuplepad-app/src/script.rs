@@ -562,6 +562,18 @@ fn run_next(app: Rc<App>, runner: Shared) {
                 let _ = std::fs::write(path, serde_json::to_string_pretty(&app.preview_dump()).unwrap_or_default());
             }
         }
+        "context" => {
+            // {"context": [x, y]} right-clicks in the editor (opening nothing; the items are
+            // dumped), {"context": "id"} chooses an item.
+            match arg.as_array() {
+                Some(p) if p.len() == 2 => {
+                    let pane = app.editor.borrow().focused_pane();
+                    app.context_requested(pane, p[0].as_f64().unwrap_or(0.0) as f32, p[1].as_f64().unwrap_or(0.0) as f32);
+                }
+                _ => app.context_chosen(arg.as_str().unwrap_or_default()),
+            }
+        }
+        "waitSpelling" => return wait_until(app, runner, |_| tuplepad_core::spelling_ready(), Instant::now()),
         "waitSearch" => return wait_until(app, runner, |app| !app.search_busy(), Instant::now()),
         "searchStatus" => {
             let state = app.search_dump();
@@ -658,6 +670,14 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
             "shell_input": b.get_shell_input().as_str(),
         })
     };
+    let context_items: Vec<Value> = {
+        use slint::Model;
+        ui.global::<crate::EditorBridge>().get_context_items().iter().map(|i| json!([i.id.as_str(), i.title.as_str(), i.enabled])).collect()
+    };
+    let misspelled: usize = {
+        use slint::Model;
+        ui.global::<crate::EditorBridge>().get_misspelled().row_count()
+    };
     let sidebar_rows: Vec<Value> = {
         use slint::Model;
         ui.get_docs().iter().map(|d| json!([d.name.as_str(), d.badge.as_str()])).collect()
@@ -704,6 +724,8 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "palette_selected": ui.get_palette_selected(),
         "sidebar": ui.get_sidebar_visible(),
         "sidebar_rows": sidebar_rows,
+        "context_items": context_items,
+        "misspelled": misspelled,
         "sidebar_mode": ui.get_sidebar_mode(),
         "outline_visible": ui.get_outline_visible(),
         "minimap": ui.global::<crate::EditorBridge>().get_minimap_width() > 0.0,

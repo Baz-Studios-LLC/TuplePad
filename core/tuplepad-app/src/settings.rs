@@ -46,6 +46,9 @@ pub struct Settings {
     pub word_completion: bool,
     /// The folder open in the sidebar.
     pub folder: Option<String>,
+    pub check_spelling: bool,
+    /// Words taught to the spell checker.
+    pub spelling_words: Vec<String>,
 }
 
 impl Default for Settings {
@@ -81,6 +84,8 @@ impl Default for Settings {
             show_outline: false,
             word_completion: true,
             folder: None,
+            check_spelling: true,
+            spelling_words: Vec::new(),
         }
     }
 }

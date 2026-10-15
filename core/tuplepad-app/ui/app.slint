@@ -1,6 +1,6 @@
 import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { EditorView, EditorBridge, Span, Row, Caret, Band, CompletionItem } from "editor.slint";
+import { EditorView, EditorBridge, Span, Row, Caret, Band, CompletionItem, ContextItem } from "editor.slint";
 import { Sidebar, DocItem, FolderRow, IconButton, Icons, PillButton } from "sidebar.slint";
 import { Sheet, Toggle } from "controls.slint";
 import { SettingsWindow, SettingsValues, SnippetRow } from "settings.slint";
@@ -13,7 +13,7 @@ import { ToolBridge, HashRow, XPathRow, HashesSheet, XPathSheet, CsvSortSheet, S
 import { ToolViewBridge, HexLine, CompareLine, HexView, CompareView } from "toolviews.slint";
 import { PreviewBridge, PreviewBlock, CodeLine, CodePart, MarkdownPreview } from "preview.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, DocItem, FolderRow, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow, ToolViewBridge, HexLine, CompareLine, PreviewBridge, PreviewBlock, CodeLine, CodePart }
+export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, ContextItem, DocItem, FolderRow, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow, ToolViewBridge, HexLine, CompareLine, PreviewBridge, PreviewBlock, CodeLine, CodePart }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.

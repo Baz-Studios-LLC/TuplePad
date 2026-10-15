@@ -978,3 +978,11 @@ fn highlights_for_part_of_a_long_line() {
     assert_eq!(got, expected);
     assert!(got.iter().any(|s| s.2 == HighlightStyle::String));
 }
+
+#[test]
+fn previews_skip_decoration() {
+    let buffer = TextBuffer::with_text("--[[ ==========\n-- Entity system for the game\n--]] ==========\nlocal x = 1\n".into());
+    assert_eq!(buffer.preview(80), "Entity system for the game local x = 1");
+    let buffer = TextBuffer::with_text("/* Notes */\n# Title\nlet a = [1, 2]\n".into());
+    assert_eq!(buffer.preview(80), "Notes Title let a = [1, 2]");
+}

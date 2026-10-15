@@ -30,6 +30,7 @@ mod script;
 mod search_panel;
 mod sheets;
 mod snippets;
+mod spelling;
 mod session;
 mod settings;
 mod settings_window;
@@ -151,6 +152,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.window().set_size(slint::LogicalSize::new(width, height));
     }
 
+    // The spelling dictionary takes a moment to load, so it loads while the window opens.
+    std::thread::spawn(tuplepad_core::prepare_spelling);
     let app = App::new(&ui, settings, settings_path, session_folder.map(SessionStore::new), scripted);
     platform::set_app(&app);
     platform::install_open_handler();
@@ -244,6 +247,14 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
     {
         let edit = edit.clone();
         bridge.on_minimap_pointer(move |pane, y| edit(pane, &|e| e.minimap_scroll(y)));
+    }
+    {
+        let app = app.clone();
+        bridge.on_context_requested(move |pane, x, y| app.context_requested(pane.max(0) as usize, x, y));
+    }
+    {
+        let app = app.clone();
+        bridge.on_context_chosen(move |id| app.context_chosen(&id));
     }
     {
         let app = app.clone();

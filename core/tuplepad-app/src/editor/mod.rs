@@ -42,6 +42,7 @@ pub struct ViewOptions {
     pub tab_width: u32,
     pub default_indentation: Indentation,
     pub minimap: bool,
+    pub spelling: bool,
 }
 
 /// What a mouse drag extends: the caret, word or line first clicked.
@@ -145,6 +146,12 @@ pub struct Editor {
     find_model: Rc<VecModel<Band>>,
     /// The find bar's match that is selected, drawn stronger than the others.
     current_match_model: Rc<VecModel<Band>>,
+    /// Misspelled words on screen, and what they were found for.
+    misspelled_model: Rc<VecModel<Band>>,
+    spell_cache: Option<((String, u64, u64, u64, u64), Vec<TextSelection>)>,
+    /// Words the user taught the spell checker, and a count of changes to them.
+    pub spelling_words: std::sync::Arc<std::collections::HashSet<String>>,
+    pub spelling_generation: u64,
     mark_model: Rc<VecModel<Band>>,
     /// What smart highlighting shows, and the caret state it was found for.
     smart: Option<SearchQuery>,
@@ -175,6 +182,8 @@ impl Editor {
         let active_model = Rc::new(VecModel::default());
         let find_model = Rc::new(VecModel::default());
         let current_match_model = Rc::new(VecModel::default());
+        let misspelled_model = Rc::new(VecModel::default());
+        bridge.set_misspelled(ModelRc::from(misspelled_model.clone()));
         let mark_model = Rc::new(VecModel::default());
         bridge.set_find_matches(ModelRc::from(find_model.clone()));
         bridge.set_current_matches(ModelRc::from(current_match_model.clone()));
@@ -237,6 +246,10 @@ impl Editor {
             minimap_first: 0,
             find_model,
             current_match_model,
+            misspelled_model,
+            spell_cache: None,
+            spelling_words: Default::default(),
+            spelling_generation: 0,
             mark_model,
             smart: None,
             smart_for: None,
@@ -982,6 +995,28 @@ impl Editor {
         replace_if_changed(&self.occurrence_model, occurrences);
         replace_if_changed(&self.find_model, found);
         replace_if_changed(&self.current_match_model, current_match);
+
+        // Misspelled words in the lines on screen (but not the one being typed at the caret).
+        let misspelled = if self.options.spelling && tuplepad_core::spelling_ready() && !lines.is_empty() {
+            let last = *lines.last().unwrap_or(&first_line);
+            let key = (self.doc().id.clone(), buffer.version(), first_line, last, self.spelling_generation);
+            if self.spell_cache.as_ref().is_none_or(|(k, _)| *k != key) {
+                let found = buffer.misspellings(first_line, last - first_line + 1, &self.spelling_words);
+                self.spell_cache = Some((key, found));
+            }
+            let found = self.spell_cache.as_ref().map(|(_, f)| f.clone()).unwrap_or_default();
+            let typing = cursors.last().filter(|c| c.anchor == c.head).map(|c| c.head);
+            let mut bands = Vec::new();
+            for word in found.iter().filter(|w| Some(w.end()) != typing) {
+                if let Some(i) = position_of(word.start().line) {
+                    bands.extend(geometries[i].bands(first_rows[i], word.start().column as usize, word.end().column as usize, false, 0.0));
+                }
+            }
+            bands
+        } else {
+            Vec::new()
+        };
+        replace_if_changed(&self.misspelled_model, misspelled);
         replace_if_changed(&self.mark_model, marked);
         replace_if_changed(&self.bracket_model, brackets);
         replace_if_changed(&self.underline_model, underlines);

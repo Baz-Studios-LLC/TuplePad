@@ -68,6 +68,8 @@ pane_view! {
     active_model: Rc<VecModel<i32>> = Rc::new(VecModel::default()),
     find_model: Rc<VecModel<crate::Band>> = Rc::new(VecModel::default()),
     current_match_model: Rc<VecModel<crate::Band>> = Rc::new(VecModel::default()),
+    misspelled_model: Rc<VecModel<crate::Band>> = Rc::new(VecModel::default()),
+    spell_cache: Option<((String, u64, u64, u64, u64), Vec<TextSelection>)> = None,
     mark_model: Rc<VecModel<crate::Band>> = Rc::new(VecModel::default()),
     goals: Option<Vec<f32>> = None,
     preedit: String = String::new(),
@@ -102,6 +104,7 @@ impl PaneView {
         bridge.set_find_matches_2(ModelRc::from(view.find_model.clone()));
         bridge.set_current_matches_2(ModelRc::from(view.current_match_model.clone()));
         bridge.set_marks_2(ModelRc::from(view.mark_model.clone()));
+        bridge.set_misspelled_2(ModelRc::from(view.misspelled_model.clone()));
         Box::new(view)
     }
 }

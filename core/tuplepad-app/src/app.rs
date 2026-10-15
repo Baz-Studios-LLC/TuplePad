@@ -38,6 +38,9 @@ pub struct App {
     pub folder: RefCell<Option<crate::folder::FolderState>>,
     pub compare_state: RefCell<crate::toolviews::CompareState>,
     pub preview: RefCell<crate::preview::PreviewState>,
+    pub context_word: RefCell<crate::spelling::ContextWord>,
+    /// Words Ignore Spelling accepted, until TuplePad quits.
+    pub ignored_words: RefCell<std::collections::HashSet<String>>,
     folder_marked: RefCell<Option<PathBuf>>,
     pub toast_timer: slint::Timer,
     pub snippets: RefCell<crate::snippets::SnippetStore>,
@@ -89,6 +92,7 @@ pub fn view_options(settings: &Settings) -> ViewOptions {
         tab_width: settings.tab_width.max(1),
         default_indentation: settings.indentation(),
         minimap: settings.show_minimap,
+        spelling: settings.check_spelling,
     }
 }
 
@@ -158,6 +162,8 @@ impl App {
             folder: RefCell::new(None),
             compare_state: RefCell::new(Default::default()),
             preview: RefCell::new(Default::default()),
+            context_word: RefCell::new(Default::default()),
+            ignored_words: RefCell::new(Default::default()),
             folder_marked: RefCell::new(None),
             toast_timer: slint::Timer::default(),
             snippets: RefCell::new(crate::snippets::SnippetStore::load(
@@ -229,6 +235,11 @@ impl App {
         }
         if let Ok(mut editor) = self.editor.try_borrow_mut() {
             editor.set_options(view_options(&settings));
+            let words = self.accepted_words();
+            if *editor.spelling_words != words {
+                editor.spelling_words = std::sync::Arc::new(words);
+                editor.spelling_generation += 1;
+            }
             let family = fonts::pick(&mut editor.layouter, &settings.font_family);
             if editor.family != family || editor.font_size != settings.font_size || editor.line_height_factor != settings.line_height {
                 editor.set_font(&family, settings.font_size, settings.line_height);
@@ -372,6 +383,7 @@ impl App {
         let checked = |id: &str| match id {
             "view.sidebar" => settings.sidebar_visible,
             "view.minimap" => settings.show_minimap,
+            "edit.spelling" => settings.check_spelling,
             "tools.markdown-preview" => preview_open,
             "csv.delimiter-comma" => delimiter.as_deref() == Some(","),
             "csv.delimiter-tab" => delimiter.as_deref() == Some("\t"),
@@ -706,6 +718,7 @@ impl App {
             "bookmark.delete" => self.delete_bookmarked_lines(),
             "bookmark.clear" => self.clear_bookmarks(),
             "view.minimap" => self.change_settings(|s| s.show_minimap = !s.show_minimap),
+            "edit.spelling" => self.change_settings(|s| s.check_spelling = !s.check_spelling),
             "view.split-side" => self.set_split(crate::editor::panes::Split::SideBySide),
             "view.split-stacked" => self.set_split(crate::editor::panes::Split::Stacked),
             "view.split-off" => {
