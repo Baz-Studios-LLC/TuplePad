@@ -317,6 +317,7 @@ impl App {
             theme.set_mono_family(main.get_mono_family());
         }
         self.show_mcp_settings(&window);
+        self.refresh_settings_updates();
     }
 }
 
