@@ -19,6 +19,8 @@ pub struct DisplayLine {
     pub preedit: Option<(usize, usize)>,
     /// Display columns where an expanded tab starts.
     tab_starts: Vec<usize>,
+    /// Display columns of control characters, drawn as faint symbols (␀ for NUL and so on).
+    controls: Vec<usize>,
     /// Width of the leading whitespace, in cells.
     pub indent_cells: usize,
     /// Whether the line is only whitespace.
@@ -32,6 +34,7 @@ impl DisplayLine {
         let mut text = String::with_capacity(source.len());
         let mut map = if plain { None } else { Some(Vec::with_capacity(source.len() + 1)) };
         let mut tab_starts = Vec::new();
+        let mut controls = Vec::new();
         let mut shown = None;
         let (mut src, mut col, mut cells) = (0, 0, 0);
         let mut indent_cells = None;
@@ -64,6 +67,13 @@ impl DisplayLine {
                 text.extend(std::iter::repeat_n(' ', spaces));
                 col += spaces;
                 cells += spaces;
+            } else if is_control(ch) {
+                // Drawn as a chip in its cell (fonts rarely have the Control Pictures), rather
+                // than nothing: binary files and stray NULs would mislead.
+                controls.push(col);
+                text.push(' ');
+                col += units;
+                cells += 1;
             } else {
                 text.push(ch);
                 col += units;
@@ -78,7 +88,7 @@ impl DisplayLine {
             map.push(col);
         }
         let blank = indent_cells.is_none();
-        DisplayLine { text, map, preedit: shown, tab_starts, indent_cells: indent_cells.unwrap_or(cells), blank }
+        DisplayLine { text, map, preedit: shown, tab_starts, controls, indent_cells: indent_cells.unwrap_or(cells), blank }
     }
 
     pub fn col(&self, source_col: usize) -> usize {
@@ -86,6 +96,11 @@ impl DisplayLine {
             Some(map) => map.get(source_col).copied().unwrap_or(*map.last().unwrap_or(&0)),
             None => source_col,
         }
+    }
+
+    /// Source columns of the control characters.
+    pub fn control_columns(&self) -> Vec<usize> {
+        self.controls.iter().map(|&c| self.source_col(c)).collect()
     }
 
     pub fn source_col(&self, display_col: usize) -> usize {
@@ -210,6 +225,11 @@ fn styled(text: &str, x: f32, style: i32) -> Span {
     Span { x, text: SharedString::from(text), style, bold: matches!(style, 17 | 19), italic: style == 18 }
 }
 
+/// Control characters other than tab (line breaks never reach a line's text).
+fn is_control(ch: char) -> bool {
+    ch != '\t' && (ch < ' ' || ch == '\u{7f}')
+}
+
 /// Spaces as middle dots, and the start of each tab as an arrow.
 fn invisible_span(piece: &str, start: usize, x: f32, display: &DisplayLine) -> Span {
     let text: String = piece
@@ -257,6 +277,11 @@ mod tests {
         assert!(DisplayLine::new("   ", None, 4).blank);
         // Tab stops count wide characters as two cells.
         assert_eq!(DisplayLine::new("名\tx", None, 4).text, "名  x");
+        // Control characters show as symbols in the same columns.
+        let binary = DisplayLine::new("a\u{0}\u{1b}b\u{7f}", None, 4);
+        assert_eq!(binary.text, "a  b ");
+        assert_eq!(binary.controls, vec![1, 2, 4]);
+        assert_eq!(binary.control_columns(), vec![1, 2, 4]);
     }
 
     #[test]

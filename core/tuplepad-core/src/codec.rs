@@ -191,6 +191,6 @@ pub fn hash_text(algorithm: HashAlgorithm, text: String) -> String {
 /// The hash of a file's bytes, read in chunks.
 #[uniffi::export]
 pub fn hash_file(algorithm: HashAlgorithm, path: String) -> CoreResult<String> {
-    let mut file = std::fs::File::open(&path).map_err(|e| CoreError::Io { message: format!("{path}: {e}") })?;
+    let mut file = std::fs::File::open(&path).map_err(CoreError::from)?;
     Ok(hash_reader(algorithm, &mut file)?)
 }

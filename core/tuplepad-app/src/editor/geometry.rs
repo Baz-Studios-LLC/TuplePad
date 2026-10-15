@@ -129,6 +129,24 @@ impl LineGeometry {
 
     /// Bands covering source columns `from..to`, one per row they cross. `through_eol` adds
     /// `eol` of width at the end of the line, for a selected line break.
+    /// Source columns of control characters (drawn as chips).
+    pub fn control_columns(&self) -> Vec<usize> {
+        match &self.kind {
+            Kind::Laid { display, .. } => display.control_columns(),
+            Kind::Grid { start, text, .. } => {
+                let mut columns = Vec::new();
+                let mut col = *start;
+                for ch in text.chars() {
+                    if ch != '\t' && (ch < ' ' || ch == '\u{7f}') {
+                        columns.push(col);
+                    }
+                    col += ch.len_utf16();
+                }
+                columns
+            }
+        }
+    }
+
     pub fn bands(&self, first_row: u64, from: usize, to: usize, through_eol: bool, eol: f32) -> Vec<Band> {
         let mut bands = Vec::new();
         for sub in 0..self.rows() {

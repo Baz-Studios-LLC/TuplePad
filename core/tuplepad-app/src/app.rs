@@ -53,6 +53,8 @@ pub struct App {
     /// For scripted runs: the last toast, tool error and HTML copied.
     pub last_toast: RefCell<Option<String>>,
     pub last_tool_error: RefCell<Option<String>>,
+    /// Alerts shown (only kept in scripted runs, for checking).
+    pub alerts: RefCell<Vec<String>>,
     pub last_copied_html: RefCell<Option<String>>,
     /// The font choices the Settings window offers (worked out when it first opens).
     pub font_choices: RefCell<Vec<(String, String)>>,
@@ -179,6 +181,7 @@ impl App {
             status_model,
             last_toast: RefCell::new(None),
             last_tool_error: RefCell::new(None),
+            alerts: RefCell::new(Vec::new()),
             last_copied_html: RefCell::new(None),
             editor: RefCell::new(editor),
             settings: RefCell::new(settings),
@@ -334,6 +337,7 @@ impl App {
         let (banner, banner_text) = match doc.conflict {
             Some(Conflict::Changed) => (1, format!("“{}” changed on disk, and you have unsaved changes here.", doc.name())),
             Some(Conflict::Missing) => (2, format!("“{}” was moved or deleted. Your copy is still open.", doc.name())),
+            None if doc.binary_notice => (3, format!("“{}” looks like a binary file. Saving it as text could change it.", doc.name())),
             None => (0, String::new()),
         };
         ui.set_banner(banner);
@@ -705,6 +709,10 @@ impl App {
             }
             "file.trash" => self.trash_current(),
             "tools.hex" => self.show_hex(),
+            "binary.dismiss" => {
+                self.editor.borrow_mut().doc_mut().binary_notice = false;
+                self.refresh();
+            }
             "help.shortcuts" => self.show_shortcuts(),
             "tools.markdown-preview" => self.toggle_preview(),
             "compare.saved" => self.compare(crate::toolviews::CompareWith::Saved),
@@ -968,12 +976,17 @@ impl App {
                     if settings.detect_indentation {
                         doc.indentation = Indentation::detect(&doc.buffer);
                     }
+                    doc.binary = doc.buffer.file_info().looks_binary;
+                    doc.binary_notice = doc.binary;
                     self.open_ms.borrow_mut().push((doc.name(), ms));
                     self.settings.borrow_mut().note_recent(&absolute);
                     self.add_document(doc);
                     opened += 1;
                 }
-                Err(error) => self.alert(&format!("TuplePad couldn't open “{}”.", path.display()), &error.to_string()),
+                Err(error) => {
+                    let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
+                    self.alert(&format!("TuplePad couldn't open “{name}”."), &error.to_string());
+                }
             }
         }
         // An empty untitled document someone hasn't used gives way to what was opened.
@@ -991,6 +1004,10 @@ impl App {
         }
         let unused = editor.docs.iter().position(|d| d.is_untitled() && !d.buffer.is_modified() && d.buffer.len_utf16() == 0);
         if let Some(index) = unused {
+            // Its number goes back, so the next new document isn't "Untitled 2" for no reason.
+            if editor.docs[index].untitled_number == self.untitled_count.get() {
+                self.untitled_count.set(self.untitled_count.get().saturating_sub(1));
+            }
             let current = editor.current;
             editor.remove_document(index);
             let target = if current > index { current - 1 } else { current };
@@ -1003,6 +1020,11 @@ impl App {
     pub fn open_requests(&self, requests: Vec<(PathBuf, Option<u64>, Option<u64>)>) {
         for (path, line, column) in requests {
             let path = crate::platform::absolute(&path);
+            // A folder (from the command line, Finder or a drop) opens in the sidebar.
+            if path.is_dir() {
+                self.open_folder(&path);
+                continue;
+            }
             if path.exists() {
                 self.open_paths(std::slice::from_ref(&path));
             } else {
@@ -1180,6 +1202,17 @@ impl App {
             }
         };
         let Some((path, new_path)) = target else { return false };
+        // Bytes that couldn't be read in the file's encoding were shown as �; saving writes those.
+        let info = buffer.file_info();
+        if info.had_decode_errors
+            && !self.confirm(
+                &format!("Some of “{name}” couldn't be read as {}.", info.encoding.name),
+                "Those characters show as �, and saving writes them that way, so the original bytes are lost. To keep them, reopen the file in its right encoding first (File ▸ Reopen with Encoding).",
+                "Save Anyway",
+            )
+        {
+            return false;
+        }
         let result = if new_path { buffer.save_as(path.to_string_lossy().into_owned()) } else { buffer.save() };
         match result {
             Ok(()) => {
@@ -1472,6 +1505,7 @@ impl App {
     pub fn alert(&self, title: &str, detail: &str) {
         eprintln!("{title} {detail}");
         if self.is_scripted() {
+            self.alerts.borrow_mut().push(format!("{title} {detail}"));
             return;
         }
         rfd::MessageDialog::new().set_level(rfd::MessageLevel::Warning).set_title(title).set_description(detail).show();

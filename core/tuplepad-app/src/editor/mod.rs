@@ -157,6 +157,8 @@ pub struct Editor {
     /// What AI tools just changed (over MCP), by document id, highlighted while it fades.
     pub flashes: HashMap<String, Vec<TextSelection>>,
     flash_model: Rc<VecModel<Band>>,
+    /// Control characters on screen, drawn as chips.
+    control_model: Rc<VecModel<Band>>,
     /// What smart highlighting shows, and the caret state it was found for.
     smart: Option<SearchQuery>,
     smart_for: Option<(u64, Vec<TextSelection>)>,
@@ -194,6 +196,8 @@ impl Editor {
         bridge.set_marks(ModelRc::from(mark_model.clone()));
         let flash_model = Rc::new(VecModel::default());
         bridge.set_flashes(ModelRc::from(flash_model.clone()));
+        let control_model = Rc::new(VecModel::default());
+        bridge.set_controls(ModelRc::from(control_model.clone()));
         bridge.set_rows(ModelRc::from(row_model.clone()));
         bridge.set_carets(ModelRc::from(caret_model.clone()));
         bridge.set_selections(ModelRc::from(selection_model.clone()));
@@ -259,6 +263,7 @@ impl Editor {
             mark_model,
             flashes: HashMap::new(),
             flash_model,
+            control_model,
             smart: None,
             smart_for: None,
             private_clipboard: None,
@@ -1005,7 +1010,7 @@ impl Editor {
         replace_if_changed(&self.current_match_model, current_match);
 
         // Misspelled words in the lines on screen (but not the one being typed at the caret).
-        let misspelled = if self.options.spelling && tuplepad_core::spelling_ready() && !lines.is_empty() {
+        let misspelled = if self.options.spelling && !self.doc().binary && tuplepad_core::spelling_ready() && !lines.is_empty() {
             let last = *lines.last().unwrap_or(&first_line);
             let key = (self.doc().id.clone(), buffer.version(), first_line, last, self.spelling_generation);
             if self.spell_cache.as_ref().is_none_or(|(k, _)| *k != key) {
@@ -1036,6 +1041,13 @@ impl Editor {
             }
         }
         replace_if_changed(&self.flash_model, flashed);
+        let mut controls = Vec::new();
+        for (i, geometry) in geometries.iter().enumerate() {
+            for col in geometry.control_columns() {
+                controls.extend(geometry.bands(first_rows[i], col, col + 1, false, 0.0));
+            }
+        }
+        replace_if_changed(&self.control_model, controls);
         replace_if_changed(&self.bracket_model, brackets);
         replace_if_changed(&self.underline_model, underlines);
         replace_if_changed(&self.active_model, active_rows);

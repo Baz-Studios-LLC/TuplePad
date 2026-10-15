@@ -84,6 +84,9 @@ export global EditorBridge {
     in property <[Band]> flashes;
     in property <[Band]> flashes-2;
     in property <bool> flash-on;
+    // Control characters (NUL and the like), drawn as chips.
+    in property <[Band]> controls;
+    in property <[Band]> controls-2;
     in property <[Band]> brackets;
     in property <[Band]> brackets-2;
     in property <[Band]> preedit-underlines;
@@ -223,6 +226,7 @@ export component EditorView inherits Rectangle {
     property <[Band]> misspelled: root.pane == 0 ? EditorBridge.misspelled : EditorBridge.misspelled-2;
     property <[Band]> marks: root.pane == 0 ? EditorBridge.marks : EditorBridge.marks-2;
     property <[Band]> flashes: root.pane == 0 ? EditorBridge.flashes : EditorBridge.flashes-2;
+    property <[Band]> controls: root.pane == 0 ? EditorBridge.controls : EditorBridge.controls-2;
     property <[Band]> brackets: root.pane == 0 ? EditorBridge.brackets : EditorBridge.brackets-2;
     property <[Band]> preedit-underlines: root.pane == 0 ? EditorBridge.preedit-underlines : EditorBridge.preedit-underlines-2;
     property <[int]> active-rows: root.pane == 0 ? EditorBridge.active-rows : EditorBridge.active-rows-2;
@@ -317,6 +321,16 @@ export component EditorView inherits Rectangle {
             height: root.lh - 2px;
             border-radius: 3px;
             background: Theme.mark;
+        }
+
+        for band in root.controls: Rectangle {
+            x: band.x - root.scroll-x + 1.5px;
+            width: max(3px, band.width - 3px);
+            y: root.row-y(band.row) + root.lh * 0.24;
+            height: root.lh * 0.52;
+            border-radius: 2.5px;
+            background: Theme.syntax[24];
+            opacity: 0.55;
         }
 
         flash-layer := Rectangle {

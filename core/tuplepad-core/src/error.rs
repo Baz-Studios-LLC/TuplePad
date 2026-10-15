@@ -30,7 +30,31 @@ impl CoreError {
 
 impl From<std::io::Error> for CoreError {
     fn from(error: std::io::Error) -> Self {
-        CoreError::Io { message: error.to_string() }
+        CoreError::Io { message: friendly_io(&error) }
+    }
+}
+
+/// An I/O error as a sentence people can act on (the file's name is shown beside it already).
+pub fn friendly_io(error: &std::io::Error) -> String {
+    use std::io::ErrorKind::*;
+    match error.kind() {
+        NotFound => "The file isn't there anymore.".into(),
+        PermissionDenied => "You don't have permission to read or change it.".into(),
+        IsADirectory => "It's a folder.".into(),
+        StorageFull => "The disk is full.".into(),
+        ReadOnlyFilesystem => "The disk it's on can't be changed.".into(),
+        OutOfMemory => "There isn't enough memory.".into(),
+        _ => {
+            // "Something (os error 5)" reads better without the code.
+            let text = error.to_string();
+            let text = match text.rfind(" (os error ") {
+                Some(at) => text[..at].to_string(),
+                None => text,
+            };
+            let mut chars = text.chars();
+            let text = chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default();
+            if text.ends_with('.') { text } else { format!("{text}.") }
+        }
     }
 }
 

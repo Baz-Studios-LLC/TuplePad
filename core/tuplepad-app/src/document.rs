@@ -29,6 +29,9 @@ pub struct Document {
     pub conflict: Option<Conflict>,
     /// Mark All: a search whose matches stay highlighted until cleared.
     pub mark: Option<SearchQuery>,
+    /// The file looks binary (spelling isn't checked), and whether its notice is still showing.
+    pub binary: bool,
+    pub binary_notice: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,6 +59,8 @@ impl Document {
             follow: false,
             conflict: None,
             mark: None,
+            binary: false,
+            binary_notice: false,
         }
     }
 

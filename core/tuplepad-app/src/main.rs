@@ -167,6 +167,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let count = session::restore(store, &mut app.editor.borrow_mut());
         app.untitled_count.set(count);
     }
+    // There's always a document, even while files are opening (an untitled one gives way to them).
+    if app.editor.borrow().docs.is_empty() {
+        app.new_document();
+    }
     let requests: Vec<_> = links.iter().filter_map(|link| platform::request_for(link)).collect();
     for request in requests {
         match request {

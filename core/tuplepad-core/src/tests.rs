@@ -1021,3 +1021,42 @@ fn outside_edits_keep_the_persons_carets() {
     assert_eq!(emoji.position_for_character(1, 5), None);
     assert_eq!(emoji.position_for_character(3, 1), None);
 }
+
+// MARK: Opening awkward files
+
+#[test]
+fn awkward_files_are_refused_with_a_reason() {
+    let folder = std::env::temp_dir().join(format!("tuplepad-awkward-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = |name: &str| folder.join(name).to_string_lossy().into_owned();
+    let message = |name: &str| match TextBuffer::open(path(name)) {
+        Ok(_) => "opened".to_string(),
+        Err(error) => error.to_string(),
+    };
+    assert_eq!(message("missing.txt"), "The file isn't there anymore.");
+    std::fs::create_dir(folder.join("sub")).unwrap();
+    assert_eq!(message("sub"), "It's a folder.");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert!(std::process::Command::new("mkfifo").arg(path("pipe")).status().unwrap().success());
+        assert!(message("pipe").starts_with("It isn't an ordinary file"), "a pipe would block forever");
+        std::fs::write(path("locked.txt"), "secret").unwrap();
+        std::fs::set_permissions(path("locked.txt"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert_eq!(message("locked.txt"), "You don't have permission to read or change it.");
+        // A read-only file opens, but saving over it is refused.
+        std::fs::write(path("read-only.txt"), "keep\n").unwrap();
+        std::fs::set_permissions(path("read-only.txt"), std::fs::Permissions::from_mode(0o444)).unwrap();
+        let buffer = TextBuffer::open(path("read-only.txt")).unwrap();
+        buffer.edit(vec![TextSelection::caret(TextPos::new(0, 0))], vec!["changed ".into()], EditKind::Typing, vec![]);
+        assert!(buffer.save().unwrap_err().to_string().starts_with("The file is read-only"));
+        assert_eq!(std::fs::read_to_string(path("read-only.txt")).unwrap(), "keep\n");
+    }
+    // Empty and binary files open.
+    std::fs::write(path("empty.txt"), "").unwrap();
+    assert_eq!(message("empty.txt"), "opened");
+    std::fs::write(path("binary.bin"), [0u8, 159, 146, 150, 0, 255, 10, 7]).unwrap();
+    assert_eq!(message("binary.bin"), "opened");
+    let _ = std::fs::remove_dir_all(&folder);
+}

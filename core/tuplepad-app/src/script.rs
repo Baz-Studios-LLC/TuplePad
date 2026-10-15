@@ -762,6 +762,7 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "completion": editor.completion.as_ref().map(|c| json!({"items": c.items, "selected": c.selected, "prefix": c.prefix})),
         "toast": app.last_toast.borrow().clone(),
         "tool_error": app.last_tool_error.borrow().clone(),
+        "alerts": app.alerts.borrow().clone(),
         "copied_html": app.last_copied_html.borrow().clone(),
         "folds": doc.buffer.folds().iter().map(|f| [f.start, f.end]).collect::<Vec<_>>(),
     })

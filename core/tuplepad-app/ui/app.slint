@@ -596,6 +596,15 @@ export component AppWindow inherits Window {
                                 primary: true;
                                 clicked => { root.command("disk.reload"); }
                             }
+                            if root.banner == 3: PillButton {
+                                text: "Dismiss";
+                                clicked => { root.command("binary.dismiss"); }
+                            }
+                            if root.banner == 3: PillButton {
+                                text: "Hex View";
+                                primary: true;
+                                clicked => { root.command("tools.hex"); }
+                            }
                             if root.banner == 2: PillButton {
                                 text: "Close";
                                 clicked => { root.command("file.close"); }

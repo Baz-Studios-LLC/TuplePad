@@ -108,7 +108,7 @@ impl TextBuffer {
         line_ending: LineEnding,
         modified: bool,
     ) -> CoreResult<Arc<Self>> {
-        let bytes = fs::read(&snapshot_path).map_err(|e| CoreError::Io { message: format!("{snapshot_path}: {e}") })?;
+        let bytes = fs::read(&snapshot_path).map_err(CoreError::from)?;
         let text = String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
         let mut state = State::new(&text, encoding);
         state.path = file_path.map(PathBuf::from);
@@ -553,7 +553,8 @@ impl TextBuffer {
 
     /// Reads a file without parsing it for highlighting, for tools that only change its text.
     pub(crate) fn open_without_syntax(path: String) -> CoreResult<Arc<Self>> {
-        let bytes = fs::read(&path).map_err(|e| CoreError::Io { message: format!("{path}: {e}") })?;
+        check_openable(&path)?;
+        let bytes = fs::read(&path).map_err(CoreError::from)?;
         let decoded = encoding::decode(bytes);
         let mut state = State::new(&decoded.text, decoded.encoding);
         state.path = Some(PathBuf::from(path));
@@ -569,6 +570,28 @@ impl TextBuffer {
     fn write(&self) -> RwLockWriteGuard<'_, State> {
         self.state.write().unwrap_or_else(|e| e.into_inner())
     }
+}
+
+/// The largest file TuplePad opens. Opening holds the file and its text in memory at once, so
+/// much larger files would run the computer out of memory.
+pub const LARGEST_FILE: u64 = 4 * 1024 * 1024 * 1024;
+
+/// Whether a path is a file TuplePad can open: not a folder, a pipe or a device (reading those
+/// never ends), and not too big.
+fn check_openable(path: &str) -> CoreResult<()> {
+    let metadata = fs::metadata(path).map_err(CoreError::from)?;
+    if metadata.is_dir() {
+        return Err(CoreError::Io { message: "It's a folder.".into() });
+    }
+    if !metadata.is_file() {
+        return Err(CoreError::Io { message: "It isn't an ordinary file (it may be a device or a pipe), so TuplePad doesn't read it.".into() });
+    }
+    if metadata.len() > LARGEST_FILE {
+        return Err(CoreError::Io {
+            message: format!("It's {:.1} GB, and TuplePad opens files up to {} GB.", metadata.len() as f64 / 1e9, LARGEST_FILE / (1024 * 1024 * 1024)),
+        });
+    }
+    Ok(())
 }
 
 impl State {
@@ -791,6 +814,15 @@ pub(crate) fn rope_char_to_pos(rope: &Rope, index: usize) -> TextPos {
 /// the existing file's permissions.
 fn write_atomically<'a>(path: &Path, chunks: impl Iterator<Item = &'a str>, encoding: &TextEncoding) -> CoreResult<()> {
     let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    // Replacing the file by renaming would get past a read-only (locked) file; respect it instead.
+    if let Ok(metadata) = fs::metadata(&target) {
+        if metadata.is_dir() {
+            return Err(CoreError::Io { message: "It's a folder.".into() });
+        }
+        if metadata.permissions().readonly() {
+            return Err(CoreError::Io { message: "The file is read-only, so TuplePad won't change it. Save As keeps your version as another file.".into() });
+        }
+    }
     let name = target.file_name().ok_or_else(|| CoreError::Io { message: "Invalid file name".into() })?;
     let temp = target.with_file_name(format!(".{}.tuplepad-save", name.to_string_lossy()));
 
