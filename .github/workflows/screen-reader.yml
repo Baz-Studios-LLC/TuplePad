@@ -60,7 +60,10 @@ jobs:
         with:
           node-version: 22
       - name: Screen reader set up for automation
-        run: npx --yes @guidepup/setup@0.29.1
+        run: npx --yes @guidepup/setup@0.29.1 setup --ci
+      - name: NVDA
+        if: runner.os == 'Windows'
+        run: npx --yes @guidepup/setup@0.29.1 install nvda
       - name: Guidepup
         run: npm install --no-save --no-package-lock @guidepup/guidepup@0.34.0
       - name: The screen reader reads TuplePad
