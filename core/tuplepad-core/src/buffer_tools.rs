@@ -434,6 +434,14 @@ impl TextBuffer {
             };
             // Inside a string or comment, match plainly; otherwise ignore brackets in them.
             let skip = !skippable(index);
+            // The syntax tree usually knows the partner already.
+            if skip && let Some(syntax) = &st.syntax {
+                let partner = syntax.bracket_partner(st.rope.char_to_byte(index)).map(|b| st.rope.byte_to_char(b));
+                if let Some(partner) = partner.filter(|&p| p < len && st.rope.char(p) == if forward { close } else { open }) {
+                    let (open_at, close_at) = if forward { (index, partner) } else { (partner, index) };
+                    return Some(BracketMatch { open: st.char_to_pos(open_at), close: st.char_to_pos(close_at) });
+                }
+            }
             let mut depth = 0usize;
             let mut found = None;
             if forward {
@@ -722,6 +730,17 @@ mod tests {
         let pair = buffer.matching_bracket(TextPos::new(0, 14)).unwrap();
         assert_eq!(pair.open, TextPos::new(0, 1));
         assert_eq!(buffer.matching_bracket(TextPos::new(0, 3)), None);
+        // In one very long line, the tree pairs them at once (a scan would stop at its limit).
+        let items: Vec<String> = (0..60_000).map(|i| format!("{{\"id\":{i},\"tags\":[\"a\",\"b\"]}}")).collect();
+        let json = format!("[{}]", items.join(","));
+        let last = json.encode_utf16().count() as u64 - 1;
+        let long = TextBuffer::with_text(json);
+        long.set_language(Some("json".into()));
+        let started = std::time::Instant::now();
+        let pair = long.matching_bracket(TextPos::new(0, 0)).unwrap();
+        assert_eq!((pair.open, pair.close), (TextPos::new(0, 0), TextPos::new(0, last)));
+        assert_eq!(long.matching_bracket(TextPos::new(0, last + 1)).unwrap().open, TextPos::new(0, 0));
+        assert!(started.elapsed().as_millis() < 50, "took {:?}", started.elapsed());
     }
 
     #[test]

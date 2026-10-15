@@ -110,7 +110,16 @@ impl TextBuffer {
         // Data files' strings are keys, names and versions rather than prose.
         let data = matches!(language.as_deref(), Some("json" | "yaml" | "toml"));
         // Code checks only its comments and strings (data files only their comments); Markdown everything but its code.
-        let spans = if language.is_some() { self.highlights(start_line, count) } else { Vec::new() };
+        // Highlighting a very long line costs a lot, and it isn't checked anyway: only short lines.
+        let spans = match &language {
+            None => Vec::new(),
+            Some(_) if lines.iter().all(|l| l.len() <= LONGEST_LINE) => self.highlights(start_line, count),
+            Some(_) => (start_line..start_line + lines.len() as u64)
+                .zip(&lines)
+                .filter(|(_, l)| l.len() <= LONGEST_LINE)
+                .flat_map(|(line, _)| self.highlights(line, 1))
+                .collect(),
+        };
         let code_lines: HashSet<u64> = if markdown { self.code_block_lines(start_line, count).into_iter().collect() } else { HashSet::new() };
         let mut found = Vec::new();
         for (index, text) in lines.iter().enumerate() {

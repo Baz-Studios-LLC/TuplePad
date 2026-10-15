@@ -10,7 +10,9 @@ use tree_sitter::{InputEdit, Language, Node, Parser, Point, Query, QueryCursor, 
 use tree_sitter_language::LanguageFn;
 
 /// Documents larger than this aren't parsed; highlighting would make editing sluggish.
-pub(crate) const MAX_PARSE_BYTES: usize = 16 * 1024 * 1024;
+// A syntax tree takes far more memory than its text (about 57 bytes per byte of minified JSON),
+// so bigger files stay plain text, as in other editors.
+pub(crate) const MAX_PARSE_BYTES: usize = 8 * 1024 * 1024;
 /// At most this much text is highlighted per request (protects against enormous single lines).
 const MAX_HIGHLIGHT_BYTES: usize = 512 * 1024;
 
@@ -504,6 +506,26 @@ impl Syntax {
             node = current.parent();
         }
         false
+    }
+
+    /// The byte of the bracket that pairs with the one at `byte`, from the tree: a bracket token's
+    /// parent (an array, a block, an argument list) starts with the opening bracket and ends with
+    /// the closing one. Much faster than scanning for it, in a long line. None when the tree doesn't
+    /// pair it that way; the caller checks the character there.
+    pub fn bracket_partner(&self, byte: usize) -> Option<usize> {
+        let tree = self.tree.as_ref()?;
+        let token = tree.root_node().descendant_for_byte_range(byte, byte + 1)?;
+        if token.start_byte() != byte || token.end_byte() != byte + 1 {
+            return None;
+        }
+        let parent = token.parent()?;
+        if parent.start_byte() == byte && parent.end_byte() > byte + 1 {
+            Some(parent.end_byte() - 1)
+        } else if parent.end_byte() == byte + 1 && parent.start_byte() < byte {
+            Some(parent.start_byte())
+        } else {
+            None
+        }
     }
 
     /// Foldable regions starting on lines `first ..= last`, as (first line, last hidden line), or

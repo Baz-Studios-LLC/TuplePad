@@ -1060,3 +1060,26 @@ fn awkward_files_are_refused_with_a_reason() {
     assert_eq!(message("binary.bin"), "opened");
     let _ = std::fs::remove_dir_all(&folder);
 }
+
+#[test]
+fn big_files_open_through_a_memory_map() {
+    // Over 16 MB, so the file is mapped rather than read; both UTF-8 and a legacy encoding.
+    let folder = std::env::temp_dir().join(format!("tuplepad-mapped-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = folder.join("big.log");
+    let line = "2026-10-14 12:00:00 INFO request served in 12 ms — ok\n";
+    let count = 17 * 1024 * 1024 / line.len() + 1;
+    std::fs::write(&path, line.repeat(count)).unwrap();
+    let buffer = TextBuffer::open(path.to_string_lossy().into_owned()).unwrap();
+    assert_eq!(buffer.line_count(), count as u64 + 1);
+    assert_eq!(buffer.line(count as u64 - 1), line.trim_end());
+    assert_eq!(buffer.file_info().encoding.name, "UTF-8");
+    let latin = folder.join("latin.txt");
+    let mut bytes = b"caf\xe9 ".repeat(17 * 1024 * 1024 / 5 + 1);
+    bytes.push(b'\n');
+    std::fs::write(&latin, &bytes).unwrap();
+    let buffer = TextBuffer::open(latin.to_string_lossy().into_owned()).unwrap();
+    assert!(buffer.line(0).starts_with("café café"));
+    assert_ne!(buffer.file_info().encoding.name, "UTF-8");
+    let _ = std::fs::remove_dir_all(&folder);
+}

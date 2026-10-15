@@ -6044,6 +6044,7 @@ dependencies = [
  "ignore",
  "md-5",
  "memchr",
+ "memmap2",
  "pulldown-cmark",
  "quick-xml 0.38.4",
  "regex",

@@ -33,6 +33,31 @@ thread_local! {
     static PENDING: RefCell<Vec<Request>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Gives memory freed while opening or closing a big file back to the system. Allocators keep
+/// large freed blocks otherwise (opening briefly holds a file's bytes and its text together), and
+/// they would count against TuplePad until the system asked for them.
+pub fn release_free_memory() {
+    #[cfg(target_os = "macos")]
+    {
+        unsafe extern "C" {
+            fn malloc_zone_pressure_relief(zone: *mut std::ffi::c_void, goal: usize) -> usize;
+        }
+        // SAFETY: a null zone means every zone; asking for no particular goal frees what it can.
+        unsafe { malloc_zone_pressure_relief(std::ptr::null_mut(), 0) };
+    }
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        unsafe extern "C" {
+            fn malloc_trim(pad: usize) -> i32;
+        }
+        // SAFETY: glibc's malloc_trim only returns free memory to the system.
+        unsafe { malloc_trim(0) };
+    }
+}
+
+/// A file big enough that opening or closing it is worth handing memory back for.
+pub const BIG_FILE: u64 = 32 * 1024 * 1024;
+
 /// The app, on the event loop's thread.
 pub fn app() -> Option<Rc<App>> {
     APP.with(|a| a.borrow().upgrade())

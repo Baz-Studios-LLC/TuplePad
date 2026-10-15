@@ -6,7 +6,7 @@ TuplePad is in early development (the current version is **v001**). It's being r
 
 ## What works today
 
-- **Large files.** A 500 MB, 3.8-million-line log opens in about a quarter of a second and scrolls at your display's full frame rate. Typing shows on screen within about 8 ms. Minified files with multi-megabyte lines draw only the part on screen.
+- **Large files.** A 500 MB, 3.8-million-line log opens in a fifth of a second, takes little more memory than its size, and scrolls at your display's full frame rate. Typing shows on screen within about 8 ms. Minified files with multi-megabyte lines draw only the part on screen.
 - **Nothing is lost when you quit.** Open documents, unsaved changes and untitled notes come back on the next launch, with the caret, scroll position and word wrap where you left them.
 - **Syntax highlighting** for 25 languages, using the tree-sitter parser. Markdown shows emphasis, bold, code, links and headings, with fenced code blocks colored in their own language. Pick a document's language from the **Language** menu, or click the status bar to change its language, indentation, encoding or line endings.
 - **Multiple carets:** ⌃⇧↑ / ⌃⇧↓ add one above or below (Ctrl+Alt+↑/↓ on Windows and Linux), ⌘-click (Ctrl-click) adds one anywhere, ⌥-drag (Alt-drag) selects a column, and ⌘D (Ctrl+D) selects the next occurrence.

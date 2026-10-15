@@ -553,12 +553,21 @@ impl TextBuffer {
 
     /// Reads a file without parsing it for highlighting, for tools that only change its text.
     pub(crate) fn open_without_syntax(path: String) -> CoreResult<Arc<Self>> {
-        check_openable(&path)?;
-        let bytes = fs::read(&path).map_err(CoreError::from)?;
-        let decoded = encoding::decode(bytes);
-        let mut state = State::new(&decoded.text, decoded.encoding);
+        let size = check_openable(&path)?;
+        let (mut state, had_errors) = if size > MAP_ABOVE {
+            // Mapped rather than read: reading would hold the file's bytes and then its text on the
+            // heap beside the rope, and the allocator keeps that memory after it's freed.
+            let file = File::open(&path).map_err(CoreError::from)?;
+            // SAFETY: the map is only read while the rope is built, and dropped right after.
+            let map = unsafe { memmap2::Mmap::map(&file) }.map_err(CoreError::from)?;
+            let (text, encoding, had_errors) = encoding::decode_borrowed(&map);
+            (State::new(&text, encoding), had_errors)
+        } else {
+            let decoded = encoding::decode(fs::read(&path).map_err(CoreError::from)?);
+            (State::new(&decoded.text, decoded.encoding), decoded.had_errors)
+        };
         state.path = Some(PathBuf::from(path));
-        state.had_decode_errors = decoded.had_errors;
+        state.had_decode_errors = had_errors;
         state.stamp_disk();
         Ok(Arc::new(TextBuffer { state: RwLock::new(state) }))
     }
@@ -576,9 +585,12 @@ impl TextBuffer {
 /// much larger files would run the computer out of memory.
 pub const LARGEST_FILE: u64 = 4 * 1024 * 1024 * 1024;
 
+/// Files bigger than this are mapped into memory to open them, rather than read.
+const MAP_ABOVE: u64 = 16 * 1024 * 1024;
+
 /// Whether a path is a file TuplePad can open: not a folder, a pipe or a device (reading those
-/// never ends), and not too big.
-fn check_openable(path: &str) -> CoreResult<()> {
+/// never ends), and not too big. Gives its size.
+fn check_openable(path: &str) -> CoreResult<u64> {
     let metadata = fs::metadata(path).map_err(CoreError::from)?;
     if metadata.is_dir() {
         return Err(CoreError::Io { message: "It's a folder.".into() });
@@ -591,7 +603,7 @@ fn check_openable(path: &str) -> CoreResult<()> {
             message: format!("It's {:.1} GB, and TuplePad opens files up to {} GB.", metadata.len() as f64 / 1e9, LARGEST_FILE / (1024 * 1024 * 1024)),
         });
     }
-    Ok(())
+    Ok(metadata.len())
 }
 
 impl State {
@@ -603,7 +615,7 @@ impl State {
             encoding,
             line_ending: scan.line_ending,
             had_decode_errors: false,
-            looks_binary: text[..text.len().min(64 * 1024)].contains('\0'),
+            looks_binary: text.as_bytes()[..text.len().min(64 * 1024)].contains(&0),
             format_changed: false,
             history: History::default(),
             max_line_bytes: scan.max_line_bytes,

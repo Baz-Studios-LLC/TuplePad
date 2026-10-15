@@ -56,7 +56,7 @@ impl State {
         let ending_before = self.line_ending;
         let scan = scan_lines(&text);
         let after = Rope::from_str(&text);
-        self.looks_binary = text[..text.len().min(64 * 1024)].contains('\0');
+        self.looks_binary = text.as_bytes()[..text.len().min(64 * 1024)].contains(&0);
         self.rope = after.clone();
         self.line_ending = scan.line_ending;
         self.max_line_bytes = scan.max_line_bytes;

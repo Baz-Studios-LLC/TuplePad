@@ -982,6 +982,9 @@ impl App {
                     self.settings.borrow_mut().note_recent(&absolute);
                     self.add_document(doc);
                     opened += 1;
+                    if size > crate::platform::BIG_FILE {
+                        crate::platform::release_free_memory();
+                    }
                 }
                 Err(error) => {
                     let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
@@ -1282,11 +1285,15 @@ impl App {
 
     /// Takes a document out of the window (without asking anything).
     fn remove_document(&self, index: usize) {
-        let empty = {
+        let (empty, big) = {
             let mut editor = self.editor.borrow_mut();
+            let big = editor.docs[index].buffer.len_utf16() > crate::platform::BIG_FILE;
             editor.remove_document(index);
-            editor.docs.is_empty()
+            (editor.docs.is_empty(), big)
         };
+        if big {
+            crate::platform::release_free_memory();
+        }
         if empty {
             self.new_document();
         } else {

@@ -33,6 +33,18 @@ pub(crate) struct Decoded {
 
 /// Decodes raw file bytes, detecting the encoding from a BOM, UTF-8 validity,
 /// UTF-16 byte patterns and finally chardetng's statistical guess.
+/// Like `decode`, but borrows the bytes, and the text too when they're already UTF-8: a big file
+/// mapped into memory then goes straight into the rope without a copy of its whole text.
+pub(crate) fn decode_borrowed(bytes: &[u8]) -> (std::borrow::Cow<'_, str>, TextEncoding, bool) {
+    if Encoding::for_bom(bytes).is_none() && sniff_utf16(bytes).is_none() {
+        if let Ok(text) = std::str::from_utf8(bytes) {
+            return (std::borrow::Cow::Borrowed(text), TextEncoding::utf8(), false);
+        }
+    }
+    let decoded = decode(bytes.to_vec());
+    (std::borrow::Cow::Owned(decoded.text), decoded.encoding, decoded.had_errors)
+}
+
 pub(crate) fn decode(bytes: Vec<u8>) -> Decoded {
     if let Some((encoding, bom_len)) = Encoding::for_bom(&bytes) {
         let (text, had_errors) = encoding.decode_without_bom_handling(&bytes[bom_len..]);
