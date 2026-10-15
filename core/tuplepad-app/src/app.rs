@@ -115,7 +115,7 @@ impl App {
         ui.set_status_items(ModelRc::from(status_model.clone()));
         let names = [
             "file", "file-2", "file-3", "recent", "reopen", "convert", "line-ending", "edit", "selection", "find", "text", "lines", "case", "whitespace", "view",
-            "view-2", "view-3", "folding", "theme", "language", "tools", "compare", "compare-documents", "json", "xml", "csv", "encode", "decode",
+            "view-2", "view-3", "folding", "theme", "language", "tools", "compare", "compare-documents", "json", "xml", "csv", "encode", "decode", "help",
         ];
         let menus: HashMap<&'static str, Rc<VecModel<MenuEntry>>> = names.into_iter().map(|n| (n, Rc::new(VecModel::default()))).collect();
         for (name, model) in &menus {
@@ -148,6 +148,7 @@ impl App {
                 "encode" => ui.set_encode_menu(model),
                 "decode" => ui.set_decode_menu(model),
                 "theme" => ui.set_theme_menu(model),
+                "help" => ui.set_help_menu(model),
                 _ => ui.set_view_menu(model),
             }
         }
@@ -429,6 +430,7 @@ impl App {
             ("csv", Menu::Csv),
             ("encode", Menu::Encode),
             ("decode", Menu::Decode),
+            ("help", Menu::Help),
         ] {
             self.set_menu(name, commands::menu_sections(menu, enabled, checked).concat());
         }
@@ -703,6 +705,7 @@ impl App {
             }
             "file.trash" => self.trash_current(),
             "tools.hex" => self.show_hex(),
+            "help.shortcuts" => self.show_shortcuts(),
             "tools.markdown-preview" => self.toggle_preview(),
             "compare.saved" => self.compare(crate::toolviews::CompareWith::Saved),
             "compare.clipboard" => self.compare(crate::toolviews::CompareWith::Clipboard),

@@ -27,6 +27,7 @@ pub enum Menu {
     View,
     /// View ▸ Code Folding.
     Folding,
+    Help,
     /// Commands without a menu item (buttons, scripts).
     None,
 }
@@ -255,6 +256,7 @@ pub static COMMANDS: &[Command] = &[
     toggle("view.appearance-light", "Light Appearance", Menu::View, &[]),
     toggle("view.appearance-dark", "Dark Appearance", Menu::View, &[]),
     command("view.toggle-theme", "Switch Light and Dark", Menu::None, &[]),
+    Command { other_keys: Some(&["F1"]), ..command("help.shortcuts", "Keyboard Shortcuts", Menu::Help, &["Control", "Alt", "/"]) },
 ];
 
 const MAC: bool = cfg!(target_os = "macos");

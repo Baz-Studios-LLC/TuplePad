@@ -33,6 +33,7 @@ mod sheets;
 mod snippets;
 mod spelling;
 mod session;
+mod shortcuts;
 mod settings;
 mod settings_window;
 mod tools;
@@ -380,6 +381,13 @@ fn connect(ui: &AppWindow, app: &Rc<App>) {
         preview.on_block_moved(move |index, y| a.preview_block_moved(index.max(0) as usize, y));
         let a = app.clone();
         preview.on_link_clicked(move |link| a.preview_link(&link));
+    }
+    {
+        let shortcuts = ui.global::<ShortcutsBridge>();
+        let a = app.clone();
+        shortcuts.on_filter_changed(move || a.filter_shortcuts());
+        let a = app.clone();
+        shortcuts.on_close(move || a.close_shortcuts());
     }
     {
         let views = ui.global::<ToolViewBridge>();

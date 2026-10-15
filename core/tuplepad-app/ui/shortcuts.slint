@@ -1,0 +1,115 @@
+import { Theme } from "theme.slint";
+import { Sheet } from "controls.slint";
+import { InputField } from "findbar.slint";
+
+export struct ShortcutRow {
+    title: string,
+    keys: string,
+}
+
+export struct ShortcutSection {
+    title: string,
+    rows: [ShortcutRow],
+}
+
+// Help ▸ Keyboard Shortcuts: every shortcut, from the command list, in two columns.
+export global ShortcutsBridge {
+    in property <bool> open;
+    in property <[ShortcutSection]> left;
+    in property <[ShortcutSection]> right;
+    in-out property <string> filter;
+    callback filter-changed();
+    callback close();
+}
+
+component SectionView inherits VerticalLayout {
+    in property <ShortcutSection> section;
+    spacing: 2px;
+    padding-bottom: 14px;
+    Text {
+        text: root.section.title;
+        font-size: 10.5px;
+        font-weight: 650;
+        letter-spacing: 0.5px;
+        color: Theme.secondary-text;
+        height: 22px;
+        vertical-alignment: center;
+    }
+    for row in root.section.rows: HorizontalLayout {
+        height: 24px;
+        spacing: 10px;
+        Text {
+            text: row.title;
+            font-size: 12.5px;
+            color: Theme.primary-text;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        // The keys, as a keycap.
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: keys.preferred-width + 12px;
+                height: 19px;
+                border-radius: 5px;
+                background: Theme.dark ? #FFFFFF0F : #0000000A;
+                border-width: 1px;
+                border-color: Theme.separator;
+                keys := Text {
+                    text: row.keys;
+                    font-size: 11.5px;
+                    color: Theme.secondary-text;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+export component ShortcutsSheet inherits Sheet {
+    title: "Keyboard Shortcuts";
+    card-width: 780px;
+    show-cancel: false;
+    accept-title: "Done";
+    accept => { ShortcutsBridge.close(); }
+    cancel => { ShortcutsBridge.close(); }
+
+    search := InputField {
+        placeholder: "Search shortcuts";
+        text <=> ShortcutsBridge.filter;
+        edited => { ShortcutsBridge.filter-changed(); }
+        escaped => { ShortcutsBridge.close(); }
+        accepted => { ShortcutsBridge.close(); }
+        init => { self.focus-field(); }
+    }
+    Rectangle {
+        height: min(520px, root.height - 260px);
+        clip: true;
+        if ShortcutsBridge.left.length == 0: Text {
+            text: "No shortcuts match.";
+            font-size: 13px;
+            color: Theme.tertiary-text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        Flickable {
+            content-height: columns.preferred-height;
+            columns := HorizontalLayout {
+                spacing: 36px;
+                alignment: start;
+                VerticalLayout {
+                    alignment: start;
+                    width: (root.card-width - 44px - 36px) / 2;
+                    for section in ShortcutsBridge.left: SectionView { section: section; }
+                }
+                VerticalLayout {
+                    alignment: start;
+                    width: (root.card-width - 44px - 36px) / 2;
+                    for section in ShortcutsBridge.right: SectionView { section: section; }
+                }
+            }
+        }
+    }
+}

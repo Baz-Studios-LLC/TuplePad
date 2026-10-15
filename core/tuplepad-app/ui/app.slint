@@ -12,8 +12,9 @@ import { OutlinePanel, OutlineBridge, OutlineRow } from "outline.slint";
 import { ToolBridge, HashRow, XPathRow, HashesSheet, XPathSheet, CsvSortSheet, ShellSheet } from "toolsheets.slint";
 import { ToolViewBridge, HexLine, CompareLine, HexView, CompareView } from "toolviews.slint";
 import { PreviewBridge, PreviewBlock, CodeLine, CodePart, MarkdownPreview } from "preview.slint";
+import { ShortcutsBridge, ShortcutSection, ShortcutRow, ShortcutsSheet } from "shortcuts.slint";
 
-export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, ContextItem, DocItem, FolderRow, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow, ToolViewBridge, HexLine, CompareLine, PreviewBridge, PreviewBlock, CodeLine, CodePart }
+export { Theme, EditorBridge, Span, Row, Caret, Band, CompletionItem, ContextItem, DocItem, FolderRow, Palette, SettingsWindow, SettingsValues, SnippetRow, PaletteItem, TitlePart, FindBridge, SearchBridge, SearchRow, PlanRow, ReplacedRow, ColumnBridge, OutlineBridge, OutlineRow, ToolBridge, HashRow, XPathRow, ToolViewBridge, HexLine, CompareLine, PreviewBridge, PreviewBlock, CodeLine, CodePart, ShortcutsBridge, ShortcutSection, ShortcutRow }
 
 // One entry of a menu, built in Rust from the command list. A separator is an entry whose title
 // is Slint's separator placeholder.
@@ -118,6 +119,7 @@ export component AppWindow inherits Window {
     in property <[MenuEntry]> view-menu;
     in property <[MenuEntry]> view-menu-2;
     in property <[MenuEntry]> view-menu-3;
+    in property <[MenuEntry]> help-menu;
     in property <[MenuEntry]> folding-menu;
     in property <[MenuEntry]> theme-menu;
 
@@ -433,6 +435,15 @@ export component AppWindow inherits Window {
                 enabled: item.enabled;
                 checkable: item.checkable;
                 checked: item.checked;
+                activated => { root.command(item.id); }
+            }
+        }
+        Menu {
+            title: "Help";
+            for item in root.help-menu: MenuItem {
+                title: item.title;
+                shortcut: item.shortcut;
+                enabled: item.enabled;
                 activated => { root.command(item.id); }
             }
         }
@@ -837,6 +848,7 @@ export component AppWindow inherits Window {
     if ToolBridge.sheet == 2: XPathSheet { }
     if ToolBridge.sheet == 3: CsvSortSheet { }
     if ToolBridge.sheet == 4: ShellSheet { }
+    if ShortcutsBridge.open: ShortcutsSheet { }
 
     if root.palette-open: CommandPalette {
         items: root.palette-items;

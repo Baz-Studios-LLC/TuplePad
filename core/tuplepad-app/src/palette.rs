@@ -72,6 +72,7 @@ fn menu_name(menu: Menu) -> &'static str {
         Menu::Decode => "Tools ▸ Decode",
         Menu::View => "View",
         Menu::Folding => "View ▸ Code Folding",
+        Menu::Help => "Help",
         Menu::None => "",
     }
 }

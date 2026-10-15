@@ -611,6 +611,14 @@ fn run_next(app: Rc<App>, runner: Shared) {
             let done = signal.with_extension("done");
             return wait_for(app, runner, done, Instant::now(), limit);
         }
+        // The keyboard shortcuts sheet: {"shortcuts": "text to search for"} or {"shortcuts": null} to close it.
+        "shortcuts" => match arg.as_str() {
+            Some(filter) => {
+                ui.global::<crate::ShortcutsBridge>().set_filter(filter.into());
+                app.filter_shortcuts();
+            }
+            None => app.close_shortcuts(),
+        },
         "benchScroll" => return bench_scroll(app, runner, arg),
         "benchJump" => return bench_jump(app, runner, arg),
         "benchType" => return bench_type(app, runner, arg),
@@ -729,6 +737,7 @@ fn dump(app: &App, ui: &AppWindow) -> Value {
         "context_items": context_items,
         "misspelled": misspelled,
         "mcp": app.mcp_dump(),
+        "shortcuts": app.shortcuts_dump(),
         "sidebar_mode": ui.get_sidebar_mode(),
         "outline_visible": ui.get_outline_visible(),
         "minimap": ui.global::<crate::EditorBridge>().get_minimap_width() > 0.0,
@@ -796,6 +805,7 @@ fn dump_menus(ui: &AppWindow) -> Value {
         "View": view,
         "Code Folding": menu(ui.get_folding_menu()),
         "Language": menu(ui.get_language_menu()),
+        "Help": menu(ui.get_help_menu()),
         "Tools": menu(ui.get_tools_menu()),
         "Compare": menu(ui.get_compare_menu()),
         "Compare With": menu(ui.get_compare_documents_menu()),
